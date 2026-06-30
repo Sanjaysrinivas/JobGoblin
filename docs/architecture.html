@@ -234,7 +234,7 @@
           </div>
         </div>
 
-        <div class="arrow"><span class="line"></span><span class="chev">▼</span>HTTPS</div>
+        <div class="arrow"><span class="line"></span><span class="chev">▼</span>Cloudflare Tunnel → Caddy</div>
 
         <div class="band accent">
           <span class="band-label">Frontend service</span>
@@ -242,7 +242,7 @@
             <div class="node">
               <p class="nh">▲ Next.js Frontend</p>
               <p class="nsub">React · TypeScript · Tailwind · shadcn/ui</p>
-              <span class="host">deploy → Vercel (free)</span>
+              <span class="host">served via Caddy (same-origin)</span>
               <ul><li>Dashboard, resumes, jobs, analysis</li><li>Applications, contacts, settings</li></ul>
             </div>
           </div>
@@ -256,7 +256,7 @@
             <div class="node">
               <p class="nh">⚡ FastAPI API</p>
               <p class="nsub">routes · auth (JWT cookie)</p>
-              <span class="host">deploy → Render (free)</span>
+              <span class="host">runs on host laptop</span>
             </div>
             <div class="node">
               <p class="nh">⚙️ Services</p>
@@ -275,12 +275,12 @@
               <div class="node">
                 <p class="nh"><span class="dot" style="background:var(--cyan)"></span> PostgreSQL</p>
                 <p class="nsub">users, resumes, jobs, analyses…</p>
-                <span class="host">Neon (free)</span>
+                <span class="host">container + volume</span>
               </div>
               <div class="node">
-                <p class="nh"><span class="dot" style="background:var(--amber)"></span> Object storage</p>
+                <p class="nh"><span class="dot" style="background:var(--amber)"></span> File storage</p>
                 <p class="nsub">uploaded resume files</p>
-                <span class="host">Cloudflare R2 (free)</span>
+                <span class="host">mounted volume</span>
               </div>
             </div>
           </div>
@@ -288,9 +288,9 @@
             <span class="band-label">AI provider layer</span>
             <div class="nodes" style="flex-direction:column">
               <div class="node">
-                <p class="nh">🧠 Pluggable interface</p>
-                <p class="nsub">swap providers via config</p>
-                <ul><li>OpenAI · Anthropic</li><li>Ollama (local)</li><li>Mock (tests)</li></ul>
+                <p class="nh">🧠 Ollama (local)</p>
+                <p class="nsub">GPU-accelerated · pluggable</p>
+                <ul><li><strong>qwen2.5:7b</strong> · llama3.2:3b</li><li>Mock (tests)</li><li>OpenAI/Anthropic optional</li></ul>
               </div>
             </div>
           </div>
@@ -298,27 +298,28 @@
 
       </div>
     </div>
-    <div class="callout"><p>💡 Built <strong>Docker-first</strong> so the whole stack runs locally with one command — and with storage + DB behind interfaces, moving to an always-on VPS later is a config change, not a rewrite.</p></div>
+    <div class="callout"><p>💡 The entire stack — FE, BE, Postgres, and Ollama — runs in <strong>one Docker Compose on the owner's laptop</strong>, exposed via a free Cloudflare Tunnel. One origin behind Caddy means secure HTTP-only cookies with no cross-origin hacks. Storage sits behind an interface, so swapping to S3/R2 later is a config change.</p></div>
   </section>
 
   <!-- HOSTING -->
   <section id="hosting">
     <p class="sec-num">03</p>
-    <h2>The $0 hosting stack</h2>
-    <p>Everything sits on genuinely free tiers. The only trade-offs are <strong>cold starts</strong> (the backend sleeps when idle) and modest storage caps — both fine for a small group of friends.</p>
+    <h2>Self-hosted on one laptop — $0</h2>
+    <p>The whole stack runs in one Docker Compose on the owner's laptop (Ryzen 7 · 31 GB RAM · RTX 4070 8 GB) and reaches the internet through a free Cloudflare Tunnel. This is what makes <strong>Ollama</strong> viable — it needs real RAM/GPU and can't run on free cloud tiers — while keeping everything at $0.</p>
     <div class="table-scroll">
       <table>
-        <thead><tr><th>Layer</th><th>Host</th><th>Cost</th><th>Trade-off</th></tr></thead>
+        <thead><tr><th>Component</th><th>Runs as</th><th>Cost</th></tr></thead>
         <tbody>
-          <tr><td><strong>Frontend</strong></td><td>Vercel (Hobby)</td><td class="free">$0</td><td>Free forever; non-commercial only</td></tr>
-          <tr><td><strong>Backend</strong></td><td>Render (web service)</td><td class="free">$0</td><td>Sleeps after ~15 min idle → ~30–50s cold start</td></tr>
-          <tr><td><strong>Database</strong></td><td>Neon (Postgres)</td><td class="free">$0</td><td>~0.5 GB; auto-suspends, resumes in ~1s</td></tr>
-          <tr><td><strong>File storage</strong></td><td>Cloudflare R2</td><td class="free">$0</td><td>10 GB, no egress fees</td></tr>
-          <tr><td><strong>Repo / CI</strong></td><td>GitHub</td><td class="free">$0</td><td>Public/private + Actions</td></tr>
+          <tr><td><strong>Frontend / Backend</strong></td><td>containers behind Caddy (same origin)</td><td class="free">$0</td></tr>
+          <tr><td><strong>PostgreSQL</strong></td><td>container + persistent volume</td><td class="free">$0</td></tr>
+          <tr><td><strong>Ollama</strong> (qwen2.5:7b)</td><td>container, GPU-accelerated</td><td class="free">$0</td></tr>
+          <tr><td><strong>File storage</strong></td><td>mounted volume</td><td class="free">$0</td></tr>
+          <tr><td><strong>Public access</strong></td><td>Cloudflare Tunnel (HTTPS)</td><td class="free">$0</td></tr>
+          <tr><td><strong>Repo / CI</strong></td><td>GitHub Actions</td><td class="free">$0</td></tr>
         </tbody>
       </table>
     </div>
-    <p style="font-size:13px;color:var(--ink-faint)">Upgrade path when there's budget: one ~<span class="cost">$5/mo</span> VPS running all containers via Docker Compose → always-on, no cold starts, all data on one box you control.</p>
+    <p style="font-size:13px;color:var(--ink-faint)">Trade-off: online only while the laptop is on (<span class="cost">non-24/7</span>). All data persists on Docker volumes across shutdowns — nothing is lost overnight.</p>
   </section>
 
   <!-- STACK -->
@@ -345,7 +346,7 @@
         <h4>Data &amp; infra</h4>
         <div class="chips" style="margin:10px 0 0">
           <span class="chip"><b>PostgreSQL</b></span><span class="chip"><b>Docker</b></span>
-          <span class="chip"><b>Compose</b></span><span class="chip"><b>R2 / S3</b></span>
+          <span class="chip"><b>Compose</b></span><span class="chip"><b>Ollama</b></span>
         </div>
       </div>
       <div class="card">
@@ -382,7 +383,7 @@
     <h2>Core AI flow — resume × job analysis</h2>
     <p>The signature feature blends <strong>deterministic keyword matching</strong> (for the numeric score) with <strong>AI reasoning</strong> (for explanations and recommendations). The result is always labelled an <em>estimate</em>, never a guaranteed ATS score.</p>
     <div class="flow">
-      <div class="step">User uploads a resume → backend stores the file (R2) and extracts plain text.</div>
+      <div class="step">User uploads a resume → backend stores the file (local volume) and extracts plain text.</div>
       <div class="step">User pastes a job description and selects a resume to compare.</div>
       <div class="step"><b>Deterministic pass:</b> extract &amp; normalize keywords from both, compute weighted category scores (keywords 30% · skills 25% · experience 20% · role 10% · education 5% · formatting 10%).</div>
       <div class="step"><b>AI pass:</b> explain gaps, distinguish <em>missing keywords you already qualify for</em> from <em>qualifications you lack</em>, and suggest truthful improvements.</div>
