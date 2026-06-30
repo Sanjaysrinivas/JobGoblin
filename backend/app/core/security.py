@@ -32,6 +32,13 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
+# Token "type" claim values. A full session token carries no ``typ`` (kept
+# backwards compatible with previously issued cookies); the intermediate
+# MFA-pending token carries ``typ=mfa_pending`` so it can never be mistaken for
+# — or used as — a real session.
+_MFA_PENDING_TYP = "mfa_pending"
+
+
 def create_access_token(subject: str, expires_delta: timedelta | None = None) -> str:
     """Create a signed JWT whose ``sub`` claim is the user id."""
     settings = get_settings()
@@ -43,9 +50,45 @@ def create_access_token(subject: str, expires_delta: timedelta | None = None) ->
 
 
 def decode_access_token(token: str) -> str:
-    """Decode a JWT and return its subject. Raises ``JWTError`` if invalid/expired."""
+    """Decode a session JWT and return its subject.
+
+    Raises ``JWTError`` if invalid/expired, if the subject is missing, or if the
+    token is actually an MFA-pending token (which must not unlock a session).
+    """
     settings = get_settings()
     claims = jwt.decode(token, settings.app_secret_key, algorithms=[settings.jwt_algorithm])
+    if claims.get("typ") == _MFA_PENDING_TYP:
+        raise JWTError("MFA-pending token cannot be used as a session token")
+    subject = claims.get("sub")
+    if subject is None:
+        raise JWTError("Token is missing the subject claim")
+    return str(subject)
+
+
+def create_mfa_pending_token(subject: str, expires_delta: timedelta | None = None) -> str:
+    """Create a short-lived token marking a primary-auth'd, MFA-not-yet-passed user.
+
+    It carries ``typ=mfa_pending`` and is only accepted by
+    ``decode_mfa_pending_token`` — never by ``decode_access_token``.
+    """
+    settings = get_settings()
+    if expires_delta is None:
+        expires_delta = timedelta(minutes=settings.mfa_pending_token_expire_minutes)
+    expire = datetime.now(UTC) + expires_delta
+    claims = {"sub": subject, "exp": expire, "typ": _MFA_PENDING_TYP}
+    return jwt.encode(claims, settings.app_secret_key, algorithm=settings.jwt_algorithm)
+
+
+def decode_mfa_pending_token(token: str) -> str:
+    """Decode an MFA-pending token and return its subject.
+
+    Raises ``JWTError`` if invalid/expired, missing a subject, or not an
+    MFA-pending token (e.g. a real session token is presented).
+    """
+    settings = get_settings()
+    claims = jwt.decode(token, settings.app_secret_key, algorithms=[settings.jwt_algorithm])
+    if claims.get("typ") != _MFA_PENDING_TYP:
+        raise JWTError("Not an MFA-pending token")
     subject = claims.get("sub")
     if subject is None:
         raise JWTError("Token is missing the subject claim")

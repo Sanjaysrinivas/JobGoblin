@@ -53,6 +53,16 @@ class User(_UUIDMixin, _TimeMixin, table=True):
     password_hash: str
     display_name: str
     is_admin: bool = Field(default=False)
+    # Google OAuth subject (the stable account id from Google). Null for users
+    # who only ever signed in with email/password.
+    google_sub: str | None = Field(default=None, unique=True, index=True)
+    # TOTP authenticator-app second factor. The secret is generated at enrollment;
+    # totp_enabled flips to True only after the user verifies a code.
+    totp_secret: str | None = Field(default=None)
+    totp_enabled: bool = Field(default=False)
+    # Last TOTP timestep (Unix-time // 30) successfully consumed. Codes whose
+    # timestep is <= this are rejected, preventing replay within the 30s window.
+    last_totp_timestep: int | None = Field(default=None)
 
 
 class InviteToken(_UUIDMixin, table=True):

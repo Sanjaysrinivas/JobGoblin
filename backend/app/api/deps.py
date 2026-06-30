@@ -46,3 +46,28 @@ def get_current_user(
     if user is None:
         raise _unauthorized()
     return user
+
+
+def get_mfa_pending_user(
+    session: Annotated[Session, Depends(get_session)],
+    jg_mfa: Annotated[
+        str | None, Cookie(alias=_settings.mfa_cookie_name)
+    ] = None,
+) -> User:
+    """Resolve the user mid-MFA from the short-lived mfa_pending cookie, or 401.
+
+    Used only by the second-factor challenge endpoint; a full session cookie is
+    deliberately NOT accepted here, and vice versa.
+    """
+    if not jg_mfa:
+        raise _unauthorized()
+    try:
+        subject = security.decode_mfa_pending_token(jg_mfa)
+        user_id = uuid.UUID(subject)
+    except (JWTError, ValueError):
+        raise _unauthorized() from None
+
+    user = session.get(User, user_id)
+    if user is None:
+        raise _unauthorized()
+    return user

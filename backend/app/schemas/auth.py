@@ -49,3 +49,42 @@ class UserPublic(BaseModel):
     is_admin: bool
 
     model_config = {"from_attributes": True}
+
+
+class MfaCodeRequest(BaseModel):
+    """A 6-digit TOTP code submitted for enrollment verification or challenge."""
+
+    code: str
+
+
+class SessionUserResponse(UserPublic):
+    """Returned when a full session cookie was set.
+
+    Carries the authenticated user plus ``mfa_enrollment_required``: true when a
+    session was granted but the user has no second factor yet and should be
+    guided to ``/auth/mfa/enroll``.
+    """
+
+    mfa_enrollment_required: bool = False
+
+
+class MfaRequiredResponse(BaseModel):
+    """Returned when primary auth succeeded but a second factor is pending.
+
+    No user identity is exposed (no session has been granted yet); only the
+    ``mfa_required`` flag. The client must call ``/auth/mfa/challenge``.
+    """
+
+    mfa_required: bool = True
+
+
+# A primary-auth call resolves to exactly one of these two shapes.
+PrimaryAuthResponse = SessionUserResponse | MfaRequiredResponse
+
+
+class MfaEnrollResponse(BaseModel):
+    """Enrollment payload: the secret, its provisioning URI, and a QR image."""
+
+    secret: str
+    provisioning_uri: str
+    qr_data_uri: str
