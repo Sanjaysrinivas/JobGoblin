@@ -21,6 +21,5 @@ COPY alembic ./alembic
 
 EXPOSE 8000
 
-# Migrations are wired into startup once models/migrations exist:
-#   sh -c "alembic upgrade head && uvicorn ..."
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run migrations on startup, then serve.
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
