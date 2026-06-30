@@ -46,8 +46,12 @@ def register(
     response: Response,
     session: Annotated[Session, Depends(get_session)],
 ) -> User:
+    # Lock the invite row so two concurrent registrations can't both observe
+    # used_by is None and succeed against the same token.
     invite = session.exec(
-        select(InviteToken).where(InviteToken.token == payload.invite_token)
+        select(InviteToken)
+        .where(InviteToken.token == payload.invite_token)
+        .with_for_update()
     ).first()
     if (
         invite is None

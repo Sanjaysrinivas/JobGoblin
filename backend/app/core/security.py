@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
-from jose import jwt
+from jose import JWTError, jwt
 
 from app.core.config import get_settings
 
@@ -46,4 +46,7 @@ def decode_access_token(token: str) -> str:
     """Decode a JWT and return its subject. Raises ``JWTError`` if invalid/expired."""
     settings = get_settings()
     claims = jwt.decode(token, settings.app_secret_key, algorithms=[settings.jwt_algorithm])
-    return claims["sub"]
+    subject = claims.get("sub")
+    if subject is None:
+        raise JWTError("Token is missing the subject claim")
+    return str(subject)

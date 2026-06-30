@@ -229,6 +229,21 @@ def test_me_with_token_for_deleted_user_unauthorized(client, session):
     assert resp.status_code == 401
 
 
+def test_me_with_token_missing_sub_unauthorized(client, session):
+    # a validly-signed token that has no `sub` claim must yield 401, not 500
+    from jose import jwt
+
+    token = jwt.encode(
+        {"foo": "bar"},
+        get_settings().app_secret_key,
+        algorithm=get_settings().jwt_algorithm,
+    )
+    client.cookies.set(COOKIE, token)
+    resp = client.get("/api/auth/me")
+    assert resp.status_code == 401
+    assert resp.json()["code"] == "not_authenticated"
+
+
 def test_logout_clears_cookie(client, session):
     user = User(
         email="out@example.com",

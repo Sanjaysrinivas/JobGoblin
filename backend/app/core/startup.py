@@ -1,5 +1,6 @@
 """Application startup tasks (run from the FastAPI lifespan)."""
 
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.core import security
@@ -16,6 +17,9 @@ def seed_admin(session: Session | None = None) -> User | None:
     Returns the created admin, or ``None`` if nothing was created.
     """
     settings = get_settings()
+    # Guard before any string ops, so a falsy/None credential can't blow up.
+    if not settings.admin_email or not settings.admin_password:
+        return None
     email = settings.admin_email.strip().lower()
     password = settings.admin_password
     if not email or not password:
@@ -38,7 +42,12 @@ def seed_admin(session: Session | None = None) -> User | None:
             is_admin=True,
         )
         session.add(admin)
-        session.commit()
+        try:
+            session.commit()
+        except IntegrityError:
+            # Another worker seeded the admin concurrently; that's fine.
+            session.rollback()
+            return None
         session.refresh(admin)
         return admin
     finally:

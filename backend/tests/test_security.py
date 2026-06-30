@@ -37,6 +37,20 @@ def test_jwt_rejects_expired_token():
         security.decode_access_token(token)
 
 
+def test_jwt_decode_rejects_token_without_subject():
+    from jose import jwt
+
+    from app.core.config import get_settings
+
+    token = jwt.encode(
+        {"foo": "bar"},
+        get_settings().app_secret_key,
+        algorithm=security.JWT_ALGORITHM,
+    )
+    with pytest.raises(JWTError):
+        security.decode_access_token(token)
+
+
 def test_jwt_decode_returns_subject():
     token = security.create_access_token("abc")
     # also sanity check it carries an exp claim in the future
