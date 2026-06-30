@@ -36,9 +36,12 @@ class LocalStorage(StorageBackend):
         self._base = Path(base_path).resolve()
 
     def _resolve(self, key: str) -> Path:
-        # Reject keys that try to escape the base directory (path traversal).
+        # Reject empty/dot keys that resolve to the base dir itself, and keys
+        # that try to escape the base directory (path traversal).
+        if not key or key.strip() in ("", ".", "./"):
+            raise ValueError(f"invalid storage key: {key!r}")
         target = (self._base / key).resolve()
-        if target != self._base and self._base not in target.parents:
+        if target == self._base or self._base not in target.parents:
             raise ValueError(f"invalid storage key: {key!r}")
         return target
 

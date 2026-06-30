@@ -119,6 +119,44 @@ def test_upload_rejects_oversized_file(client, monkeypatch):
     assert resp.json()["code"] == "file_too_large"
 
 
+def test_upload_corrupt_pdf_is_422(client):
+    # A file claiming to be a PDF but with junk bytes -> 422, not 500.
+    resp = _upload(
+        client,
+        data=b"this is not a pdf at all",
+        filename="broken.pdf",
+        content_type=PDF_CONTENT_TYPE,
+    )
+    assert resp.status_code == 422
+    assert resp.json()["code"] == "unprocessable_file"
+
+
+def test_upload_succeeds_when_ai_parse_fails(client, monkeypatch):
+    # The AI provider being down must NOT 500 the upload — the resume is saved
+    # with parsed_json null and can be re-parsed later.
+    import app.api.routes.resumes as routes
+    from app.services.ai_provider import AIProvider
+
+    class BrokenProvider(AIProvider):
+        async def generate_text(self, prompt, *, system=None):
+            raise RuntimeError("ollama down")
+
+        async def generate_json(self, prompt, schema, *, system=None):
+            raise RuntimeError("ollama down")
+
+    monkeypatch.setattr(routes, "get_ai_provider", lambda: BrokenProvider())
+    resp = _upload(
+        client,
+        data=make_pdf_bytes("Resilient\nPython"),
+        filename="resilient.pdf",
+        content_type=PDF_CONTENT_TYPE,
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert "Resilient" in body["extracted_text"]
+    assert body["parsed_json"] is None
+
+
 # ---------------------------------------------------------------- list / get
 
 def test_list_returns_only_current_user(client, session, user):
@@ -242,6 +280,26 @@ def test_delete_removes_row_and_file(client, session, user):
     assert resp.status_code == 204
     assert session.get(Resume, resume_id) is None
     assert not file_path.exists()
+
+
+def test_delete_succeeds_when_file_removal_fails(client, session, monkeypatch):
+    # Storage failure after the DB commit must not 500 — the row is the source
+    # of truth and the delete still returns 204.
+    body = _upload(
+        client, data=make_pdf_bytes("d"), filename="d.pdf", content_type=PDF_CONTENT_TYPE
+    ).json()
+    resume_id = uuid.UUID(body["id"])
+
+    import app.api.routes.resumes as routes
+
+    class FlakyStorage:
+        async def delete(self, key):
+            raise OSError("storage backend down")
+
+    monkeypatch.setattr(routes, "get_storage", lambda: FlakyStorage())
+    resp = client.delete(f"/api/resumes/{resume_id}")
+    assert resp.status_code == 204
+    assert session.get(Resume, resume_id) is None
 
 
 def test_delete_other_users_resume_is_404(client, session):

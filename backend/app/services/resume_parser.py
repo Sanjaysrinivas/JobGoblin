@@ -46,14 +46,9 @@ PARSED_RESUME_SCHEMA: dict = {
         "projects": {"type": "array", "items": {"type": "string"}},
         "certifications": {"type": "array", "items": {"type": "string"}},
     },
-    "required": [
-        "summary",
-        "skills",
-        "experience",
-        "education",
-        "projects",
-        "certifications",
-    ],
+    # No top-level ``required``: the system prompt tells the model to omit any
+    # section it cannot find, so the schema must permit a partial object. The
+    # API layer defaults missing sections (see schemas.resume.ParsedResume).
 }
 
 _SYSTEM = (

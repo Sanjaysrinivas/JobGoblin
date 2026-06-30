@@ -45,5 +45,12 @@ async def test_key_traversal_is_rejected(storage):
         await storage.save("../escape.txt", b"x", "text/plain")
 
 
+@pytest.mark.parametrize("bad_key", ["", ".", "./", "   "])
+async def test_empty_or_dot_key_is_rejected(storage, bad_key):
+    # Keys that resolve to the base directory itself must be refused.
+    with pytest.raises(ValueError):
+        await storage.save(bad_key, b"x", "text/plain")
+
+
 def test_get_storage_returns_local_storage_by_default():
     assert isinstance(get_storage(), LocalStorage)

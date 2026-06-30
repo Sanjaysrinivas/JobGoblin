@@ -42,6 +42,7 @@ export function ResumeDetailView({ resumeId }: { resumeId: string }) {
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState<Busy>(null);
+  const [confirmingDelete, setConfirmingDelete] = React.useState(false);
 
   // Editable fields.
   const [title, setTitle] = React.useState("");
@@ -216,19 +217,42 @@ export function ResumeDetailView({ resumeId }: { resumeId: string }) {
             )}
             Export PDF
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onDelete}
-            disabled={busy !== null}
-          >
-            {busy === "delete" ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
+          {confirmingDelete ? (
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground text-xs">Delete this resume?</span>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={onDelete}
+                disabled={busy !== null}
+              >
+                {busy === "delete" ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Trash2 className="size-4" />
+                )}
+                Confirm
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setConfirmingDelete(false)}
+                disabled={busy !== null}
+              >
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setConfirmingDelete(true)}
+              disabled={busy !== null}
+            >
               <Trash2 className="size-4" />
-            )}
-            Delete
-          </Button>
+              Delete
+            </Button>
+          )}
         </div>
       </div>
 

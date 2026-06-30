@@ -22,6 +22,22 @@ def _ascii(text: Any) -> str:
     return s.encode("latin-1", "replace").decode("latin-1")
 
 
+def _as_list(value: Any) -> list:
+    """Coerce a value to a list for safe iteration.
+
+    The model occasionally returns a lone string where a list is expected (e.g.
+    ``"skills": "Python"``). Iterating a string yields characters, so wrap a
+    string in a single-element list and treat anything else non-list as empty.
+    """
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        return [value] if value else []
+    if value is None:
+        return []
+    return [value]
+
+
 def render_resume_pdf(title: str, profile: dict | None) -> bytes:
     """Render ``profile`` (a ParsedResume dict) to ATS-plain PDF bytes."""
     from fpdf import FPDF
@@ -51,15 +67,18 @@ def render_resume_pdf(title: str, profile: dict | None) -> bytes:
         heading("Summary")
         body(profile["summary"])
 
-    skills = profile.get("skills") or []
+    skills = _as_list(profile.get("skills"))
     if skills:
         heading("Skills")
         body(", ".join(_ascii(s) for s in skills))
 
-    experience = profile.get("experience") or []
+    experience = _as_list(profile.get("experience"))
     if experience:
         heading("Experience")
         for item in experience:
+            if not isinstance(item, dict):
+                body(_ascii(item), bullet=True)
+                continue
             role = _ascii(item.get("role", ""))
             company = _ascii(item.get("company", ""))
             dates = " - ".join(
@@ -71,14 +90,17 @@ def render_resume_pdf(title: str, profile: dict | None) -> bytes:
                 header = f"{header} ({_ascii(dates)})" if header else _ascii(dates)
             pdf.multi_cell(epw, 5.5, header)
             pdf.set_font("Helvetica", size=10.5)
-            for hl in item.get("highlights") or []:
-                body(hl, bullet=True)
+            for hl in _as_list(item.get("highlights")):
+                body(_ascii(hl), bullet=True)
             pdf.ln(1)
 
-    education = profile.get("education") or []
+    education = _as_list(profile.get("education"))
     if education:
         heading("Education")
         for item in education:
+            if not isinstance(item, dict):
+                body(_ascii(item))
+                continue
             parts = [
                 item.get("credential", ""),
                 item.get("institution", ""),
@@ -86,13 +108,13 @@ def render_resume_pdf(title: str, profile: dict | None) -> bytes:
             ]
             body(", ".join(_ascii(p) for p in parts if p))
 
-    projects = profile.get("projects") or []
+    projects = _as_list(profile.get("projects"))
     if projects:
         heading("Projects")
         for proj in projects:
             body(_ascii(proj), bullet=True)
 
-    certifications = profile.get("certifications") or []
+    certifications = _as_list(profile.get("certifications"))
     if certifications:
         heading("Certifications")
         for cert in certifications:

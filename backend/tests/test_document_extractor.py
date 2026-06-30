@@ -2,7 +2,12 @@
 
 import pytest
 
-from app.services.document_extractor import UnsupportedDocumentError, extract_text
+from app.services.document_extractor import (
+    SUPPORTED_CONTENT_TYPES,
+    ExtractionError,
+    UnsupportedDocumentError,
+    extract_text,
+)
 from tests.sample_docs import (
     DOCX_CONTENT_TYPE,
     PDF_CONTENT_TYPE,
@@ -28,3 +33,20 @@ def test_extract_docx_text():
 def test_unsupported_content_type_raises():
     with pytest.raises(UnsupportedDocumentError):
         extract_text(b"plain", "text/plain")
+
+
+def test_legacy_doc_is_not_supported():
+    # python-docx cannot read the legacy .doc binary format — we don't advertise it.
+    assert "application/msword" not in SUPPORTED_CONTENT_TYPES
+    with pytest.raises(UnsupportedDocumentError):
+        extract_text(b"\xd0\xcf\x11\xe0", "application/msword")
+
+
+def test_corrupt_pdf_raises_extraction_error():
+    with pytest.raises(ExtractionError):
+        extract_text(b"not a real pdf", PDF_CONTENT_TYPE)
+
+
+def test_corrupt_docx_raises_extraction_error():
+    with pytest.raises(ExtractionError):
+        extract_text(b"not a real docx", DOCX_CONTENT_TYPE)

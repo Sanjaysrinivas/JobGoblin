@@ -6,6 +6,7 @@ size, stores the original via the storage layer, extracts text, persists the
 ``Resume`` row, then runs an inline AI section parse.
 """
 
+import logging
 import uuid
 from typing import Annotated
 
@@ -22,21 +23,24 @@ from app.schemas.resume import ResumeOut, ResumeUpdate
 from app.services.ai_provider import get_ai_provider
 from app.services.document_extractor import (
     SUPPORTED_CONTENT_TYPES,
+    ExtractionError,
     UnsupportedDocumentError,
     extract_text,
 )
 from app.services.pdf_export import render_resume_pdf
 from app.services.resume_parser import parse_resume
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/resumes", tags=["resumes"])
 
 settings = get_settings()
 
-# Map content type -> file extension for opaque storage keys.
+# Map content type -> file extension for opaque storage keys. Only PDF/DOCX are
+# supported (legacy .doc is not — python-docx cannot read it).
 _EXT_BY_TYPE = {
     "application/pdf": ".pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
-    "application/msword": ".doc",
 }
 
 
@@ -83,8 +87,20 @@ async def upload_resume(
             "unsupported_type",
         )
 
-    data = await file.read()
     max_bytes = settings.max_upload_mb * 1024 * 1024
+
+    # Reject oversized uploads before buffering the whole body. Trust the
+    # declared Content-Length if present; otherwise read with a one-byte
+    # overshoot cap so we never hold more than the limit + 1 in memory.
+    declared = file.size if file.size is not None else None
+    if declared is not None and declared > max_bytes:
+        raise _error(
+            status.HTTP_413_CONTENT_TOO_LARGE,
+            f"File exceeds the {settings.max_upload_mb} MB limit.",
+            "file_too_large",
+        )
+
+    data = await file.read(max_bytes + 1)
     if len(data) > max_bytes:
         raise _error(
             status.HTTP_413_CONTENT_TOO_LARGE,
@@ -100,6 +116,11 @@ async def upload_resume(
     except UnsupportedDocumentError as exc:
         raise _error(
             status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, str(exc), "unsupported_type"
+        ) from exc
+    except ExtractionError as exc:
+        # A corrupt/malformed file of a supported type — not our fault, not a 500.
+        raise _error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc), "unprocessable_file"
         ) from exc
 
     ext = _EXT_BY_TYPE.get(content_type, "")
@@ -117,9 +138,16 @@ async def upload_resume(
         extracted_text=text,
     )
 
-    # Inline AI parse (MockProvider in tests; Ollama in production).
+    # Inline AI parse (MockProvider in tests; Ollama in production). The parse is
+    # best-effort: a provider that is down, times out, or returns invalid JSON
+    # must NOT fail the upload — the resume is saved with parsed_json null and can
+    # be re-parsed later via POST /{id}/parse.
     if text:
-        resume.parsed_json = await parse_resume(text, get_ai_provider())
+        try:
+            resume.parsed_json = await parse_resume(text, get_ai_provider())
+        except Exception:
+            logger.warning("Inline resume parse failed; saving without parsed_json")
+            resume.parsed_json = None
 
     session.add(resume)
     session.commit()
@@ -184,8 +212,13 @@ async def delete_resume(
     file_key = resume.file_key
     session.delete(resume)
     session.commit()
-    # Remove the stored blob after the row is gone (idempotent on missing files).
-    await get_storage().delete(file_key)
+    # The DB row is the source of truth; removing the stored blob is best-effort.
+    # If storage deletion fails (already gone, permissions, backend down), log it
+    # and still return success rather than 500 on an already-committed delete.
+    try:
+        await get_storage().delete(file_key)
+    except Exception:
+        logger.warning("Failed to delete stored file for resume %s", resume_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
