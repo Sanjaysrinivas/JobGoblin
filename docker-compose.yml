@@ -1,6 +1,12 @@
 # JobGoblin — local/self-hosted stack.
-# This branch (backend-foundation) defines db + backend + ollama.
-# frontend, caddy (reverse proxy) and cloudflared (tunnel) are added in later branches.
+# Services: db + ollama + backend (backend-foundation) and
+# frontend + caddy reverse proxy (frontend-foundation).
+# cloudflared (tunnel) is added in a later branch.
+#
+# Caddy is the single entry point on http://localhost:8080 — it routes
+# /api/* to the backend and everything else to the Next.js frontend, so the
+# browser always makes same-origin requests (clean session cookies, no CORS).
+# The backend's port 8000 is still published for direct API access / docs.
 name: jobgoblin
 
 services:
@@ -59,7 +65,40 @@ services:
       start_period: 5s
     restart: unless-stopped
 
+  frontend:
+    build: ./frontend
+    # In the browser the app talks to the backend through Caddy on the same
+    # origin, so it uses the relative "/api" prefix — no public URL needed.
+    # Server-side rendering (Server Components/Actions) needs an *absolute*
+    # URL and skips the Caddy hop, so it calls the backend container directly.
+    environment:
+      NODE_ENV: production
+      INTERNAL_API_BASE_URL: ${INTERNAL_API_BASE_URL:-http://backend:8000}
+    expose:
+      - "3000"
+    depends_on:
+      backend:
+        condition: service_started
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./infra/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      frontend:
+        condition: service_started
+      backend:
+        condition: service_started
+    restart: unless-stopped
+
 volumes:
   pgdata:
   uploads:
   ollama:
+  caddy_data:
+  caddy_config:
