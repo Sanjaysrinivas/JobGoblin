@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24 * 7  # 7 days
     session_cookie_name: str = "jg_session"
+    # Carries the short-lived MFA-pending token between primary auth and the
+    # second-factor challenge. Distinct from the session cookie so the two
+    # states never collide.
+    mfa_cookie_name: str = "jg_mfa"
 
     # Database
     database_url: str = "postgresql+psycopg://jobgoblin:jobgoblin@db:5432/jobgoblin"
@@ -39,6 +43,32 @@ class Settings(BaseSettings):
 
     # CORS (dev only; production is same-origin behind Caddy)
     frontend_origin: str = "http://localhost:3000"
+
+    # Google OAuth (login/signup). Empty by default so the app boots without
+    # Google configured; the Google endpoints return 503 until creds are set.
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    # Base URL the OAuth callback is reachable at (used to build redirect_uri).
+    oauth_redirect_base_url: str = "http://localhost:8080"
+
+    # Email allowlist (private tool). Comma-separated; empty disables the
+    # allowlist gate. Parsed/normalised via the ``allowed_email_set`` property.
+    allowed_emails: str = ""
+
+    # TOTP MFA: short-lived token lifetime for the intermediate "mfa_pending"
+    # state between primary auth and the second-factor challenge.
+    mfa_pending_token_expire_minutes: int = 5
+    # Issuer name shown in the authenticator app (the otpauth:// label).
+    totp_issuer: str = "JobGoblin"
+
+    @property
+    def allowed_email_set(self) -> set[str]:
+        """The allowlist as a set of lowercased, stripped emails (may be empty)."""
+        return {
+            e.strip().lower()
+            for e in self.allowed_emails.split(",")
+            if e.strip()
+        }
 
     @model_validator(mode="after")
     def _guard_production_secrets(self) -> "Settings":

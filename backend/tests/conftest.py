@@ -11,6 +11,25 @@ TEST_DATABASE_URL = os.environ.get(
 )
 
 
+@pytest.fixture(autouse=True)
+def _reset_settings():
+    """Restore mutable auth settings after each test.
+
+    Several auth tests mutate the cached Settings instance (allowlist, Google
+    creds) in place; snapshot and restore them so tests stay isolated.
+    """
+    from app.core.config import get_settings
+
+    s = get_settings()
+    saved = {
+        k: getattr(s, k)
+        for k in ("allowed_emails", "google_client_id", "google_client_secret")
+    }
+    yield
+    for k, v in saved.items():
+        setattr(s, k, v)
+
+
 @pytest.fixture(scope="session")
 def engine():
     """Create the schema once for the whole test session."""

@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.sessions import SessionMiddleware
 
 from app.api.routes import auth, health
 from app.core.config import get_settings
@@ -19,6 +20,18 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="JobGoblin API", version="0.1.0", lifespan=lifespan)
+
+# Authlib's OAuth flow stashes the CSRF state / OIDC nonce in a server-managed
+# session (a separate signed cookie from our JWT session). Scoped to the Google
+# OAuth callback path; short-lived.
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.app_secret_key,
+    session_cookie="jg_oauth_state",
+    max_age=600,
+    same_site="lax",
+    https_only=settings.app_env != "development",
+)
 
 
 @app.exception_handler(HTTPException)
