@@ -57,19 +57,29 @@ class MfaCodeRequest(BaseModel):
     code: str
 
 
-class AuthResult(UserPublic):
-    """Primary-auth result. Extends :class:`UserPublic` (so ``email``/``id`` stay
-    top-level for existing callers) with the MFA next-step flags.
+class SessionUserResponse(UserPublic):
+    """Returned when a full session cookie was set.
 
-    - ``mfa_required``: TOTP is enabled; only an mfa_pending token was issued and
-      the client must call ``/auth/mfa/challenge`` to obtain a session. In this
-      case the user fields are NOT populated (no session yet) — only the flag.
-    - ``mfa_enrollment_required``: a full session was set, but the user has not
-      enrolled a second factor yet and should be guided to ``/auth/mfa/enroll``.
+    Carries the authenticated user plus ``mfa_enrollment_required``: true when a
+    session was granted but the user has no second factor yet and should be
+    guided to ``/auth/mfa/enroll``.
     """
 
-    mfa_required: bool = False
     mfa_enrollment_required: bool = False
+
+
+class MfaRequiredResponse(BaseModel):
+    """Returned when primary auth succeeded but a second factor is pending.
+
+    No user identity is exposed (no session has been granted yet); only the
+    ``mfa_required`` flag. The client must call ``/auth/mfa/challenge``.
+    """
+
+    mfa_required: bool = True
+
+
+# A primary-auth call resolves to exactly one of these two shapes.
+PrimaryAuthResponse = SessionUserResponse | MfaRequiredResponse
 
 
 class MfaEnrollResponse(BaseModel):

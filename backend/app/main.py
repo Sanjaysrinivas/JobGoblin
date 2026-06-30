@@ -3,10 +3,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.api.routes import auth, health
 from app.core.config import get_settings
+from app.core.ratelimit import limiter, rate_limit_exceeded_handler
 from app.core.startup import seed_admin
 
 settings = get_settings()
@@ -20,6 +22,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="JobGoblin API", version="0.1.0", lifespan=lifespan)
+
+# Rate limiting for brute-forceable auth endpoints. The decorators on the auth
+# routes read this limiter from app.state; a 429 is rendered via our handler.
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
 # Authlib's OAuth flow stashes the CSRF state / OIDC nonce in a server-managed
 # session (a separate signed cookie from our JWT session). Scoped to the Google

@@ -226,7 +226,9 @@ def test_password_login_without_totp_sets_session_and_flags_enrollment(client, s
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["mfa_enrollment_required"] is True
-    assert body["mfa_required"] is False
+    # A session response carries the user, not the mfa_required flag (review #2).
+    assert "mfa_required" not in body
+    assert body["email"] == "pwnomfa@example.com"
     set_cookie = resp.headers.get("set-cookie", "").lower()
     assert SESSION_COOKIE in set_cookie
 
@@ -282,3 +284,184 @@ def test_session_cookie_not_accepted_as_mfa_pending(client, session):
     client.cookies.set(MFA_COOKIE, token)
     resp = client.post("/api/auth/mfa/challenge", json={"code": "123456"})
     assert resp.status_code == 401
+
+
+# ----------------------------------------------- google_sub conflict (review #5)
+
+def test_google_callback_rejects_conflicting_google_sub(client, session, monkeypatch):
+    """An email already linked to a DIFFERENT google_sub must not be re-linked."""
+    _configure_google()
+    get_settings().allowed_emails = "linked@example.com"
+    user = _make_user(session, "linked@example.com")
+    user.google_sub = "original-sub"
+    session.add(user)
+    session.commit()
+
+    from app.core import google_oauth
+
+    async def fake_identity(request):
+        return ("linked@example.com", "ATTACKER-sub")
+
+    monkeypatch.setattr(google_oauth, "fetch_verified_identity", fake_identity)
+
+    resp = client.get("/api/auth/google/callback?code=x&state=y", follow_redirects=False)
+    assert resp.status_code == 409
+    assert resp.json()["code"] == "google_sub_conflict"
+
+    session.refresh(user)
+    assert user.google_sub == "original-sub"  # unchanged
+
+
+def test_google_callback_links_unset_google_sub(client, session, monkeypatch):
+    """An existing email/password account with no google_sub gets linked."""
+    _configure_google()
+    get_settings().allowed_emails = "tolink@example.com"
+    user = _make_user(session, "tolink@example.com")
+    assert user.google_sub is None
+
+    from app.core import google_oauth
+
+    async def fake_identity(request):
+        return ("tolink@example.com", "fresh-sub")
+
+    monkeypatch.setattr(google_oauth, "fetch_verified_identity", fake_identity)
+
+    resp = client.get("/api/auth/google/callback?code=x&state=y", follow_redirects=False)
+    assert resp.status_code == 200, resp.text
+    session.refresh(user)
+    assert user.google_sub == "fresh-sub"
+
+
+# -------------------------------------------- TOTP replay protection (review #6)
+
+def test_mfa_challenge_rejects_replayed_code(client, session):
+    """A code consumed by a successful challenge cannot be reused."""
+    secret = pyotp.random_base32()
+    _make_user(session, "replay@example.com", totp_secret=secret, totp_enabled=True)
+
+    # primary auth -> mfa pending cookie
+    resp = client.post(
+        "/api/auth/login", json={"email": "replay@example.com", "password": "rightpw1"}
+    )
+    _carry(client, resp, MFA_COOKIE)
+    code = pyotp.TOTP(secret).now()
+
+    first = client.post("/api/auth/mfa/challenge", json={"code": code})
+    assert first.status_code == 200, first.text
+
+    # Re-authenticate (new pending cookie) and replay the SAME code.
+    resp2 = client.post(
+        "/api/auth/login", json={"email": "replay@example.com", "password": "rightpw1"}
+    )
+    _carry(client, resp2, MFA_COOKIE)
+    replay = client.post("/api/auth/mfa/challenge", json={"code": code})
+    assert replay.status_code == 400
+    assert replay.json()["code"] == "invalid_code"
+
+
+def test_mfa_verify_then_challenge_rejects_same_code(client, session):
+    """A code used to enroll cannot be replayed on the immediate challenge."""
+    secret = pyotp.random_base32()
+    user = _make_user(session, "enrollreplay@example.com", totp_secret=secret, totp_enabled=False)
+    token = security.create_access_token(str(user.id))
+    client.cookies.set(SESSION_COOKIE, token)
+
+    code = pyotp.TOTP(secret).now()
+    verify = client.post("/api/auth/mfa/verify", json={"code": code})
+    assert verify.status_code == 200, verify.text
+
+    session.refresh(user)
+    assert user.last_totp_timestep is not None
+
+    # Now log in (TOTP enabled) and try the same code on the challenge.
+    client.cookies.clear()
+    resp = client.post(
+        "/api/auth/login", json={"email": "enrollreplay@example.com", "password": "rightpw1"}
+    )
+    _carry(client, resp, MFA_COOKIE)
+    replay = client.post("/api/auth/mfa/challenge", json={"code": code})
+    assert replay.status_code == 400
+    assert replay.json()["code"] == "invalid_code"
+
+
+# --------------------------------------------------- rate limiting (review #1)
+
+def test_login_rate_limited(client, session):
+    """Exceeding the per-IP login limit yields a 429 with the standard envelope."""
+    _make_user(session, "rl@example.com")
+    get_settings().auth_rate_limit = "3/minute"
+    try:
+        codes = [
+            client.post(
+                "/api/auth/login", json={"email": "rl@example.com", "password": "wrongpw"}
+            ).status_code
+            for _ in range(5)
+        ]
+    finally:
+        get_settings().auth_rate_limit = "20/minute"
+
+    assert 429 in codes
+    # the first few are 401 (bad password), then 429 once the limit trips
+    assert codes[0] == 401
+
+
+def test_mfa_challenge_rate_limited(client, session):
+    secret = pyotp.random_base32()
+    _make_user(session, "rlmfa@example.com", totp_secret=secret, totp_enabled=True)
+    resp = client.post(
+        "/api/auth/login", json={"email": "rlmfa@example.com", "password": "rightpw1"}
+    )
+    _carry(client, resp, MFA_COOKIE)
+
+    get_settings().mfa_rate_limit = "2/minute"
+    try:
+        codes = [
+            client.post("/api/auth/mfa/challenge", json={"code": "000000"}).status_code
+            for _ in range(4)
+        ]
+    finally:
+        get_settings().mfa_rate_limit = "10/minute"
+
+    assert 429 in codes
+
+
+# ----------------------------------- fail-closed email_verified (review #4)
+
+
+class _FakeGoogleClient:
+    """Minimal stand-in for the Authlib client used by fetch_verified_identity."""
+
+    def __init__(self, userinfo):
+        self._userinfo = userinfo
+
+    async def authorize_access_token(self, request):
+        return {"userinfo": self._userinfo}
+
+
+@pytest.mark.parametrize(
+    "userinfo",
+    [
+        {"email": "u@example.com", "sub": "s1"},  # email_verified missing
+        {"email": "u@example.com", "sub": "s1", "email_verified": False},
+        {"email": "u@example.com", "sub": "s1", "email_verified": "false"},
+        {"sub": "s1", "email_verified": True},  # no email
+        {"email": "u@example.com", "email_verified": True},  # no sub
+    ],
+)
+async def test_fetch_verified_identity_fails_closed(monkeypatch, userinfo):
+    from app.core import google_oauth
+
+    monkeypatch.setattr(google_oauth, "_client", lambda: _FakeGoogleClient(userinfo))
+    with pytest.raises(ValueError):
+        await google_oauth.fetch_verified_identity(request=None)
+
+
+@pytest.mark.parametrize("verified", [True, "true", "True"])
+async def test_fetch_verified_identity_accepts_verified(monkeypatch, verified):
+    from app.core import google_oauth
+
+    userinfo = {"email": "Ok@example.com", "sub": "s9", "email_verified": verified}
+    monkeypatch.setattr(google_oauth, "_client", lambda: _FakeGoogleClient(userinfo))
+    email, sub = await google_oauth.fetch_verified_identity(request=None)
+    assert email == "Ok@example.com"
+    assert sub == "s9"

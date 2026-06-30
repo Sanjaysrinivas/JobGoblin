@@ -15,13 +15,16 @@ from app.api.deps import get_current_user, get_mfa_pending_user
 from app.core import allowlist, google_oauth, security, totp
 from app.core.config import get_settings
 from app.core.database import get_session
+from app.core.ratelimit import auth_limit, limiter, mfa_limit
 from app.models import InviteToken, User
 from app.schemas.auth import (
-    AuthResult,
     LoginRequest,
     MfaCodeRequest,
     MfaEnrollResponse,
+    MfaRequiredResponse,
+    PrimaryAuthResponse,
     RegisterRequest,
+    SessionUserResponse,
     UserPublic,
 )
 
@@ -71,7 +74,7 @@ def _clear_mfa_pending_cookie(response: Response) -> None:
     )
 
 
-def _complete_primary_auth(response: Response, user: User) -> dict:
+def _complete_primary_auth(response: Response, user: User) -> PrimaryAuthResponse:
     """Apply the MFA gate after a successful primary auth (password or Google).
 
     - TOTP enabled  -> issue only the mfa_pending token; require a challenge.
@@ -80,11 +83,11 @@ def _complete_primary_auth(response: Response, user: User) -> dict:
     """
     if user.totp_enabled:
         _set_mfa_pending_cookie(response, user)
-        return {"mfa_required": True}
+        return MfaRequiredResponse(mfa_required=True)
     _set_session_cookie(response, user)
-    result = AuthResult.model_validate(user)
+    result = SessionUserResponse.model_validate(user)
     result.mfa_enrollment_required = True
-    return result.model_dump(mode="json")
+    return result
 
 
 @router.post("/register", response_model=UserPublic, status_code=status.HTTP_201_CREATED)
@@ -129,12 +132,14 @@ def register(
     return user
 
 
-@router.post("/login")
+@router.post("/login", response_model=PrimaryAuthResponse)
+@limiter.limit(auth_limit)
 def login(
+    request: Request,
     payload: LoginRequest,
     response: Response,
     session: Annotated[Session, Depends(get_session)],
-) -> dict:
+) -> PrimaryAuthResponse:
     email = payload.email.strip().lower()
     user = session.exec(select(User).where(User.email == email)).first()
     if user is None or not security.verify_password(payload.password, user.password_hash):
@@ -179,12 +184,13 @@ async def google_login(request: Request):
     return await google_oauth.build_authorization_redirect(request)
 
 
-@router.get("/google/callback")
+@router.get("/google/callback", response_model=PrimaryAuthResponse)
+@limiter.limit(auth_limit)
 async def google_callback(
     request: Request,
     response: Response,
     session: Annotated[Session, Depends(get_session)],
-) -> dict:
+) -> PrimaryAuthResponse:
     """Handle Google's callback: verify identity, allowlist, link/create user, MFA gate."""
     if not google_oauth.is_configured():
         raise _error(
@@ -216,9 +222,18 @@ async def google_callback(
                 google_sub=sub,
             )
             session.add(user)
-        else:
+        elif user.google_sub is None:
+            # First Google sign-in for an existing email/password account: link it.
             user.google_sub = sub
             session.add(user)
+        else:
+            # The email maps to an account already linked to a DIFFERENT Google
+            # sub. Never silently re-link — that's an account-takeover hazard.
+            raise _error(
+                status.HTTP_409_CONFLICT,
+                "This account is already linked to a different Google identity",
+                "google_sub_conflict",
+            )
         session.commit()
         session.refresh(user)
 
@@ -256,7 +271,9 @@ def mfa_enroll(
 
 
 @router.post("/mfa/verify", response_model=UserPublic)
+@limiter.limit(mfa_limit)
 def mfa_verify(
+    request: Request,
     payload: MfaCodeRequest,
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_session)],
@@ -266,27 +283,41 @@ def mfa_verify(
         raise _error(
             status.HTTP_400_BAD_REQUEST, "Start enrollment first", "mfa_not_enrolled"
         )
-    if not totp.verify_code(current_user.totp_secret, payload.code):
+    step = totp.match_timestep(
+        current_user.totp_secret, payload.code, last_timestep=current_user.last_totp_timestep
+    )
+    if step is None:
         raise _error(status.HTTP_400_BAD_REQUEST, "Invalid code", "invalid_code")
 
     current_user.totp_enabled = True
+    current_user.last_totp_timestep = step  # consume the step (replay protection)
     session.add(current_user)
     session.commit()
     session.refresh(current_user)
     return current_user
 
 
-@router.post("/mfa/challenge", response_model=AuthResult)
+@router.post("/mfa/challenge", response_model=SessionUserResponse)
+@limiter.limit(mfa_limit)
 def mfa_challenge(
+    request: Request,
     payload: MfaCodeRequest,
     response: Response,
     pending_user: Annotated[User, Depends(get_mfa_pending_user)],
     session: Annotated[Session, Depends(get_session)],
-) -> AuthResult:
+) -> SessionUserResponse:
     """Second-factor gate: verify the code, then issue the full session cookie."""
-    if not totp.verify_code(pending_user.totp_secret, payload.code):
+    step = totp.match_timestep(
+        pending_user.totp_secret, payload.code, last_timestep=pending_user.last_totp_timestep
+    )
+    if step is None:
         raise _error(status.HTTP_400_BAD_REQUEST, "Invalid code", "invalid_code")
+
+    pending_user.last_totp_timestep = step  # consume the step (replay protection)
+    session.add(pending_user)
+    session.commit()
+    session.refresh(pending_user)
 
     _set_session_cookie(response, pending_user)
     _clear_mfa_pending_cookie(response)
-    return AuthResult.model_validate(pending_user)
+    return SessionUserResponse.model_validate(pending_user)

@@ -46,6 +46,33 @@ def test_verify_code_accepts_current_and_rejects_wrong():
     assert totp.verify_code(None, valid) is False
 
 
+def test_match_timestep_returns_step_for_valid_code():
+    secret = totp.generate_secret()
+    valid = pyotp.TOTP(secret).now()
+    step = totp.match_timestep(secret, valid)
+    assert step is not None
+    assert isinstance(step, int)
+
+
+def test_match_timestep_returns_none_for_wrong_code():
+    secret = totp.generate_secret()
+    assert totp.match_timestep(secret, "000000") is None
+    assert totp.match_timestep(secret, "not-a-code") is None
+    assert totp.match_timestep(None, "123456") is None
+
+
+def test_match_timestep_rejects_replay_at_or_below_last_step():
+    secret = totp.generate_secret()
+    valid = pyotp.TOTP(secret).now()
+    step = totp.match_timestep(secret, valid)
+    # Replaying the same code once its step has been consumed must be rejected.
+    assert totp.match_timestep(secret, valid, last_timestep=step) is None
+    # A future last_timestep also blocks it.
+    assert totp.match_timestep(secret, valid, last_timestep=step + 1) is None
+    # A lower last_timestep still admits it.
+    assert totp.match_timestep(secret, valid, last_timestep=step - 1) == step
+
+
 def test_mfa_pending_token_round_trip():
     token = create_mfa_pending_token("user-xyz")
     assert decode_mfa_pending_token(token) == "user-xyz"

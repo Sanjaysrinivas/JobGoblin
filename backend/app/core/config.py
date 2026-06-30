@@ -61,6 +61,14 @@ class Settings(BaseSettings):
     # Issuer name shown in the authenticator app (the otpauth:// label).
     totp_issuer: str = "JobGoblin"
 
+    # Rate limiting (slowapi) on the brute-forceable auth endpoints. Evaluated
+    # per request so it can be tuned/overridden at runtime (incl. in tests).
+    # ``auth_rate_limit`` covers password login + Google callback; the MFA code
+    # endpoints get a tighter limit since the search space is only 1e6 codes.
+    rate_limit_enabled: bool = True
+    auth_rate_limit: str = "20/minute"
+    mfa_rate_limit: str = "10/minute"
+
     @property
     def allowed_email_set(self) -> set[str]:
         """The allowlist as a set of lowercased, stripped emails (may be empty)."""

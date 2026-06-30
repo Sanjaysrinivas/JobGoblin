@@ -78,7 +78,10 @@ async def fetch_verified_identity(request: Request) -> tuple[str, str]:
         userinfo = await client.userinfo(token=token)
     email = userinfo.get("email")
     sub = userinfo.get("sub")
-    email_verified = userinfo.get("email_verified", True)
+    # Fail closed: a missing email_verified claim is treated as NOT verified.
+    # Google may serialise the claim as a bool or the string "true".
+    raw_verified = userinfo.get("email_verified", False)
+    email_verified = raw_verified is True or str(raw_verified).lower() == "true"
     if not email or not sub or not email_verified:
         raise ValueError("Google did not return a verified email/sub")
     return email, sub
