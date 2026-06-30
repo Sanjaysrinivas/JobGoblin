@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>JobGoblin — Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0e0c;
+    --bg-2:#0e1411;
+    --panel:#121a16;
+    --panel-2:#16201a;
+    --line:#1e2c24;
+    --line-bright:#2c4034;
+    --ink:#dfe9e2;
+    --ink-dim:#8ba093;
+    --ink-faint:#5d7065;
+    --goblin:#5ef0a0;      /* primary accent */
+    --goblin-deep:#27c97a;
+    --amber:#f5b945;       /* secondary accent */
+    --cyan:#5ad6e6;        /* tertiary */
+    --rose:#f0716b;        /* warnings / non-goals */
+    --radius:14px;
+    --mono:'IBM Plex Mono',ui-monospace,monospace;
+    --sans:'IBM Plex Sans',sans-serif;
+    --display:'Sora',sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;background:var(--bg);color:var(--ink);
+    font-family:var(--sans);line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+    background-image:
+      radial-gradient(900px 500px at 85% -5%, rgba(94,240,160,.10), transparent 60%),
+      radial-gradient(700px 500px at 0% 100%, rgba(90,214,230,.06), transparent 55%),
+      linear-gradient(var(--bg-2), var(--bg));
+    background-attachment:fixed;
+  }
+  /* faint blueprint grid */
+  body::before{
+    content:"";position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.4;
+    background-image:
+      linear-gradient(to right, rgba(44,64,52,.18) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(44,64,52,.18) 1px, transparent 1px);
+    background-size:46px 46px;
+    mask-image:radial-gradient(ellipse 100% 80% at 50% 0%, #000 35%, transparent 90%);
+  }
+  .wrap{position:relative;z-index:1;max-width:1080px;margin:0 auto;padding:0 24px 120px}
+
+  /* ---------- intro / staggered load ---------- */
+  .fade{opacity:0;transform:translateY(18px);animation:rise .7s cubic-bezier(.2,.7,.2,1) forwards}
+  @keyframes rise{to{opacity:1;transform:none}}
+  .d1{animation-delay:.05s}.d2{animation-delay:.15s}.d3{animation-delay:.28s}.d4{animation-delay:.42s}
+  @media (prefers-reduced-motion:reduce){.fade{animation:none;opacity:1;transform:none}}
+
+  /* ---------- hero ---------- */
+  header{padding:84px 0 36px;border-bottom:1px solid var(--line)}
+  .kicker{font-family:var(--mono);font-size:12.5px;letter-spacing:.32em;text-transform:uppercase;color:var(--goblin);margin:0 0 22px}
+  .title{font-family:var(--display);font-weight:800;letter-spacing:-.03em;line-height:.95;
+    font-size:clamp(52px,9vw,108px);margin:0;display:flex;align-items:center;gap:.2em;flex-wrap:wrap}
+  .title .goblin-face{font-size:.82em;filter:drop-shadow(0 0 26px rgba(94,240,160,.5))}
+  .title em{font-style:normal;color:var(--goblin)}
+  .lede{font-size:clamp(17px,2.2vw,21px);color:var(--ink-dim);max-width:60ch;margin:26px 0 0;font-weight:400}
+  .meta-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:30px}
+  .tag{font-family:var(--mono);font-size:12px;color:var(--ink);background:var(--panel);
+    border:1px solid var(--line-bright);border-radius:999px;padding:7px 14px}
+  .tag b{color:var(--goblin);font-weight:600}
+
+  /* ---------- nav strip ---------- */
+  nav{position:sticky;top:0;z-index:5;display:flex;gap:4px;flex-wrap:wrap;
+    padding:12px 0;margin:0 0 8px;background:linear-gradient(var(--bg),rgba(10,14,12,.86));
+    backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+  nav a{font-family:var(--mono);font-size:12px;color:var(--ink-dim);text-decoration:none;
+    padding:6px 11px;border-radius:8px;transition:.18s}
+  nav a:hover{color:var(--bg);background:var(--goblin)}
+
+  /* ---------- section scaffolding ---------- */
+  section{padding:62px 0 8px}
+  .sec-num{font-family:var(--mono);font-size:12px;color:var(--goblin-deep);letter-spacing:.2em}
+  h2{font-family:var(--display);font-weight:700;letter-spacing:-.02em;font-size:clamp(27px,4vw,40px);margin:8px 0 18px}
+  h3{font-family:var(--display);font-weight:600;font-size:19px;margin:30px 0 12px;color:var(--ink)}
+  p{color:var(--ink-dim);max-width:72ch}
+  strong{color:var(--ink);font-weight:600}
+  a.inline{color:var(--goblin);text-decoration:none;border-bottom:1px solid var(--line-bright)}
+
+  /* ---------- the diagram ---------- */
+  .diagram-scroll{overflow-x:auto;padding:8px 2px 18px;margin:8px -2px 0}
+  .diagram{min-width:560px;display:flex;flex-direction:column;align-items:stretch;gap:0}
+  .band{position:relative;border:1px solid var(--line);background:linear-gradient(180deg,var(--panel),var(--panel-2));
+    border-radius:var(--radius);padding:18px 20px}
+  .band .band-label{position:absolute;top:-9px;left:18px;font-family:var(--mono);font-size:10.5px;
+    letter-spacing:.22em;text-transform:uppercase;background:var(--bg);padding:0 8px;color:var(--ink-faint)}
+  .band.accent{border-color:var(--goblin-deep);box-shadow:0 0 0 1px rgba(94,240,160,.12),0 22px 50px -28px rgba(94,240,160,.5)}
+  .band.accent .band-label{color:var(--goblin)}
+  .nodes{display:flex;gap:12px;flex-wrap:wrap}
+  .node{flex:1;min-width:150px;background:var(--bg-2);border:1px solid var(--line-bright);border-radius:10px;padding:14px 15px}
+  .node .nh{font-family:var(--display);font-weight:600;font-size:15px;margin:0 0 4px;display:flex;align-items:center;gap:8px}
+  .node .nsub{font-family:var(--mono);font-size:11px;color:var(--ink-faint);margin:0 0 9px}
+  .node .host{display:inline-block;font-family:var(--mono);font-size:10.5px;padding:3px 8px;border-radius:6px;
+    background:rgba(94,240,160,.1);color:var(--goblin);border:1px solid rgba(94,240,160,.25)}
+  .node ul{margin:8px 0 0;padding-left:16px}
+  .node li{color:var(--ink-dim);font-size:12.5px;margin:2px 0}
+  .dot{width:8px;height:8px;border-radius:2px;display:inline-block}
+  .arrow{align-self:center;display:flex;flex-direction:column;align-items:center;color:var(--ink-faint);
+    font-family:var(--mono);font-size:10px;padding:7px 0;letter-spacing:.12em}
+  .arrow .line{width:1px;height:14px;background:linear-gradient(var(--goblin-deep),transparent)}
+  .arrow .chev{color:var(--goblin-deep);font-size:13px;line-height:1;margin-top:-2px}
+  .split{display:flex;gap:12px}
+  .split>.band{flex:1}
+
+  /* ---------- tables ---------- */
+  .table-scroll{overflow-x:auto;margin:14px 0}
+  table{border-collapse:collapse;width:100%;min-width:520px;font-size:13.5px}
+  th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line)}
+  th{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-faint);font-weight:500}
+  td{color:var(--ink-dim)}
+  td strong{color:var(--ink)}
+  tr:hover td{background:rgba(94,240,160,.03)}
+  .free{color:var(--goblin);font-family:var(--mono);font-size:12px}
+  .cost{color:var(--amber);font-family:var(--mono);font-size:12px}
+
+  /* ---------- generic cards ---------- */
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:18px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:20px}
+  .card h4{font-family:var(--display);font-size:16px;margin:0 0 6px;color:var(--ink)}
+  .card.warn{border-color:rgba(240,113,107,.3)}
+  .card.warn h4{color:var(--rose)}
+  .card p{font-size:13px;margin:0}
+  .card .ic{font-size:20px;margin-bottom:10px;display:block}
+
+  /* chips / pill lists */
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+  .chip{font-family:var(--mono);font-size:12px;padding:6px 12px;border-radius:8px;
+    background:var(--panel);border:1px solid var(--line-bright);color:var(--ink-dim)}
+  .chip b{color:var(--cyan);font-weight:500}
+
+  /* ---------- flow (numbered) ---------- */
+  .flow{counter-reset:step;display:grid;gap:10px;margin-top:16px}
+  .flow .step{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:14px 16px 14px 56px;font-size:14px;color:var(--ink-dim)}
+  .flow .step::before{counter-increment:step;content:counter(step);position:absolute;left:14px;top:12px;
+    width:28px;height:28px;border-radius:8px;background:rgba(94,240,160,.12);color:var(--goblin);
+    font-family:var(--mono);font-size:13px;display:grid;place-items:center;border:1px solid rgba(94,240,160,.3)}
+  .flow .step b{color:var(--ink)}
+
+  /* ---------- git flow ---------- */
+  .branches{font-family:var(--mono);font-size:13px;background:var(--bg-2);border:1px solid var(--line);
+    border-radius:var(--radius);padding:22px 20px;overflow-x:auto;line-height:2}
+  .branches .b-main{color:var(--rose)}
+  .branches .b-dev{color:var(--amber)}
+  .branches .b-feat{color:var(--goblin)}
+  .branches .c{color:var(--ink-faint)}
+
+  /* ---------- roadmap timeline ---------- */
+  .road{display:grid;gap:0;margin-top:18px;border-left:2px solid var(--line);padding-left:0}
+  .ver{position:relative;padding:0 0 26px 26px}
+  .ver::before{content:"";position:absolute;left:-7px;top:4px;width:12px;height:12px;border-radius:50%;
+    background:var(--bg);border:2px solid var(--ink-faint)}
+  .ver.now::before{border-color:var(--goblin);background:var(--goblin);box-shadow:0 0 14px var(--goblin)}
+  .ver .vlabel{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-faint)}
+  .ver.now .vlabel{color:var(--goblin)}
+  .ver h4{font-family:var(--display);font-size:17px;margin:4px 0 6px}
+  .ver p{font-size:13px;margin:0}
+
+  footer{margin-top:80px;padding-top:26px;border-top:1px solid var(--line);
+    font-family:var(--mono);font-size:12px;color:var(--ink-faint);display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
+  .callout{border-left:3px solid var(--goblin);background:rgba(94,240,160,.05);padding:14px 18px;border-radius:0 10px 10px 0;margin:18px 0}
+  .callout p{color:var(--ink);margin:0;font-size:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <p class="kicker fade d1">Architecture &nbsp;·&nbsp; Self-hosted &nbsp;·&nbsp; Multi-user</p>
+    <h1 class="title fade d2"><span class="goblin-face">👺</span> Job<em>Goblin</em></h1>
+    <p class="lede fade d3">An AI-powered job-search companion — upload a resume, score it against any job, surface missing keywords, draft tailored bullets, cover letters &amp; outreach, and track every application through to offer. <strong>A private productivity tool — never a spam bot.</strong></p>
+    <div class="meta-row fade d4">
+      <span class="tag"><b>2</b> services · FE + BE</span>
+      <span class="tag">Next.js <b>+</b> FastAPI</span>
+      <span class="tag">PostgreSQL</span>
+      <span class="tag">Hosting cost: <b>$0</b></span>
+      <span class="tag">Human-in-the-loop</span>
+    </div>
+  </header>
+
+  <nav class="fade d4">
+    <a href="#overview">Overview</a>
+    <a href="#diagram">Diagram</a>
+    <a href="#hosting">Hosting</a>
+    <a href="#stack">Stack</a>
+    <a href="#data">Data model</a>
+    <a href="#flow">AI flow</a>
+    <a href="#roadmap">Roadmap</a>
+    <a href="#git">Git flow</a>
+  </nav>
+
+  <!-- OVERVIEW -->
+  <section id="overview">
+    <p class="sec-num">01</p>
+    <h2>What we're building</h2>
+    <p>JobGoblin is a <strong>two-service web application</strong> — a Next.js frontend and a FastAPI backend — backed by PostgreSQL. It's <strong>multi-user</strong> (you and your friends each get isolated accounts and data) and runs entirely on <strong>free hosting tiers</strong>.</p>
+    <p>The defining principle: every <strong>external action</strong> — sending an email, messaging a recruiter, applying — requires explicit human review and approval. And the AI layer is forbidden from inventing experience, skills, or credentials; it only rephrases and reorganizes truthful content the user already provided.</p>
+    <div class="cards">
+      <div class="card"><span class="ic">📄</span><h4>Analyze</h4><p>Compare a resume against a job description and get an estimated, explained ATS-style match score with matched &amp; missing keywords.</p></div>
+      <div class="card"><span class="ic">✍️</span><h4>Generate</h4><p>Tailored resume bullets, cover letters, and copy-ready recruiter / LinkedIn outreach — all editable, all truthful.</p></div>
+      <div class="card"><span class="ic">📊</span><h4>Track</h4><p>Move every application through a pipeline from <em>saved</em> to <em>offer</em>, with reminders, contacts, and a timeline.</p></div>
+      <div class="card warn"><span class="ic">🚫</span><h4>Won't do</h4><p>No auto-apply, no LinkedIn scraping or auto-connect, no silent email sending, no multi-tenant SaaS billing.</p></div>
+    </div>
+  </section>
+
+  <!-- DIAGRAM -->
+  <section id="diagram">
+    <p class="sec-num">02</p>
+    <h2>High-level architecture</h2>
+    <p>Frontend and backend are <strong>independently deployed services</strong> that talk only over HTTP / JSON. State lives in managed Postgres and object storage — never on ephemeral container disks.</p>
+
+    <div class="diagram-scroll">
+      <div class="diagram">
+
+        <div class="band">
+          <span class="band-label">Clients</span>
+          <div class="nodes">
+            <div class="node">
+              <p class="nh">🧑‍💻 You + Friends</p>
+              <p class="nsub">multi-user · isolated data</p>
+              <span class="host">Web browser</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="arrow"><span class="line"></span><span class="chev">▼</span>HTTPS</div>
+
+        <div class="band accent">
+          <span class="band-label">Frontend service</span>
+          <div class="nodes">
+            <div class="node">
+              <p class="nh">▲ Next.js Frontend</p>
+              <p class="nsub">React · TypeScript · Tailwind · shadcn/ui</p>
+              <span class="host">deploy → Vercel (free)</span>
+              <ul><li>Dashboard, resumes, jobs, analysis</li><li>Applications, contacts, settings</li></ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="arrow"><span class="line"></span><span class="chev">▼</span>REST / JSON</div>
+
+        <div class="band accent">
+          <span class="band-label">Backend service</span>
+          <div class="nodes">
+            <div class="node">
+              <p class="nh">⚡ FastAPI API</p>
+              <p class="nsub">routes · auth (JWT cookie)</p>
+              <span class="host">deploy → Render (free)</span>
+            </div>
+            <div class="node">
+              <p class="nh">⚙️ Services</p>
+              <p class="nsub">business logic</p>
+              <ul><li>resume_parser · document_extractor</li><li>job_analyzer · scoring</li><li>ai_provider (abstraction)</li></ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="arrow"><span class="line"></span><span class="chev">▼</span></div>
+
+        <div class="split">
+          <div class="band">
+            <span class="band-label">Persistence</span>
+            <div class="nodes" style="flex-direction:column">
+              <div class="node">
+                <p class="nh"><span class="dot" style="background:var(--cyan)"></span> PostgreSQL</p>
+                <p class="nsub">users, resumes, jobs, analyses…</p>
+                <span class="host">Neon (free)</span>
+              </div>
+              <div class="node">
+                <p class="nh"><span class="dot" style="background:var(--amber)"></span> Object storage</p>
+                <p class="nsub">uploaded resume files</p>
+                <span class="host">Cloudflare R2 (free)</span>
+              </div>
+            </div>
+          </div>
+          <div class="band">
+            <span class="band-label">AI provider layer</span>
+            <div class="nodes" style="flex-direction:column">
+              <div class="node">
+                <p class="nh">🧠 Pluggable interface</p>
+                <p class="nsub">swap providers via config</p>
+                <ul><li>OpenAI · Anthropic</li><li>Ollama (local)</li><li>Mock (tests)</li></ul>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+    <div class="callout"><p>💡 Built <strong>Docker-first</strong> so the whole stack runs locally with one command — and with storage + DB behind interfaces, moving to an always-on VPS later is a config change, not a rewrite.</p></div>
+  </section>
+
+  <!-- HOSTING -->
+  <section id="hosting">
+    <p class="sec-num">03</p>
+    <h2>The $0 hosting stack</h2>
+    <p>Everything sits on genuinely free tiers. The only trade-offs are <strong>cold starts</strong> (the backend sleeps when idle) and modest storage caps — both fine for a small group of friends.</p>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Layer</th><th>Host</th><th>Cost</th><th>Trade-off</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Frontend</strong></td><td>Vercel (Hobby)</td><td class="free">$0</td><td>Free forever; non-commercial only</td></tr>
+          <tr><td><strong>Backend</strong></td><td>Render (web service)</td><td class="free">$0</td><td>Sleeps after ~15 min idle → ~30–50s cold start</td></tr>
+          <tr><td><strong>Database</strong></td><td>Neon (Postgres)</td><td class="free">$0</td><td>~0.5 GB; auto-suspends, resumes in ~1s</td></tr>
+          <tr><td><strong>File storage</strong></td><td>Cloudflare R2</td><td class="free">$0</td><td>10 GB, no egress fees</td></tr>
+          <tr><td><strong>Repo / CI</strong></td><td>GitHub</td><td class="free">$0</td><td>Public/private + Actions</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="font-size:13px;color:var(--ink-faint)">Upgrade path when there's budget: one ~<span class="cost">$5/mo</span> VPS running all containers via Docker Compose → always-on, no cold starts, all data on one box you control.</p>
+  </section>
+
+  <!-- STACK -->
+  <section id="stack">
+    <p class="sec-num">04</p>
+    <h2>Technology stack</h2>
+    <div class="cards">
+      <div class="card">
+        <h4>Frontend</h4>
+        <div class="chips" style="margin:10px 0 0">
+          <span class="chip"><b>Next.js</b></span><span class="chip"><b>React</b></span>
+          <span class="chip"><b>TypeScript</b></span><span class="chip"><b>Tailwind</b></span>
+          <span class="chip"><b>shadcn/ui</b></span>
+        </div>
+      </div>
+      <div class="card">
+        <h4>Backend</h4>
+        <div class="chips" style="margin:10px 0 0">
+          <span class="chip"><b>FastAPI</b></span><span class="chip"><b>Python</b></span>
+          <span class="chip"><b>Pydantic</b></span><span class="chip"><b>SQLModel</b></span>
+        </div>
+      </div>
+      <div class="card">
+        <h4>Data &amp; infra</h4>
+        <div class="chips" style="margin:10px 0 0">
+          <span class="chip"><b>PostgreSQL</b></span><span class="chip"><b>Docker</b></span>
+          <span class="chip"><b>Compose</b></span><span class="chip"><b>R2 / S3</b></span>
+        </div>
+      </div>
+      <div class="card">
+        <h4>Background work</h4>
+        <p style="margin-top:8px">FastAPI <code style="font-family:var(--mono);color:var(--cyan)">BackgroundTasks</code> for the MVP. Structure left for Redis + Celery later — no premature queue.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- DATA MODEL -->
+  <section id="data">
+    <p class="sec-num">05</p>
+    <h2>Data model</h2>
+    <p>Every row is scoped to a <code style="font-family:var(--mono);color:var(--cyan)">user_id</code> — the foundation of multi-user isolation. Core tables:</p>
+    <div class="chips">
+      <span class="chip">users</span><span class="chip">resumes</span><span class="chip">resume_versions</span>
+      <span class="chip">jobs</span><span class="chip">job_analyses</span><span class="chip">tailored_resume_drafts</span>
+      <span class="chip">cover_letters</span><span class="chip">applications</span><span class="chip">contacts</span>
+      <span class="chip">outreach_messages</span><span class="chip">email_drafts</span><span class="chip">activity_events</span>
+    </div>
+    <h3>Application pipeline statuses</h3>
+    <div class="chips">
+      <span class="chip">saved</span><span class="chip">interested</span><span class="chip">resume_tailored</span>
+      <span class="chip">cover_letter_created</span><span class="chip">applied</span><span class="chip">contacted_recruiter</span>
+      <span class="chip">referred</span><span class="chip">phone_screen</span><span class="chip">technical_interview</span>
+      <span class="chip">final_interview</span><span class="chip">offer</span><span class="chip">rejected</span>
+      <span class="chip">withdrawn</span><span class="chip">archived</span>
+    </div>
+  </section>
+
+  <!-- AI FLOW -->
+  <section id="flow">
+    <p class="sec-num">06</p>
+    <h2>Core AI flow — resume × job analysis</h2>
+    <p>The signature feature blends <strong>deterministic keyword matching</strong> (for the numeric score) with <strong>AI reasoning</strong> (for explanations and recommendations). The result is always labelled an <em>estimate</em>, never a guaranteed ATS score.</p>
+    <div class="flow">
+      <div class="step">User uploads a resume → backend stores the file (R2) and extracts plain text.</div>
+      <div class="step">User pastes a job description and selects a resume to compare.</div>
+      <div class="step"><b>Deterministic pass:</b> extract &amp; normalize keywords from both, compute weighted category scores (keywords 30% · skills 25% · experience 20% · role 10% · education 5% · formatting 10%).</div>
+      <div class="step"><b>AI pass:</b> explain gaps, distinguish <em>missing keywords you already qualify for</em> from <em>qualifications you lack</em>, and suggest truthful improvements.</div>
+      <div class="step">Store numeric score + matched/missing keywords + recommendations; frontend renders the breakdown.</div>
+      <div class="step">User saves the job to the tracker and moves it through the pipeline.</div>
+    </div>
+  </section>
+
+  <!-- ROADMAP -->
+  <section id="roadmap">
+    <p class="sec-num">07</p>
+    <h2>Roadmap</h2>
+    <div class="road">
+      <div class="ver now">
+        <p class="vlabel">V1 · MVP — building now</p>
+        <h4>The core loop</h4>
+        <p>Auth · resume upload + extraction · job CRUD · resume↔job analysis · ATS-style score · missing keywords · cover letters · application tracker · dashboard · Docker deploy.</p>
+      </div>
+      <div class="ver">
+        <p class="vlabel">V2 · Productivity</p>
+        <h4>Depth &amp; outreach</h4>
+        <p>Resume version history · tailored draft generation · contacts · outreach messages · follow-up reminders · timeline view · richer analytics.</p>
+      </div>
+      <div class="ver">
+        <p class="vlabel">V3 · Integrations</p>
+        <h4>Connect the tools</h4>
+        <p>Gmail drafts · calendar reminders · browser extension to save jobs · local LLM via Ollama.</p>
+      </div>
+      <div class="ver">
+        <p class="vlabel">V4 · Assisted automation</p>
+        <h4>With approval, always</h4>
+        <p>Application packets · approved email follow-ups · interview prep &amp; company research assistants.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- GIT FLOW -->
+  <section id="git">
+    <p class="sec-num">08</p>
+    <h2>Branching &amp; workflow</h2>
+    <p>A <code style="font-family:var(--mono);color:var(--cyan)">main → dev → feature</code> model. <strong>main</strong> stays release-ready, <strong>dev</strong> is the integration branch, and every change rides a <strong>feature branch</strong> merged via pull request.</p>
+    <div class="branches">
+      <span class="b-main">main</span> <span class="c">────────●──────────────────────────●────▶ &nbsp;production-ready</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="c">╲</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="b-dev">dev</span> <span class="c">──●────●────────●─────▶ &nbsp;integration &nbsp;</span><span class="c">↑ PR</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="c">╲</span><br>
+      &nbsp;&nbsp;&nbsp;<span class="b-feat">feature/*</span> <span class="c">●──●──●──▶ &nbsp;commits, then PR → dev</span>
+    </div>
+    <div class="cards" style="margin-top:18px">
+      <div class="card"><h4 style="color:var(--rose)">main</h4><p>Always deployable. Only receives merges from <em>dev</em> via PR at release points.</p></div>
+      <div class="card"><h4 style="color:var(--amber)">dev</h4><p>Integration branch. Feature PRs land here first and are tested together.</p></div>
+      <div class="card"><h4 style="color:var(--goblin)">feature/*</h4><p>One branch per unit of work, branched off <em>dev</em>. Opened as a PR for review.</p></div>
+    </div>
+  </section>
+
+  <footer>
+    <span>👺 JobGoblin · architecture v1</span>
+    <span>github.com/Sanjaysrinivas/JobGoblin</span>
+  </footer>
+
+</div>
+</body>
+</html>
