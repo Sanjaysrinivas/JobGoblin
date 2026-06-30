@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     app_env: str = "development"
     app_secret_key: str = "dev-secret-change-me"
 
+    # Auth / session cookie
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 60 * 24 * 7  # 7 days
+    session_cookie_name: str = "jg_session"
+
     # Database
     database_url: str = "postgresql+psycopg://jobgoblin:jobgoblin@db:5432/jobgoblin"
 
