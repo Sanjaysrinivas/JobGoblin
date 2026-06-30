@@ -53,6 +53,17 @@ def test_deleting_user_cascades_resumes(session):
     assert remaining == []
 
 
+def test_timestamps_are_timezone_aware(session):
+    user = User(email="tz@b.com", password_hash="x", display_name="TZ")
+    session.add(user)
+    session.commit()
+
+    # Force a reload from the DB so we see what Postgres actually returns.
+    session.expire_all()
+    got = session.get(User, user.id)
+    assert got.created_at.tzinfo is not None
+
+
 def test_job_enum_defaults(session):
     user = User(email="d@b.com", password_hash="x", display_name="D")
     session.add(user)
