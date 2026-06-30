@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -33,6 +34,20 @@ class Settings(BaseSettings):
 
     # CORS (dev only; production is same-origin behind Caddy)
     frontend_origin: str = "http://localhost:3000"
+
+    @model_validator(mode="after")
+    def _guard_production_secrets(self) -> "Settings":
+        """Refuse to boot in production with insecure default secrets/credentials."""
+        if self.app_env == "production":
+            if self.app_secret_key == "dev-secret-change-me":
+                raise ValueError(
+                    "APP_SECRET_KEY must be overridden with a secure value in production."
+                )
+            if "jobgoblin:jobgoblin" in self.database_url:
+                raise ValueError(
+                    "DATABASE_URL must not use the default credentials in production."
+                )
+        return self
 
 
 @lru_cache

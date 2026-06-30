@@ -37,9 +37,11 @@ services:
   backend:
     build: ./backend
     env_file: .env
+    # Shell-style defaults so values in .env take precedence; the defaults only
+    # apply when a variable is unset.
     environment:
-      DATABASE_URL: postgresql+psycopg://jobgoblin:jobgoblin@db:5432/jobgoblin
-      OLLAMA_BASE_URL: http://ollama:11434
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://jobgoblin:jobgoblin@db:5432/jobgoblin}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
     volumes:
       - uploads:/data/uploads
     ports:
@@ -49,6 +51,12 @@ services:
         condition: service_healthy
       ollama:
         condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
     restart: unless-stopped
 
 volumes:

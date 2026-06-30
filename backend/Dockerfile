@@ -4,10 +4,16 @@ WORKDIR /srv
 ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
 
-# Install dependencies first (better layer caching)
+# Install dependencies first against a stub package so this heavy layer is
+# cached and only re-runs when pyproject.toml changes (not on app code edits).
 COPY pyproject.toml ./
+RUN pip install --upgrade pip && \
+    mkdir -p app && touch app/__init__.py && \
+    pip install .
+
+# Now copy real source and (re)install just the package, reusing cached deps.
 COPY app ./app
-RUN pip install --upgrade pip && pip install .
+RUN pip install --no-deps .
 
 # Migrations
 COPY alembic.ini ./
