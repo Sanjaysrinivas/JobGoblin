@@ -17,30 +17,39 @@ the diagram and full layout).
 
 ## 2. Services
 
-Two independently-deployed services communicating over HTTP/JSON:
+Two independently-built services communicating over HTTP/JSON, served behind one
+reverse proxy so they share a single origin:
 
-- **Frontend** — Next.js · React · TypeScript · Tailwind · shadcn/ui → Vercel
-- **Backend** — FastAPI · Python · Pydantic · SQLModel → Render
+- **Frontend** — Next.js · React · TypeScript · Tailwind · shadcn/ui
+- **Backend** — FastAPI · Python · Pydantic · SQLModel
 
-State lives outside the containers:
+State and AI run as local containers alongside them:
 
-- **PostgreSQL** (Neon) — users, resumes, jobs, analyses, applications, etc.
-- **Object storage** (Cloudflare R2) — uploaded resume files.
-- **AI provider layer** — a pluggable interface with OpenAI / Anthropic / Ollama /
-  Mock implementations, switchable by config.
+- **PostgreSQL** — users, resumes, jobs, analyses, applications, etc. (Docker volume).
+- **File storage** — uploaded resume files on a mounted volume (storage behind an
+  interface, so S3/R2 is a later swap).
+- **Ollama** — local LLM runtime, the primary AI provider. Mock for tests;
+  OpenAI/Anthropic remain pluggable but unused.
 
-## 3. The $0 hosting stack
+## 3. Hosting — self-hosted on the owner's laptop, $0
 
-| Layer | Host | Cost | Trade-off |
-|-------|------|------|-----------|
-| Frontend | Vercel (Hobby) | $0 | Free forever; non-commercial only |
-| Backend | Render web service | $0 | Sleeps after ~15 min idle → ~30–50s cold start |
-| Database | Neon (Postgres) | $0 | ~0.5 GB; auto-suspends, resumes in ~1s |
-| File storage | Cloudflare R2 | $0 | 10 GB, no egress fees |
-| Repo / CI | GitHub | $0 | Actions included |
+Everything runs in one Docker Compose stack on the owner's laptop (Ryzen 7 ·
+31 GB RAM · RTX 4070 8 GB) and is exposed to the internet via a free Cloudflare
+Tunnel. This is what lets us use Ollama (which needs real RAM/GPU and can't run on
+free cloud tiers) while staying at $0.
 
-Built **Docker-first** with storage + DB behind interfaces, so moving to an always-on
-~$5/mo VPS later is a config change, not a rewrite.
+| Component | Runs as | Cost |
+|-----------|---------|------|
+| Frontend / Backend | containers behind Caddy (same origin) | $0 |
+| PostgreSQL | container + volume | $0 |
+| Ollama (`qwen2.5:7b`) | container, GPU-accelerated | $0 |
+| File storage | mounted volume | $0 |
+| Public access | Cloudflare Tunnel (HTTPS) | $0 |
+| Repo / CI | GitHub Actions | $0 |
+
+**Trade-off:** the app is online only while the laptop is on (non-24/7). All data
+persists on Docker volumes across shutdowns. Because Caddy serves both services under
+one hostname, sessions use plain secure HTTP-only cookies — no cross-origin hacks.
 
 ## 4. Data model
 
@@ -57,7 +66,7 @@ Application pipeline statuses: `saved`, `interested`, `resume_tailored`,
 
 ## 5. Core AI flow — resume × job analysis
 
-1. User uploads a resume → backend stores the file (R2) and extracts plain text.
+1. User uploads a resume → backend stores the file (local volume) and extracts plain text.
 2. User pastes a job description and selects a resume.
 3. **Deterministic pass:** extract & normalize keywords from both; compute weighted
    category scores — keywords 30%, skills 25%, experience 20%, role 10%,
