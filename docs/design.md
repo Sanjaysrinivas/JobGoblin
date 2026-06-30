@@ -286,7 +286,8 @@ envelope: `{ "detail": "<message>", "code": "<machine_code>" }`. Standard codes:
   cookie; **every** repository query filters by `user_id`. Owner checks return `404`
   (not `403`) to avoid leaking existence.
 - **File access:** files are served only through authenticated, ownership-checked
-  endpoints — never by public path. Validate MIME + magic bytes; cap size (e.g. 10 MB).
+  endpoints — never by public path. Validate MIME + magic bytes; cap size at
+  **10 MB** (`MAX_UPLOAD_MB`, configurable).
 - **Rate limiting:** `slowapi` on AI endpoints (analysis, generation) to protect the
   single Ollama instance from pile-ups.
 - **Logging:** never log resume text, emails, or secrets. Redact in production.
@@ -444,7 +445,5 @@ jobgoblin/
 · same-origin via Caddy (no CORS) · invite-only registration · SQLModel + Alembic ·
 deterministic+AI scoring (embeddings deferred to V2) · pipeline status on `applications`.
 
-**Open for review:**
-1. Registration: invite-token model OK, or prefer admin-creates-accounts only?
-2. Upload cap of 10 MB acceptable?
-3. Build order — proceed straight into `feature/backend-foundation` after this merges?
+**Resolved:** registration uses the **invite-token** model · upload cap **10 MB**
+(`MAX_UPLOAD_MB`, configurable). Building `feature/backend-foundation` next.
