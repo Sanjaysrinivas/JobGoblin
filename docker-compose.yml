@@ -1,0 +1,65 @@
+# JobGoblin — local/self-hosted stack.
+# This branch (backend-foundation) defines db + backend + ollama.
+# frontend, caddy (reverse proxy) and cloudflared (tunnel) are added in later branches.
+name: jobgoblin
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: jobgoblin
+      POSTGRES_PASSWORD: jobgoblin
+      POSTGRES_DB: jobgoblin
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jobgoblin"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama:/root/.ollama
+    # GPU acceleration (NVIDIA RTX 4070) — requires the NVIDIA Container Toolkit
+    # on the host. Uncomment to enable:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    env_file: .env
+    # Shell-style defaults so values in .env take precedence; the defaults only
+    # apply when a variable is unset.
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://jobgoblin:jobgoblin@db:5432/jobgoblin}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+    volumes:
+      - uploads:/data/uploads
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  uploads:
+  ollama:
