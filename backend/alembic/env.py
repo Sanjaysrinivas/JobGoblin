@@ -4,11 +4,8 @@ from sqlalchemy import engine_from_config, pool
 from sqlmodel import SQLModel
 
 from alembic import context
+from app import models  # noqa: F401  — populate SQLModel.metadata for autogenerate
 from app.core.config import get_settings
-
-# Import models here so SQLModel.metadata is populated for autogenerate.
-# (No models yet — added in the data-model branch.)
-# from app import models  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:
