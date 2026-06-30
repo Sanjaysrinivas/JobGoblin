@@ -1,5 +1,15 @@
 # 👺 JobGoblin
 
+[![CI](https://github.com/Sanjaysrinivas/JobGoblin/actions/workflows/ci.yml/badge.svg)](https://github.com/Sanjaysrinivas/JobGoblin/actions/workflows/ci.yml)
+![Next.js](https://img.shields.io/badge/Next.js-frontend-000000?logo=next.js&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-backend-009688?logo=fastapi&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.12+-3776AB?logo=python&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-typed-3178C6?logo=typescript&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-database-4169E1?logo=postgresql&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-compose-2496ED?logo=docker&logoColor=white)
+![Hosting](https://img.shields.io/badge/hosting-%240%2Fmo-2ea44f)
+![Status](https://img.shields.io/badge/status-MVP%20in%20progress-f5b945)
+
 A self-hosted, AI-powered job-search and application-management web app. Upload a
 resume, score it against any job description, surface missing keywords, generate
 tailored bullets / cover letters / outreach, and track every application from
