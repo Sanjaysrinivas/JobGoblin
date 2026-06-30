@@ -14,11 +14,20 @@ import type { ApiErrorBody } from "@/lib/types";
 
 /**
  * Base URL for API calls.
- * - Production (behind Caddy): "" → requests go to same-origin `/api/...`.
- * - Dev: set NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 to target the
- *   backend container's published port.
+ *
+ * - In the **browser** the frontend and backend share an origin (behind Caddy),
+ *   so "" is correct: requests go to same-origin `/api/...`. For dev outside
+ *   Docker, set NEXT_PUBLIC_API_BASE_URL=http://localhost:8000.
+ * - On the **server** (Server Components / Actions / Route Handlers) `fetch`
+ *   needs an absolute URL — a bare `/api/...` throws "Failed to parse URL".
+ *   There is no Caddy hop server-side, so we talk to the backend container
+ *   directly. Configure INTERNAL_API_BASE_URL in the server environment
+ *   (docker-compose sets it to http://backend:8000); fall back to that host.
  */
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+const API_BASE_URL =
+  typeof window === "undefined"
+    ? process.env.INTERNAL_API_BASE_URL ?? "http://backend:8000"
+    : process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 export class ApiError extends Error {
   readonly status: number;

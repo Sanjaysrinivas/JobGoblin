@@ -67,11 +67,13 @@ services:
 
   frontend:
     build: ./frontend
-    # In production the browser talks to the frontend through Caddy on the
-    # same origin, so the Next.js app calls the backend via the relative
-    # "/api" prefix — no public API URL needed here.
+    # In the browser the app talks to the backend through Caddy on the same
+    # origin, so it uses the relative "/api" prefix — no public URL needed.
+    # Server-side rendering (Server Components/Actions) needs an *absolute*
+    # URL and skips the Caddy hop, so it calls the backend container directly.
     environment:
       NODE_ENV: production
+      INTERNAL_API_BASE_URL: ${INTERNAL_API_BASE_URL:-http://backend:8000}
     expose:
       - "3000"
     depends_on:

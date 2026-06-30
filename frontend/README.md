@@ -50,13 +50,18 @@ npm install
 npm run dev      # http://localhost:3000
 ```
 
-By default API calls go to the same origin under `/api` (production, behind
-Caddy). When running `next dev` outside Docker, point at the backend directly:
+**Browser** calls go to the same origin under `/api` (production, behind
+Caddy). When running `next dev` outside Docker, point the browser at the
+backend directly:
 
 ```bash
 # .env.local
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 ```
+
+**Server-side** calls (Server Components / Actions) need an absolute URL and
+skip the Caddy hop, so `lib/api.ts` reads `INTERNAL_API_BASE_URL` (default
+`http://backend:8000`). docker-compose sets this for the `frontend` service.
 
 ## Verify
 

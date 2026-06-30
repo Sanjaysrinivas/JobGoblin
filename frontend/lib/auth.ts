@@ -9,20 +9,26 @@
 import { api, ApiError } from "@/lib/api";
 import type { LoginPayload, RegisterPayload, User } from "@/lib/types";
 
+// The body may be empty on edge cases (e.g. a 204), so treat `user` as
+// possibly-absent and access it defensively rather than destructuring.
 interface AuthResponse {
-  user: User;
+  user?: User;
 }
 
 /** POST /api/auth/login — sets the session cookie, returns the user. */
 export async function login(payload: LoginPayload): Promise<User> {
-  const { user } = await api.post<AuthResponse>("/auth/login", payload);
-  return user;
+  const res = await api.post<AuthResponse>("/auth/login", payload);
+  if (!res?.user) throw new Error("Login succeeded but no user was returned.");
+  return res.user;
 }
 
 /** POST /api/auth/register — invite-only registration. */
 export async function register(payload: RegisterPayload): Promise<User> {
-  const { user } = await api.post<AuthResponse>("/auth/register", payload);
-  return user;
+  const res = await api.post<AuthResponse>("/auth/register", payload);
+  if (!res?.user) {
+    throw new Error("Registration succeeded but no user was returned.");
+  }
+  return res.user;
 }
 
 /** POST /api/auth/logout — clears the session cookie. */
@@ -37,8 +43,9 @@ export async function logout(): Promise<void> {
  */
 export async function getCurrentUser(): Promise<User | null> {
   try {
-    const { user } = await api.get<AuthResponse>("/auth/me");
-    return user;
+    // A 204/empty response makes api.get return undefined; coalesce to null.
+    const res = await api.get<AuthResponse>("/auth/me");
+    return res?.user ?? null;
   } catch (err) {
     if (err instanceof ApiError && err.isUnauthorized) {
       return null;
