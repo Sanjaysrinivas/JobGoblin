@@ -176,12 +176,15 @@ def test_login_success_sets_cookie(client, session):
 def test_cookie_secure_is_case_insensitive():
     from app.api.routes import auth as auth_routes
 
-    settings = get_settings()
-    settings.app_env = "DEVELOPMENT"
-    assert auth_routes._cookie_secure() is False
+    original_app_env = auth_routes.settings.app_env
+    try:
+        auth_routes.settings.app_env = "DEVELOPMENT"
+        assert auth_routes._cookie_secure() is False
 
-    settings.app_env = "Production"
-    assert auth_routes._cookie_secure() is True
+        auth_routes.settings.app_env = "Production"
+        assert auth_routes._cookie_secure() is True
+    finally:
+        auth_routes.settings.app_env = original_app_env
 
 
 def test_login_wrong_password_unauthorized(client, session):
