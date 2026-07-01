@@ -4,7 +4,7 @@
 > AI layer, scoring algorithm, parsing approach, deployment, and testing *before*
 > application code is written. Companion to [`architecture.md`](architecture.md).
 
-**Status:** draft for review · **Target:** V1 MVP · **Last updated:** 2026-06-30
+**Status:** implementation reference · **Target:** V1 MVP · **Last updated:** 2026-07-01
 
 ---
 
@@ -22,7 +22,7 @@
 ## 2. System topology
 
 Self-hosted on the owner's laptop (Ryzen 7 8845HS · 31 GB RAM · RTX 4070 8 GB),
-all containers in one Docker Compose, exposed via a free Cloudflare Tunnel.
+all containers in one Docker Compose, with external access planned through a free Cloudflare Tunnel.
 
 ```
                         Internet (you + friends)
@@ -47,7 +47,7 @@ all containers in one Docker Compose, exposed via a free Cloudflare Tunnel.
 ```
 
 **Key consequence:** because Caddy serves FE and BE under **one origin**, there is
-**no cross-site cookie problem** — we use plain, secure HTTP-only session cookies.
+**no cross-site cookie problem**. Session cookies are HTTP-only and SameSite=Lax; the Secure flag is used outside local development.
 Availability is non-24/7 (laptop-bound); all state persists on Docker volumes.
 
 ---
@@ -235,16 +235,16 @@ envelope: `{ "detail": "<message>", "code": "<machine_code>" }`. Standard codes:
 
 | Method | Path | Body | Returns |
 |--------|------|------|---------|
-| POST | `/api/auth/register` | `{email, password, invite_token}` | sets cookie; `{user}` |
-| POST | `/api/auth/login` | `{email, password}` | sets cookie; `{user}` |
+| POST | `/api/auth/register` | `{email, password, invite_token}` | sets cookie; flat user object |
+| POST | `/api/auth/login` | `{email, password}` | sets session and returns flat user with `mfa_enrollment_required`, or returns `{mfa_required: true}` with an MFA-pending cookie |
 | POST | `/api/auth/logout` | — | clears cookie |
-| GET | `/api/auth/me` | — | `{user}` |
+| GET | `/api/auth/me` | — | flat user object |
 
 ### 4.2 Resumes
 
 | Method | Path | Notes |
 |--------|------|-------|
-| POST | `/api/resumes/upload` | multipart file (PDF/DOCX); extracts text, stores file, queues parse |
+| POST | `/api/resumes/upload` | multipart file (PDF/DOCX); extracts text, stores file, runs best-effort inline parse |
 | GET | `/api/resumes` | list (current user only) |
 | GET | `/api/resumes/{id}` | detail incl. parsed sections |
 | PATCH | `/api/resumes/{id}` | edit title, extracted_text, is_default |
@@ -278,8 +278,7 @@ envelope: `{ "detail": "<message>", "code": "<machine_code>" }`. Standard codes:
 ## 5. Authentication & multi-user security
 
 - **Hashing:** argon2id (`argon2-cffi`).
-- **Session:** signed JWT (`python-jose`) in an **HTTP-only, Secure, SameSite=Lax**
-  cookie. Same-origin (via Caddy) so no CORS/cross-site cookie issues.
+- **Session:** signed JWT (`python-jose`) in an **HTTP-only, SameSite=Lax** cookie. The cookie is `Secure` outside local development. Same-origin (via Caddy) so no CORS/cross-site cookie issues.
 - **Registration:** invite-only — `register` requires a valid, unused `invite_token`.
   First admin seeded from env (`ADMIN_EMAIL` / `ADMIN_PASSWORD`) on startup.
 - **Isolation:** a FastAPI dependency `get_current_user()` resolves the user from the
@@ -407,13 +406,12 @@ Services (all `restart: unless-stopped`, auto-start on boot):
 | `backend` | build `backend/` | `uploads:/data/uploads` |
 | `db` | postgres:16 | `pgdata:/var/lib/postgresql/data` |
 | `ollama` | ollama/ollama | `ollama:/root/.ollama` (model cache) |
-| `cloudflared` | cloudflare/cloudflared | tunnel token via env |
+| `cloudflared` | cloudflare/cloudflared | tunnel token via env; planned, not yet in compose |
 
 - **GPU:** `ollama` container gets the NVIDIA GPU via the container toolkit (CUDA).
-- **First boot:** an init step runs `ollama pull qwen2.5:7b-instruct` + fast model.
+- **Model setup:** pull `qwen2.5:7b-instruct` into the Ollama volume before using the real provider; tests and fast dev use `AI_PROVIDER=mock`.
 - **Migrations:** `alembic upgrade head` on backend start.
-- **CI:** `.github/workflows/ci.yml` — backend (ruff + pytest), frontend (lint + build).
-  Turns the README CI badge green.
+- **CI:** `.github/workflows/ci.yml` currently runs backend ruff + pytest. Frontend lint/build is planned for the delivery-foundation phase.
 
 ---
 
@@ -432,7 +430,7 @@ Services (all `restart: unless-stopped`, auto-start on boot):
 jobgoblin/
 ├── backend/   app/{core,models,schemas,api/routes,services,workers,tests}/ · Dockerfile · pyproject.toml · alembic/
 ├── frontend/  app/{login,dashboard,resumes,jobs,applications,contacts,settings}/ · components/ · lib/ · Dockerfile
-├── infra/     Caddyfile · cloudflared config
+├── infra/     Caddyfile · cloudflared config planned
 ├── docs/      architecture.{html,md} · design.md
 ├── docker-compose.yml · .env.example · README.md
 ```

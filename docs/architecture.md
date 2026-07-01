@@ -1,85 +1,86 @@
-# JobGoblin — Architecture
+# JobGoblin Architecture
 
-A self-hosted, AI-powered job-search and application-management web app. This is the
-text companion to [`architecture.html`](architecture.html) (open that in a browser for
-the diagram and full layout).
+A self-hosted, AI-powered job-search and application-management web app. This is
+the text companion to [architecture.html](architecture.html), which contains the
+same high-level system diagram in browser-friendly form.
 
 ## 1. Principles
 
-- **Private productivity tool, not a spam bot.** Every external action (email,
-  recruiter outreach, applying) requires explicit human review and approval.
-- **Truthful AI.** The AI may rephrase, emphasize, and reorganize the user's real
-  content — it must never invent experience, skills, education, or credentials.
-- **Estimated scores.** ATS-style match scores are labelled estimates, never
+- Private productivity tool, not a spam bot. Every external action such as email,
+  recruiter outreach, or applying requires explicit human review and approval.
+- Truthful AI. The AI may rephrase, emphasize, and reorganize the user's real
+  content, but it must never invent experience, skills, education, or credentials.
+- Estimated scores. ATS-style match scores are labelled estimates, never
   guaranteed ATS results.
-- **Multi-user.** You and your friends each get isolated accounts; every row is
-  scoped to a `user_id`.
+- Multi-user isolation. User-owned rows are scoped to `user_id`.
 
 ## 2. Services
 
-Two independently-built services communicating over HTTP/JSON, served behind one
-reverse proxy so they share a single origin:
+Two independently-built services communicate over HTTP/JSON and are served behind
+one reverse proxy so the browser sees a single origin:
 
-- **Frontend** — Next.js · React · TypeScript · Tailwind · shadcn/ui
-- **Backend** — FastAPI · Python · Pydantic · SQLModel
+- Frontend: Next.js, React, TypeScript, Tailwind, shadcn/ui.
+- Backend: FastAPI, Python, SQLModel, Alembic.
 
 State and AI run as local containers alongside them:
 
-- **PostgreSQL** — users, resumes, jobs, analyses, applications, etc. (Docker volume).
-- **File storage** — uploaded resume files on a mounted volume (storage behind an
-  interface, so S3/R2 is a later swap).
-- **Ollama** — local LLM runtime, the primary AI provider. Mock for tests;
-  OpenAI/Anthropic remain pluggable but unused.
+- PostgreSQL: users, resumes, jobs, analyses, applications, and activity data.
+- File storage: uploaded resume files on a mounted local volume behind a storage
+  interface, so object storage remains a later swap.
+- Ollama: local LLM runtime. `MockProvider` is used for tests and fast dev.
 
-## 3. Hosting — self-hosted on the owner's laptop, $0
+## 3. Hosting
 
-Everything runs in one Docker Compose stack on the owner's laptop (Ryzen 7 ·
-31 GB RAM · RTX 4070 8 GB) and is exposed to the internet via a free Cloudflare
-Tunnel. This is what lets us use Ollama (which needs real RAM/GPU and can't run on
-free cloud tiers) while staying at $0.
+Everything runs in one Docker Compose stack on the owner's laptop (Ryzen 7,
+31 GB RAM, RTX 4070 8 GB). External access is planned through a free Cloudflare
+Tunnel after local auth is stable. This keeps hosting at zero monthly cost while
+letting the app use local Ollama.
 
 | Component | Runs as | Cost |
 |-----------|---------|------|
-| Frontend / Backend | containers behind Caddy (same origin) | $0 |
-| PostgreSQL | container + volume | $0 |
-| Ollama (`qwen2.5:7b`) | container, GPU-accelerated | $0 |
-| File storage | mounted volume | $0 |
-| Public access | Cloudflare Tunnel (HTTPS) | $0 |
+| Frontend / Backend | Containers behind Caddy, same origin | $0 |
+| PostgreSQL | Container and Docker volume | $0 |
+| Ollama | Container, GPU-capable when host tooling is enabled | $0 |
+| File storage | Mounted Docker volume | $0 |
+| Public access | Cloudflare Tunnel, planned HTTPS entrypoint | $0 |
 | Repo / CI | GitHub Actions | $0 |
 
-**Trade-off:** the app is online only while the laptop is on (non-24/7). All data
-persists on Docker volumes across shutdowns. Because Caddy serves both services under
-one hostname, sessions use plain secure HTTP-only cookies — no cross-origin hacks.
+Trade-off: the app is online only while the laptop is on. All state persists on
+Docker volumes across shutdowns. Because Caddy serves both services under one
+hostname, session cookies can stay HTTP-only and SameSite=Lax without CORS hacks;
+the Secure flag is used outside local development.
 
-## 4. Data model
+## 4. Data Model
 
-Core tables (all scoped to `user_id`):
+Current tables include `users`, `invite_tokens`, and these user-owned tables
+scoped to `user_id`:
 
-`users`, `resumes`, `resume_versions`, `jobs`, `job_analyses`,
-`tailored_resume_drafts`, `cover_letters`, `applications`, `contacts`,
-`outreach_messages`, `email_drafts`, `activity_events`.
+`resumes`, `jobs`, `job_analyses`, `cover_letters`, `applications`, `contacts`,
+`outreach_messages`, `activity_events`.
+
+Deferred V2 tables: `resume_versions`, `tailored_resume_drafts`, `email_drafts`.
 
 Application pipeline statuses: `saved`, `interested`, `resume_tailored`,
 `cover_letter_created`, `applied`, `contacted_recruiter`, `referred`,
 `phone_screen`, `technical_interview`, `final_interview`, `offer`, `rejected`,
 `withdrawn`, `archived`.
 
-## 5. Core AI flow — resume × job analysis
+## 5. Core AI Flow: Resume To Job Analysis
 
-1. User uploads a resume → backend stores the file (local volume) and extracts plain text.
+1. User uploads a resume; backend stores the file and extracts plain text.
 2. User pastes a job description and selects a resume.
-3. **Deterministic pass:** extract & normalize keywords from both; compute weighted
-   category scores — keywords 30%, skills 25%, experience 20%, role 10%,
-   education 5%, formatting 10%.
-4. **AI pass:** explain gaps, distinguish *missing keywords you already qualify for*
-   from *qualifications you lack*, and suggest truthful improvements.
-5. Persist numeric score + matched/missing keywords + recommendations.
+3. Deterministic pass extracts and normalizes keywords from both texts, then
+   computes weighted category scores.
+4. AI pass explains gaps, distinguishes keywords the user likely already
+   qualifies for from qualifications they lack, and suggests truthful changes.
+5. Persist numeric score, matched/missing keywords, explanation, and
+   recommendations.
 6. User saves the job to the tracker and advances it through the pipeline.
 
-## 6. Branching workflow
+## 6. Branching Workflow
 
-`main → dev → feature/*`:
+`main -> dev -> feature/*`
 
-- **main** — always deployable; receives merges from `dev` via PR at release points.
-- **dev** — integration branch; feature PRs land here first.
-- **feature/\*** — one branch per unit of work, branched off `dev`, merged via PR.
+- `main`: release-ready branch.
+- `dev`: integration branch.
+- `feature/*`: one branch per unit of work, branched off `dev`, merged via PR.

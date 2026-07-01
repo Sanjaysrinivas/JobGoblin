@@ -1,4 +1,4 @@
-# 👺 JobGoblin
+# JobGoblin
 
 [![CI](https://github.com/Sanjaysrinivas/JobGoblin/actions/workflows/ci.yml/badge.svg)](https://github.com/Sanjaysrinivas/JobGoblin/actions/workflows/ci.yml)
 ![Next.js](https://img.shields.io/badge/Next.js-frontend-000000?logo=next.js&logoColor=white)
@@ -10,64 +10,112 @@
 ![Hosting](https://img.shields.io/badge/hosting-%240%2Fmo-2ea44f)
 ![Status](https://img.shields.io/badge/status-MVP%20in%20progress-f5b945)
 
-A self-hosted, AI-powered job-search and application-management web app. Upload a
-resume, score it against any job description, surface missing keywords, generate
-tailored bullets / cover letters / outreach, and track every application from
-*saved* to *offer*.
+A self-hosted, AI-powered job-search and application-management web app for one
+owner and a few invited friends. Upload a resume, score it against a job
+description, surface missing keywords, generate truthful drafts, and track every
+application from saved to offer.
 
-> **A private productivity tool — not a spam or auto-apply bot.** Every external
-> action (email, recruiter outreach, applying) requires explicit human review and
-> approval. The AI never invents experience, skills, or credentials.
+> Private productivity tool, not a spam or auto-apply bot. Every external action
+> such as email, recruiter outreach, or applying requires explicit human review.
+> The AI must never invent experience, skills, education, or credentials.
 
-## Architecture at a glance
+## Architecture At A Glance
 
-Two independently-deployed services talking over HTTP/JSON:
+The current deployment target is one local Docker Compose stack on the owner's
+laptop, served through Caddy under one browser origin.
 
-| Layer | Tech | Free host |
-|-------|------|-----------|
-| Frontend | Next.js · React · TypeScript · Tailwind · shadcn/ui | Vercel |
-| Backend | FastAPI · Python · Pydantic · SQLModel | Render |
-| Database | PostgreSQL | Neon |
-| File storage | Object storage (resume files) | Cloudflare R2 |
-| AI | Pluggable provider (OpenAI / Anthropic / Ollama / Mock) | — |
+| Layer | Tech | Runtime |
+|-------|------|---------|
+| Frontend | Next.js, React, TypeScript, Tailwind, shadcn/ui | Docker container |
+| Backend | FastAPI, Python 3.12, SQLModel, Alembic | Docker container |
+| Database | PostgreSQL 16 | Docker volume |
+| File storage | Local mounted uploads volume behind a storage interface | Docker volume |
+| AI | Ollama primary provider, MockProvider for tests | Docker container |
+| Edge | Caddy now; Cloudflare Tunnel planned | Local container stack |
 
-**Full interactive architecture doc:** open [`docs/architecture.html`](docs/architecture.html)
-in a browser.
+Caddy routes `/` to the frontend and `/api/*` to the backend, so browser traffic
+is same-origin and auth can use HTTP-only cookies without CORS workarounds.
 
-## Repository layout
+Full docs:
 
-```
+- [Architecture](docs/architecture.md)
+- [Detailed design](docs/design.md)
+- [Roadmap and phases](docs/roadmap.md)
+
+## Repository Layout
+
+```text
 jobgoblin/
-├── backend/            # FastAPI service
-├── frontend/           # Next.js service
-├── docs/               # architecture.html, architecture.md
-├── docker-compose.yml  # local dev: frontend + backend + postgres
+├── backend/            # FastAPI service, SQLModel models, Alembic migrations, tests
+├── frontend/           # Next.js app shell and UI
+├── docs/               # architecture, design, roadmap
+├── infra/              # Caddy config
+├── docker-compose.yml  # local/self-hosted stack
 ├── .env.example
 └── README.md
 ```
 
-*(backend/ and frontend/ are scaffolded in subsequent feature branches.)*
+## Current Status
 
-## Local development
+Implemented:
 
-The whole stack is **Docker-first** — runs locally for free with one command:
+- Backend foundation, health endpoint, settings, migrations, CI backend job.
+- Email/password auth, Google OAuth plumbing, allowlist, TOTP MFA.
+- Resume upload, extraction, AI parse, edit, list/detail, delete, and PDF export.
+- Frontend app shell, login/MFA screens, and resume screens.
+
+Not built yet:
+
+- Jobs, contacts, cover letters, applications, dashboard data endpoints.
+- Resume-to-job analysis UI/API.
+- Cloudflare Tunnel service.
+- Email sending and approval-gated external actions.
+
+Known active blocker: local browser login needs environment-aware cookie
+security and a clearer MFA-enrollment path. See [HANDOVER.md](HANDOVER.md) if
+present in your checkout.
+
+## Local Development
+
+Copy the environment template and use mock AI for fast local iteration:
 
 ```bash
-cp .env.example .env      # fill in your AI provider key
-docker compose up --build
+cp .env.example .env
+docker compose up -d --build
 ```
 
-Frontend → http://localhost:3000 · Backend → http://localhost:8000 (docs at `/docs`).
+Useful URLs:
 
-## Branching workflow
+- App through Caddy: http://localhost:8080
+- Backend Swagger UI: http://localhost:8000/docs
 
-`main → dev → feature/*`. `main` stays release-ready, `dev` is integration, and
-every change rides a `feature/*` branch merged into `dev` via pull request.
+The frontend and backend are also runnable directly during development, but the
+Docker/Caddy path is the intended same-origin integration path.
 
-## Roadmap
+## Verification
 
-- **V1 (MVP, current):** auth · resume upload + extraction · job CRUD · resume↔job
-  analysis · ATS-style score · cover letters · application tracker · dashboard.
-- **V2:** resume versions · tailored drafts · contacts · outreach · reminders.
-- **V3:** Gmail drafts · calendar · browser extension · local LLM (Ollama).
-- **V4:** assisted (approval-gated) automation · interview prep assistant.
+Backend:
+
+```bash
+cd backend
+TEST_DATABASE_URL=postgresql+psycopg://test:test@localhost:5433/test ./.venv/Scripts/python.exe -m pytest -q
+./.venv/Scripts/ruff.exe check .
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm run lint
+npm run build
+```
+
+Frontend lint/build are not in GitHub Actions yet; that is part of the next
+foundation phase.
+
+## Branching Workflow
+
+`main -> dev -> feature/*`
+
+`main` stays release-ready, `dev` is the integration branch, and each change
+should land through a focused feature branch and PR into `dev`.
