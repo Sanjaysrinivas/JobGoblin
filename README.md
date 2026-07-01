@@ -46,13 +46,13 @@ Full docs:
 
 ```text
 jobgoblin/
-├── backend/            # FastAPI service, SQLModel models, Alembic migrations, tests
-├── frontend/           # Next.js app shell and UI
-├── docs/               # architecture, design, roadmap
-├── infra/              # Caddy config
-├── docker-compose.yml  # local/self-hosted stack
-├── .env.example
-└── README.md
+|-- backend/            # FastAPI service, SQLModel models, Alembic migrations, tests
+|-- frontend/           # Next.js app shell and UI
+|-- docs/               # architecture, design, roadmap
+|-- infra/              # Caddy config
+|-- docker-compose.yml  # local/self-hosted stack
+|-- .env.example
+`-- README.md
 ```
 
 ## Current Status
@@ -71,9 +71,7 @@ Not built yet:
 - Cloudflare Tunnel service.
 - Email sending and approval-gated external actions.
 
-Known active blocker: local browser login needs environment-aware cookie
-security and a clearer MFA-enrollment path. See [HANDOVER.md](HANDOVER.md) if
-present in your checkout.
+No active local-login blocker is tracked after the environment-aware cookie and MFA-enrollment fixes. See [HANDOVER.md](HANDOVER.md) if present in your checkout.
 
 ## Local Development
 
@@ -110,8 +108,7 @@ npm run lint
 npm run build
 ```
 
-Frontend lint/build are not in GitHub Actions yet; that is part of the next
-foundation phase.
+GitHub Actions runs backend ruff/pytest and frontend lint/build for pull requests.
 
 ## Branching Workflow
 

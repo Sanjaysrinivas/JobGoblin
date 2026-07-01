@@ -1,6 +1,8 @@
 import importlib
 import sys
+from types import ModuleType
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -56,3 +58,11 @@ def test_include_discovered_routers_adds_package_routers_under_api_prefix(tmp_pa
         for module_name in list(sys.modules):
             if module_name == "fake_routes" or module_name.startswith("fake_routes."):
                 del sys.modules[module_name]
+
+
+def test_include_discovered_routers_rejects_non_package_module():
+    app = FastAPI()
+    module = ModuleType("not_a_package")
+
+    with pytest.raises(TypeError, match="Expected a package module"):
+        include_discovered_routers(app, package=module)

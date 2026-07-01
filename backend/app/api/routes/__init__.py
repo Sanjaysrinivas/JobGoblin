@@ -12,7 +12,9 @@ def iter_route_modules(package: ModuleType) -> Iterable[ModuleType]:
     """Yield route modules in deterministic order."""
     package_path = getattr(package, "__path__", None)
     if package_path is None:
-        return
+        raise TypeError(
+            f"Expected a package module, but {package!r} has no '__path__'."
+        )
 
     for module_info in sorted(iter_modules(package_path), key=lambda info: info.name):
         if module_info.ispkg or module_info.name.startswith("_"):

@@ -1,7 +1,7 @@
 # JobGoblin — Agent Handover
 
 > Snapshot for the next agent/session picking up this project. Last updated **2026-07-01**.
-> Read this top-to-bottom once, then keep Â§7 (active blocker), Â§9 (phase roadmap), and `docs/roadmap.md` open.
+> Read this top-to-bottom once, then keep section 7 (local runtime verification), section 9 (phase roadmap), and `docs/roadmap.md` open.
 
 ---
 
@@ -90,7 +90,7 @@ docker-compose.yml, .env.example, README.md, docs/{design,architecture}.md, docs
 **Merged to `dev` (PRs #1â€“#8):** architecture docs Â· design spec Â· backend foundation (health, config, CI) Â·
 data model (10 tables + migration) Â· email/password auth Â· frontend foundation Â· **Google OAuth + TOTP MFA + allowlist** Â· **resume module** (uploadâ†’extractâ†’parseâ†’editâ†’**export-PDF**).
 
-- **129 backend tests** pass on `dev`; `ruff` clean. CI (GitHub Actions) = one **backend** job (ruff + pytest) with a Postgres service. **No frontend CI job yet** (verified locally only).
+- Backend tests and `ruff` pass on `dev`. CI (GitHub Actions) now runs backend ruff/pytest with a Postgres service and frontend lint/build.
 - **15 API endpoints** live: `/api/health`, `/api/auth/{register,login,logout,me,google/login,google/callback,mfa/enroll,mfa/verify,mfa/challenge}`, `/api/resumes/{upload,GET,GET id,PATCH,DELETE,parse,export.pdf}`.
 - Branch trail: `main â†’ dev â†’ feature/*` (all feature branches merged & deleted).
 
@@ -124,23 +124,13 @@ If the test schema is stale: `docker exec jg-test-db psql -U test -d test -c "DR
 
 ---
 
-## 7. âš ï¸ ACTIVE BLOCKER â€” cannot sign in via the browser (in progress)
+## 7. Local runtime verification
 
-**Symptom:** user logs in at http://localhost:8080 with the demo admin creds but "cannot sign in."
+Phase 0 landed in PR #10. Local browser login now uses environment-aware auth cookies, MFA enrollment can be skipped during login, and the frontend auth helpers match the backend response shape.
 
-**Confirmed working:** backend session is fine end-to-end â€” `POST /api/auth/login` â†’ 200 + `Set-Cookie: jg_session=â€¦` â†’ `GET /api/auth/me` with that cookie â†’ 200 (verified via curl through Caddy). So the backend, Caddy routing, and DB are NOT the problem.
+**Current check:** run the Docker/Caddy stack and log in at http://localhost:8080 with the demo admin credentials. Confirm the browser stores `jg_session` and `/api/auth/me` returns 200 after login.
 
-**Two root causes identified (both need fixing):**
-
-1. **Session cookie is hardcoded `secure=True`** in `backend/app/api/routes/auth.py` (`response.set_cookie(..., secure=True, samesite="lax")` â€” appears ~3Ã—, plus the `logout` `delete_cookie`). The app is served over **http://localhost:8080**, and browsers won't reliably persist a `Secure` cookie over plain HTTP â†’ the session is dropped â†’ you appear logged out immediately after a 200.
-   **Fix:** make it environment-conditional, mirroring what `main.py`'s `SessionMiddleware` already does (`https_only=settings.app_env != "development"`). i.e. `secure = settings.app_env != "development"`. Apply to every `set_cookie`/`delete_cookie` for `jg_session` and `jg_mfa`.
-
-2. **Seeded admin is forced into MFA enrollment.** The admin has `totp_enabled=False`, so `/auth/login` returns `mfa_enrollment_required: true`; `components/login-form.tsx` then routes to the `enroll` step (QR) instead of `/dashboard`. So even with the cookie fixed, the user lands on the TOTP-enrollment screen, not the app.
-   **Options:** (a) enroll for real by scanning the QR with an authenticator app; (b) make enrollment **skippable** in the login-form (proceed to `/dashboard`, nudge later); (c) for demo, pre-enroll/relax the requirement. Pick per product intent â€” likely (b): MFA enrollment should be encouraged, not a hard gate, unless you want to mandate it.
-
-**Latent bug (not the current blocker, but fix soon):** `frontend/lib/auth.ts` `login()`/`register()` expect a `{ user: â€¦ }` wrapper, but the backend returns the user object **flat** (`{id,email,display_name,is_admin,mfa_enrollment_required}`). `login-form.tsx` bypasses these helpers with a direct `fetch`, so login isn't affected â€” but any caller of `lib/auth.ts` `login()`/`register()` will throw "no user was returned." Align the helper with the real response shape (or wrap the response server-side consistently).
-
-**To verify a fix:** edit backend â†’ `docker compose up -d --build --no-deps backend` â†’ log in at :8080 in a real browser (check DevTools â†’ Application â†’ Cookies that `jg_session` is stored, and Network that `/api/auth/me` returns 200).
+**Refresh after backend/frontend edits:** `docker compose up -d --build` for the full stack, or rebuild a single service with `docker compose up -d --build --no-deps backend` / `frontend` when dependencies are already running.
 
 ---
 
@@ -159,22 +149,18 @@ If the test schema is stale: `docker exec jg-test-db psql -U test -d test -c "DR
 
 The durable phase plan now lives in `docs/roadmap.md`. In short:
 
-1. **Phase 0 - Restore a usable local app:** fix env-conditional cookie `secure`, decide MFA-enrollment gating, align `frontend/lib/auth.ts` with flat backend responses, and add/standardize app auth guarding. This is the current unblocker.
-2. **Phase 1 - Delivery foundation:** add auto-router discovery in `main.py`, add frontend CI (lint + build), and keep README/design/roadmap current before feature fan-out.
+1. **Phase 0 - Restore a usable local app:** completed in PR #10 with env-conditional auth cookies, skippable MFA enrollment, aligned auth helpers, and app auth guarding.
+2. **Phase 1 - Delivery foundation:** in progress in PR #11 with auto-router discovery, frontend CI (lint + build), and refreshed README/design/roadmap handoff docs.
 3. **Phase 2 - Core resource modules:** build jobs, contacts, applications, dashboard, and cover-letter CRUD/generation against the existing models, with strict `user_id` isolation and tests.
 4. **Phase 3 - Resume-to-job analysis:** implement deterministic keyword/fuzzy scoring using existing `rapidfuzz`, add AI explanation through `AIProvider`, persist `JobAnalysis`, and surface estimated scores in the UI.
 5. **Phase 4 - Real local runtime and external access:** pull/configure Ollama models, set `AI_PROVIDER=ollama`, configure Google OAuth, then add Cloudflare Tunnel and verify HTTPS cookie behavior.
 6. **Phase 5 - V2 workflow expansion:** profile builder, resume versions, tailored drafts, outreach drafts, reminders, email drafts, and interview prep, always review-gated.
 
-Immediate branch recommendation: `feature/fix-local-login` for Phase 0.
 ## 10. Known gotchas
 
-- **Cookies over http://localhost** â€” see Â§7. `secure` must be env-conditional.
 - **`.env` is gitignored** and holds demo creds + `AI_PROVIDER=mock`; don't commit it. `.env.example` is the committed template.
 - **Migrations run on container start** â€” if you change models, regenerate the migration (against :5433) and verify `alembic check`; otherwise the container's `alembic upgrade head` can drift from models. Enums are stored as `VARCHAR + CHECK` (native_enum=False) on purpose.
 - **Two migrations chain:** `7ca6416ad0c0` â†’ `6216e35ab071`. Don't reorder.
-- **PRs that both touch `main.py`/`pyproject.toml` conflict** â€” until auto-discovery (Â§9.2) lands, whichever merges second needs a rebase (keep both sides).
-- **Frontend not in CI** â€” a broken frontend can merge; verify `npm run build` manually until Â§9.2.
 - **Ollama** isn't started in the `--no-deps` dev shortcut; real parsing needs it up + the model pulled (multi-GB). Tests always use `MockProvider`.
 
 ---
