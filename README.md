@@ -66,6 +66,23 @@ Demo login, when the seed admin values above are configured:
 - Password: `goblin-demo-pass-123`
 
 The Docker/Caddy path is the intended integration path. Caddy routes `/` to the frontend and `/api/*` to the backend so browser traffic is same-origin and auth can use HTTP-only cookies without CORS workarounds.
+## Runtime Notes
+
+Ollama is included in the Compose stack, but model download is a one-time host action. For the intended local AI runtime, pull the default model after the stack is up:
+
+```bash
+docker compose exec ollama ollama pull qwen2.5:7b-instruct
+```
+
+Use `AI_PROVIDER=mock` in `.env` for fast local iteration without a model. Use `AI_PROVIDER=ollama` plus the default `OLLAMA_BASE_URL=http://ollama:11434` when smoke-testing real local parsing/generation.
+
+Cloudflare Tunnel is optional and disabled by default. Create a tunnel in Cloudflare Zero Trust, point its public hostname at `http://caddy:80`, set `CLOUDFLARED_TUNNEL_TOKEN` in `.env`, then start only the tunnel profile:
+
+```bash
+docker compose --profile tunnel up -d cloudflared
+```
+
+The normal `docker compose up -d --build` path remains local-only and does not require Cloudflare credentials.
 
 ## Repository Layout
 

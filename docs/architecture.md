@@ -32,8 +32,8 @@ State and AI run as local containers alongside them:
 ## 3. Hosting
 
 Everything runs in one Docker Compose stack on the owner's laptop (Ryzen 7,
-31 GB RAM, RTX 4070 8 GB). External access is planned through a free Cloudflare
-Tunnel after local auth is stable. This keeps hosting at zero monthly cost while
+31 GB RAM, RTX 4070 8 GB). External access is scaffolded through an optional Cloudflare
+Tunnel compose profile after local auth is stable. This keeps hosting at zero monthly cost while
 letting the app use local Ollama.
 
 | Component | Runs as | Cost |
@@ -42,7 +42,7 @@ letting the app use local Ollama.
 | PostgreSQL | Container and Docker volume | $0 |
 | Ollama | Container, GPU-capable when host tooling is enabled | $0 |
 | File storage | Mounted Docker volume | $0 |
-| Public access | Cloudflare Tunnel, planned HTTPS entrypoint | $0 |
+| Public access | Optional Cloudflare Tunnel profile; HTTPS validation still required | $0 |
 | Repo / CI | GitHub Actions | $0 |
 
 Trade-off: the app is online only while the laptop is on. All state persists on

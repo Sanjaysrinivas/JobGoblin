@@ -1,0 +1,16 @@
+# Example Cloudflare named-tunnel config.
+#
+# This file contains no secrets. Copy it outside git-tracked paths or keep your
+# real credentials file ignored, then run cloudflared with a mounted config if
+# you prefer named-tunnel mode over the token-based compose service.
+#
+# Cloudflare dashboard equivalent:
+#   public hostname -> service: http://caddy:80
+
+tunnel: <tunnel-id-or-name>
+credentials-file: /etc/cloudflared/<tunnel-id>.json
+
+ingress:
+  - hostname: jobgoblin.example.com
+    service: http://caddy:80
+  - service: http_status:404

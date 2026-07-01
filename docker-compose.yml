@@ -1,9 +1,10 @@
-# JobGoblin — local/self-hosted stack.
+# JobGoblin - local/self-hosted stack.
 # Services: db + ollama + backend (backend-foundation) and
 # frontend + caddy reverse proxy (frontend-foundation).
-# cloudflared (tunnel) is added in a later branch.
+# cloudflared is optional and disabled by default. Start it with the "tunnel"
+# profile after configuring Cloudflare credentials.
 #
-# Caddy is the single entry point on http://localhost:8080 — it routes
+# Caddy is the single entry point on http://localhost:8080 - it routes
 # /api/* to the backend and everything else to the Next.js frontend, so the
 # browser always makes same-origin requests (clean session cookies, no CORS).
 # The backend's port 8000 is still published for direct API access / docs.
@@ -29,7 +30,7 @@ services:
     image: ollama/ollama:latest
     volumes:
       - ollama:/root/.ollama
-    # GPU acceleration (NVIDIA RTX 4070) — requires the NVIDIA Container Toolkit
+    # GPU acceleration (NVIDIA RTX 4070) - requires the NVIDIA Container Toolkit
     # on the host. Uncomment to enable:
     # deploy:
     #   resources:
@@ -93,6 +94,18 @@ services:
       frontend:
         condition: service_started
       backend:
+        condition: service_started
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles: ["tunnel"]
+    # Token-based tunnel. Configure the public hostname in Cloudflare Zero Trust
+    # to point at http://caddy:80, then set CLOUDFLARED_TUNNEL_TOKEN in .env.
+    # For named-tunnel config-file mode, see infra/cloudflared-config.example.yml.
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TUNNEL_TOKEN:-}
+    depends_on:
+      caddy:
         condition: service_started
     restart: unless-stopped
 
