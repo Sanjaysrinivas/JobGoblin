@@ -38,7 +38,7 @@ def _error(status_code: int, message: str, code: str) -> HTTPException:
 
 
 def _cookie_secure() -> bool:
-    return settings.app_env != "development"
+    return settings.app_env.lower() != "development"
 
 
 def _set_session_cookie(response: Response, user: User) -> None:

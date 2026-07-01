@@ -13,6 +13,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
+    if (authorized) return;
     let active = true;
 
     (async () => {
@@ -34,7 +35,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     return () => {
       active = false;
     };
-  }, [pathname, router]);
+  }, [pathname, router, authorized]);
 
   if (error) {
     return (

@@ -4,7 +4,8 @@ import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Eye, EyeOff, Loader2, LogIn } from "lucide-react";
 
-import { api, ApiError } from "@/lib/api";
+import { ApiError } from "@/lib/api";
+import { login } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -48,7 +49,10 @@ export function LoginForm() {
 
   function goToWorkspace() {
     const next = searchParams.get("next") || "/dashboard";
-    const safeNext = next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
+    const safeNext =
+      next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\")
+        ? next
+        : "/dashboard";
     router.push(safeNext);
     router.refresh();
   }
@@ -72,7 +76,7 @@ export function LoginForm() {
     try {
       // POSTs to /api/auth/login with credentials: "include", so the session or
       // mfa_pending cookie is set on success. We read the result to branch.
-      const result = await api.post<AuthResult>("/auth/login", { email, password });
+      const result = await login({ email, password });
       routeAfterPrimaryAuth(result ?? {});
     } catch (err) {
       if (err instanceof ApiError) {

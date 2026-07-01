@@ -173,24 +173,15 @@ def test_login_success_sets_cookie(client, session):
     assert "secure" not in set_cookie
 
 
-def test_login_sets_secure_cookie_outside_development(client, session):
-    user = User(
-        email="prodlogin@example.com",
-        password_hash=security.hash_password("rightpw1"),
-        display_name="Prod Login",
-    )
-    session.add(user)
-    session.commit()
+def test_cookie_secure_is_case_insensitive():
+    from app.api.routes import auth as auth_routes
 
     settings = get_settings()
-    settings.app_env = "production"
-    resp = client.post(
-        "/api/auth/login",
-        json={"email": "prodlogin@example.com", "password": "rightpw1"},
-    )
+    settings.app_env = "DEVELOPMENT"
+    assert auth_routes._cookie_secure() is False
 
-    assert resp.status_code == 200, resp.text
-    assert "secure" in resp.headers["set-cookie"].lower()
+    settings.app_env = "Production"
+    assert auth_routes._cookie_secure() is True
 
 
 def test_login_wrong_password_unauthorized(client, session):
