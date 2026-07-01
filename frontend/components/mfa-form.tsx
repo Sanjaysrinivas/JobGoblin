@@ -68,9 +68,11 @@ function CodeInput({
 export function MfaForm({
   mode,
   onComplete,
+  onSkip,
 }: {
   mode: "challenge" | "enroll";
   onComplete: () => void;
+  onSkip?: () => void;
 }) {
   const [code, setCode] = React.useState("");
   const [pending, setPending] = React.useState(false);
@@ -183,7 +185,7 @@ export function MfaForm({
             {pending ? (
               <>
                 <Loader2 className="size-4 animate-spin" />
-                Verifying…
+                Verifying...
               </>
             ) : (
               <>
@@ -192,6 +194,17 @@ export function MfaForm({
               </>
             )}
           </Button>
+          {mode === "enroll" && onSkip && (
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full"
+              disabled={pending}
+              onClick={onSkip}
+            >
+              Skip for now
+            </Button>
+          )}
         </form>
       </CardContent>
     </Card>

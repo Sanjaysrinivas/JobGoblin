@@ -28,7 +28,7 @@ def client(session):
 
 
 def _carry(client, resp, cookie_name):
-    """Mirror a Secure cookie from a response onto the client (TestClient is http)."""
+    """Mirror a response cookie onto the client explicitly."""
     import re
 
     m = re.search(rf"{cookie_name}=([^;]+)", resp.headers.get("set-cookie", ""))
@@ -216,6 +216,24 @@ def test_password_login_with_totp_enabled_returns_mfa_pending(client, session):
     set_cookie = resp.headers.get("set-cookie", "").lower()
     assert MFA_COOKIE in set_cookie
     assert SESSION_COOKIE not in set_cookie
+    assert "secure" not in set_cookie
+
+
+def test_password_login_with_totp_enabled_sets_secure_mfa_cookie_outside_development(
+    client, session
+):
+    secret = pyotp.random_base32()
+    _make_user(session, "pwmfaprod@example.com", totp_secret=secret, totp_enabled=True)
+    get_settings().app_env = "production"
+
+    resp = client.post(
+        "/api/auth/login", json={"email": "pwmfaprod@example.com", "password": "rightpw1"}
+    )
+
+    assert resp.status_code == 200, resp.text
+    set_cookie = resp.headers.get("set-cookie", "").lower()
+    assert MFA_COOKIE in set_cookie
+    assert "secure" in set_cookie
 
 
 def test_password_login_without_totp_sets_session_and_flags_enrollment(client, session):

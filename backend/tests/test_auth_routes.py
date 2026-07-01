@@ -14,11 +14,10 @@ COOKIE = get_settings().session_cookie_name
 
 
 def _login_and_carry_cookie(client, email, password):
-    """Log in and copy the (Secure) session cookie onto the client.
+    """Log in and copy the session cookie onto the client.
 
-    TestClient talks http://testserver, so it will not resend a ``Secure``
-    cookie on its own; we mirror what an https browser would do by extracting
-    the token from the login response and setting it explicitly.
+    This keeps tests independent of httpx cookie-jar behavior across
+    Secure/non-Secure modes.
     """
     resp = client.post("/api/auth/login", json={"email": email, "password": password})
     token = resp.cookies.get(COOKIE)
@@ -171,7 +170,27 @@ def test_login_success_sets_cookie(client, session):
     assert COOKIE in set_cookie
     assert "httponly" in set_cookie
     assert "samesite=lax" in set_cookie
-    assert "secure" in set_cookie
+    assert "secure" not in set_cookie
+
+
+def test_login_sets_secure_cookie_outside_development(client, session):
+    user = User(
+        email="prodlogin@example.com",
+        password_hash=security.hash_password("rightpw1"),
+        display_name="Prod Login",
+    )
+    session.add(user)
+    session.commit()
+
+    settings = get_settings()
+    settings.app_env = "production"
+    resp = client.post(
+        "/api/auth/login",
+        json={"email": "prodlogin@example.com", "password": "rightpw1"},
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert "secure" in resp.headers["set-cookie"].lower()
 
 
 def test_login_wrong_password_unauthorized(client, session):
