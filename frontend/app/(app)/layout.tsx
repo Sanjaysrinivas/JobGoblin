@@ -1,3 +1,4 @@
+import { AuthGate } from "@/components/auth-gate";
 import { AppSidebar } from "@/components/app-sidebar";
 import { AppTopbar } from "@/components/app-topbar";
 
@@ -12,14 +13,16 @@ export default function AppLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-svh">
-      <AppSidebar />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <AppTopbar />
-        <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 md:px-8 md:py-8">
-          {children}
-        </main>
+    <AuthGate>
+      <div className="flex min-h-svh">
+        <AppSidebar />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <AppTopbar />
+          <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 md:px-8 md:py-8">
+            {children}
+          </main>
+        </div>
       </div>
-    </div>
+    </AuthGate>
   );
 }
