@@ -1,4 +1,4 @@
-# JobGoblin â€” Agent Handover
+# JobGoblin — Agent Handover
 
 > Snapshot for the next agent/session picking up this project. Last updated **2026-07-01**.
 > Read this top-to-bottom once, then keep Â§7 (active blocker), Â§9 (phase roadmap), and `docs/roadmap.md` open.
