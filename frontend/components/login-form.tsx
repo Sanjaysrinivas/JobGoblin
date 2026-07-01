@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Eye, EyeOff, Loader2, LogIn } from "lucide-react";
 
@@ -46,6 +47,10 @@ export function LoginForm() {
   const [pending, setPending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [step, setStep] = React.useState<Step>("credentials");
+  const inviteToken = searchParams.get("invite_token") ?? searchParams.get("invite");
+  const signupHref = inviteToken
+    ? `/signup?invite_token=${encodeURIComponent(inviteToken)}`
+    : "/signup";
 
   function goToWorkspace() {
     const next = searchParams.get("next") || "/dashboard";
@@ -199,6 +204,16 @@ export function LoginForm() {
             Sign in with Google
           </a>
         </Button>
+
+        <p className="text-muted-foreground mt-4 text-center text-sm">
+          Have an invite?{" "}
+          <Link
+            className="text-primary underline-offset-4 hover:underline"
+            href={signupHref}
+          >
+            Create account
+          </Link>
+        </p>
       </CardContent>
     </Card>
   );

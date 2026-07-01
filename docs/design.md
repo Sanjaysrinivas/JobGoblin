@@ -1,447 +1,368 @@
-# JobGoblin — Detailed Design Specification
+# JobGoblin Detailed Design Specification
 
-> The "measure twice" document. This locks the data model, API contract, auth,
-> AI layer, scoring algorithm, parsing approach, deployment, and testing *before*
-> application code is written. Companion to [`architecture.md`](architecture.md).
+Status: implementation reference; Phase 0/1 complete; Phase 2 in progress. Target: V1 MVP. Last updated: 2026-07-01.
 
-**Status:** implementation reference · **Target:** V1 MVP · **Last updated:** 2026-07-01
+This is the durable design reference for the data model, API contract, auth, AI layer, scoring approach, parsing pipeline, deployment, and testing. See `docs/architecture.md` for the shorter architecture companion and `docs/roadmap.md` for phase sequencing.
 
----
+## 1. Principles
 
-## 1. Principles (recap)
+1. JobGoblin is a private productivity tool, never a spam or auto-apply bot.
+2. Every external action, including email, outreach, and applying, requires explicit human approval.
+3. AI may rephrase, emphasize, and reorganize truthful user-provided content, but must never invent experience, skills, education, credentials, employers, or dates.
+4. ATS-style scores are estimates and must be labelled as estimates.
+5. Multi-user data is isolated by `user_id`; user-owned queries must be scoped by the current user.
 
-1. Private productivity tool — **never** a spam/auto-apply bot.
-2. Every external action (email, outreach, applying) requires explicit human approval.
-3. The AI **never invents** experience, skills, education, or credentials — it only
-   rephrases, emphasizes, or reorganizes truthful, user-provided content.
-4. ATS-style scores are **estimates**, clearly labelled as such.
-5. **Multi-user** with hard data isolation — every row is scoped to a `user_id`.
+## 2. System Topology
 
----
+The app is self-hosted on the owner's laptop in one Docker Compose stack. Caddy is the local public entry point and serves a single browser origin:
 
-## 2. System topology
-
-Self-hosted on the owner's laptop (Ryzen 7 8845HS · 31 GB RAM · RTX 4070 8 GB),
-all containers in one Docker Compose, with external access planned through a free Cloudflare Tunnel.
-
-```
-                        Internet (you + friends)
-                               │  HTTPS
-                               ▼
-                    ┌──────────────────────┐
-                    │  Cloudflare Tunnel    │  (cloudflared, free)
-                    └──────────┬───────────┘
-                               ▼
-                    ┌──────────────────────┐
-                    │  Caddy reverse proxy  │  one hostname → same-origin
-                    │   /      → frontend   │
-                    │   /api/* → backend    │
-                    └─────┬───────────┬─────┘
-                          ▼           ▼
-                  ┌────────────┐ ┌────────────────────────┐
-                  │ Next.js FE │ │ FastAPI BE              │
-                  └────────────┘ │  ├─ Postgres (volume)   │
-                                 │  ├─ uploads (volume)    │
-                                 │  └─ Ollama (volume)     │
-                                 └────────────────────────┘
+```text
+Browser
+  |
+  | http://localhost:8080 now; HTTPS tunnel planned
+  v
+Caddy reverse proxy
+  |-- /      -> Next.js frontend
+  `-- /api/* -> FastAPI backend
+                  |-- PostgreSQL volume
+                  |-- uploads volume
+                  `-- Ollama container
 ```
 
-**Key consequence:** because Caddy serves FE and BE under **one origin**, there is
-**no cross-site cookie problem**. Session cookies are HTTP-only and SameSite=Lax; the Secure flag is used outside local development.
-Availability is non-24/7 (laptop-bound); all state persists on Docker volumes.
+The same-origin design lets auth use HTTP-only SameSite=Lax cookies without CORS or cross-site cookie workarounds. Cookie `Secure` is disabled in local development and enabled outside development.
 
----
+External access through Cloudflare Tunnel is planned after local auth and runtime behavior are stable. Availability is laptop-bound; state persists in Docker volumes.
 
-## 3. Data model
+## 3. Current Implementation Status
 
-PostgreSQL via **SQLModel** (SQLAlchemy core + Pydantic). Migrations via **Alembic**.
-Primary keys are UUIDs. Every user-owned table has `user_id` with
-`ON DELETE CASCADE` (satisfies the "delete all my data" requirement).
+Implemented now:
 
-### 3.1 Enumerations
+- Backend app wiring, settings, health endpoint, error envelope, route auto-discovery, migrations, startup admin seed.
+- Email/password auth, admin-created invite tokens, invite-only signup, Google OAuth plumbing, email allowlist, TOTP MFA, rate limiting, environment-aware cookies.
+- SQLModel tables for the V1 domain model.
+- Resume upload, storage, text extraction, AI parse, edit/list/detail/delete, and PDF export.
+- Jobs CRUD API and jobs list/create/detail/edit/delete UI.
+- Next.js app shell, auth guard, login/MFA/signup flow, resume UI, and placeholder pages for later resources.
+- CI for backend ruff/pytest and frontend lint/build.
 
-| Enum | Values |
-|------|--------|
-| `work_mode` | `onsite`, `remote`, `hybrid`, `unknown` |
-| `job_source` | `linkedin`, `company_site`, `indeed`, `referral`, `recruiter`, `other` |
-| `priority` | `low`, `medium`, `high` |
-| `application_status` | `saved`, `interested`, `resume_tailored`, `cover_letter_created`, `applied`, `contacted_recruiter`, `referred`, `phone_screen`, `technical_interview`, `final_interview`, `offer`, `rejected`, `withdrawn`, `archived` |
-| `cover_letter_tone` | `professional`, `friendly`, `concise`, `enthusiastic` |
-| `cover_letter_status` | `draft`, `reviewed`, `accepted`, `rejected`, `exported` |
-| `outreach_channel` | `email`, `linkedin`, `other` |
-| `outreach_status` | `draft`, `copied`, `sent`, `replied`, `closed` |
+Planned next:
 
-### 3.2 Tables (V1 MVP)
+- Contacts, applications, dashboard data, and cover letters.
+- Resume-to-job analysis.
+- Real Ollama model setup, Google OAuth owner setup, and Cloudflare Tunnel.
+- Email sending/export workflows that remain review-gated.
 
-**users**
+## 4. Data Model
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| email | citext | unique, lowercased |
-| password_hash | text | argon2id |
-| display_name | text | |
-| is_admin | bool | default false; first user from env seed = admin |
-| created_at / updated_at | timestamptz | |
+PostgreSQL via SQLModel and Alembic. Primary keys are UUIDs. User-owned tables include `user_id` and should cascade on user deletion. Cross-user object access should return 404 or 401 without leaking object existence.
 
-**invite_tokens** (invite-only registration)
+### Core Tables
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| token | text | unique, random |
-| created_by | uuid | FK users.id |
-| used_by | uuid? | FK users.id, null until redeemed |
-| expires_at | timestamptz | |
-| created_at | timestamptz | |
+`users`
 
-**resumes**
+- Stores email, password hash, display name, admin flag, Google subject, TOTP state, and timestamps.
+- First admin can be seeded from `ADMIN_EMAIL` and `ADMIN_PASSWORD`.
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| user_id | uuid | FK users.id, CASCADE, **indexed** |
-| title | text | |
-| original_filename | text | |
-| file_key | text | storage key (not a path the client sees) |
-| content_type | text | `application/pdf` \| docx mime |
-| file_size | int | bytes |
-| extracted_text | text | plain text from the file |
-| parsed_json | jsonb | structured sections (summary/skills/experience/…) |
-| is_default | bool | one default per user (partial unique index) |
-| created_at / updated_at | timestamptz | |
+`invite_tokens`
 
-**jobs**
+- Supports private/invite-only registration.
+- Tracks creator, optional used-by user, expiry, and created timestamp.
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| user_id | uuid | FK, CASCADE, indexed |
-| company_name | text | |
-| title | text | |
-| location | text? | |
-| work_mode | work_mode | default `unknown` |
-| source | job_source | default `other` |
-| source_url | text? | |
-| description | text | pasted JD |
-| salary_min / salary_max | int? | |
-| currency | text? | ISO 4217 |
-| priority | priority | default `medium` |
-| created_at / updated_at | timestamptz | |
+`resumes`
 
-> Pipeline **status lives on `applications`**, not `jobs`, to avoid duplicate
-> sources of truth (a job becomes an application when the user starts pursuing it).
+- Stores title, original filename, content type, size, opaque file key, extracted text, parsed JSON, default flag, and timestamps.
+- Files are stored through the storage interface; raw paths are not exposed to clients.
 
-**job_analyses**
+`jobs`
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| user_id | uuid | FK, CASCADE, indexed |
-| resume_id | uuid | FK resumes.id |
-| job_id | uuid | FK jobs.id |
-| overall_score | int | 0–100 |
-| keyword_score / skills_score / experience_score / role_score / education_score / formatting_score | int | per-category 0–100 |
-| matched_keywords | jsonb | string[] |
-| missing_keywords | jsonb | `[{keyword, likely_qualified: bool}]` |
-| recommendations | jsonb | string[] |
-| explanation | text | AI narrative |
-| provider / model_used | text | e.g. `ollama` / `qwen2.5:7b` |
-| created_at | timestamptz | |
+- Stores company, title, location, work mode, source, source URL, job description, salary range, currency, priority, and timestamps.
+- Pipeline state does not live here; it lives on `applications`.
 
-**cover_letters**
+`job_analyses`
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| user_id | uuid | FK, CASCADE, indexed |
-| job_id | uuid | FK jobs.id |
-| resume_id | uuid | FK resumes.id |
-| content | text | |
-| tone | cover_letter_tone | |
-| status | cover_letter_status | default `draft` |
-| created_at / updated_at | timestamptz | |
+- Stores resume/job pair, overall score, category scores, matched keywords, missing keyword metadata, recommendations, explanation, provider/model, and timestamp.
+- Scores are estimates.
 
-**applications**
+`cover_letters`
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| user_id | uuid | FK, CASCADE, indexed |
-| job_id | uuid | FK jobs.id; unique per (user_id, job_id) |
-| resume_id | uuid? | FK resumes.id |
-| cover_letter_id | uuid? | FK cover_letters.id |
-| status | application_status | default `saved`, indexed with user_id |
-| applied_at | timestamptz? | |
-| follow_up_at | timestamptz? | |
-| notes | text? | |
-| created_at / updated_at | timestamptz | |
+- Stores job, resume, content, tone, workflow status, and timestamps.
+- No sending happens from this table without an explicit later review-gated workflow.
 
-**contacts**
+`applications`
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| user_id | uuid | FK, CASCADE, indexed |
-| job_id | uuid? | FK jobs.id (optional link) |
-| name | text | |
-| company / role / email / linkedin_url | text? | |
-| notes | text? | |
-| contacted | bool | default false |
-| created_at / updated_at | timestamptz | |
+- Stores job, optional resume, optional cover letter, pipeline status, applied date, follow-up date, notes, and timestamps.
+- Enforces one application per `(user_id, job_id)`.
 
-**outreach_messages**
+`contacts`
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| user_id | uuid | FK, CASCADE, indexed |
-| job_id | uuid? | FK jobs.id |
-| contact_id | uuid? | FK contacts.id |
-| channel | outreach_channel | |
-| message_type | text | connection_note / follow_up / recruiter_email / referral / cold |
-| content | text | |
-| status | outreach_status | default `draft` |
-| created_at / updated_at | timestamptz | |
+- Stores optional job link, contact identity fields, company/role/email/LinkedIn URL, notes, contacted flag, and timestamps.
 
-**activity_events** (powers the timeline)
+`outreach_messages`
 
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| user_id | uuid | FK, CASCADE, indexed |
-| entity_type | text | resume / job / application / … |
-| entity_id | uuid | |
-| event_type | text | resume_uploaded, analysis_completed, status_changed, … |
-| description | text | |
-| metadata | jsonb | |
-| created_at | timestamptz | indexed |
+- Stores optional job/contact links, channel, message type, content, workflow status, and timestamps.
+- Draft/review statuses are expected before any external action.
 
-### 3.3 Deferred to V2 (designed-for, not built yet)
+`activity_events`
 
-`resume_versions`, `tailored_resume_drafts`, `email_drafts`. Schemas live in the
-roadmap; tables are not created in V1 migrations.
+- Stores entity type/id, event type, description, metadata, and timestamp for timelines and dashboard activity.
 
----
+### Enums
 
-## 4. API contract
+- `work_mode`: `onsite`, `remote`, `hybrid`, `unknown`
+- `job_source`: `linkedin`, `company_site`, `indeed`, `referral`, `recruiter`, `other`
+- `priority`: `low`, `medium`, `high`
+- `application_status`: `saved`, `interested`, `resume_tailored`, `cover_letter_created`, `applied`, `contacted_recruiter`, `referred`, `phone_screen`, `technical_interview`, `final_interview`, `offer`, `rejected`, `withdrawn`, `archived`
+- `cover_letter_tone`: `professional`, `friendly`, `concise`, `enthusiastic`
+- `cover_letter_status`: `draft`, `reviewed`, `accepted`, `rejected`, `exported`
+- `outreach_channel`: `email`, `linkedin`, `other`
+- `outreach_status`: `draft`, `copied`, `sent`, `replied`, `closed`
 
-Base path `/api`. JSON in/out. Auth via session cookie. Errors use a consistent
-envelope: `{ "detail": "<message>", "code": "<machine_code>" }`. Standard codes:
-`401` unauthenticated, `403` not owner, `404` not found, `409` conflict,
-`422` validation, `429` rate-limited.
+### Deferred V2 Tables
 
-### 4.1 Auth
+- `resume_versions`
+- `tailored_resume_drafts`
+- `email_drafts`
 
-| Method | Path | Body | Returns |
-|--------|------|------|---------|
-| POST | `/api/auth/register` | `{email, password, invite_token}` | sets cookie; flat user object |
-| POST | `/api/auth/login` | `{email, password}` | sets session and returns flat user with `mfa_enrollment_required`, or returns `{mfa_required: true}` with an MFA-pending cookie |
-| POST | `/api/auth/logout` | — | clears cookie |
-| GET | `/api/auth/me` | — | flat user object |
+Introduce these only when the workflow needs them.
 
-### 4.2 Resumes
+## 5. API Contract
 
-| Method | Path | Notes |
-|--------|------|-------|
-| POST | `/api/resumes/upload` | multipart file (PDF/DOCX); extracts text, stores file, runs best-effort inline parse |
-| GET | `/api/resumes` | list (current user only) |
-| GET | `/api/resumes/{id}` | detail incl. parsed sections |
-| PATCH | `/api/resumes/{id}` | edit title, extracted_text, is_default |
-| DELETE | `/api/resumes/{id}` | removes row + stored file |
-| POST | `/api/resumes/{id}/parse` | re-run AI section parse |
+Base path: `/api`. JSON in/out unless noted. Auth uses HTTP-only session cookies. Error responses use `{ "detail": "...", "code": "..." }` where routes provide a machine code.
 
-### 4.3 Jobs / Analysis / Cover letters
+### Implemented Endpoints
 
-| Method | Path | Notes |
-|--------|------|-------|
-| POST / GET / GET{id} / PATCH{id} / DELETE{id} | `/api/jobs` | CRUD |
-| POST | `/api/analysis/resume-job` | `{resume_id, job_id}` → runs scoring pipeline → `JobAnalysis` |
-| GET | `/api/analysis/{id}` | fetch one |
-| GET | `/api/jobs/{job_id}/analysis` | latest analysis for a job |
-| POST | `/api/cover-letters` | `{job_id, resume_id, tone}` → generate |
-| GET / PATCH | `/api/cover-letters/{id}` | fetch / edit content+status |
+Health:
 
-### 4.4 Applications / Contacts / Outreach / Dashboard
+- `GET /api/health`
 
-| Method | Path | Notes |
-|--------|------|-------|
-| POST / GET / GET{id} / PATCH{id} / DELETE{id} | `/api/applications` | CRUD; PATCH on status writes an `activity_event` |
-| POST / GET / GET{id} / PATCH{id} / DELETE{id} | `/api/contacts` | CRUD |
-| POST | `/api/outreach/generate` | `{job_id?, contact_id?, message_type, channel}` → draft |
-| GET / PATCH | `/api/outreach/{id}` | fetch / edit |
-| GET | `/api/dashboard/summary` | counts (saved/applied/interviews/offers/follow-ups due, avg score) |
-| GET | `/api/dashboard/activity` | recent timeline events |
+Auth:
 
----
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `POST /api/auth/logout`
+- `GET /api/auth/me`
+- `GET /api/auth/google/login`
+- `GET /api/auth/google/callback`
+- `GET /api/auth/mfa/enroll`
+- `POST /api/auth/mfa/verify`
+- `POST /api/auth/mfa/challenge`
 
-## 5. Authentication & multi-user security
+Resumes:
 
-- **Hashing:** argon2id (`argon2-cffi`).
-- **Session:** signed JWT (`python-jose`) in an **HTTP-only, SameSite=Lax** cookie. The cookie is `Secure` outside local development. Same-origin (via Caddy) so no CORS/cross-site cookie issues.
-- **Registration:** invite-only — `register` requires a valid, unused `invite_token`.
-  First admin seeded from env (`ADMIN_EMAIL` / `ADMIN_PASSWORD`) on startup.
-- **Isolation:** a FastAPI dependency `get_current_user()` resolves the user from the
-  cookie; **every** repository query filters by `user_id`. Owner checks return `404`
-  (not `403`) to avoid leaking existence.
-- **File access:** files are served only through authenticated, ownership-checked
-  endpoints — never by public path. Validate MIME + magic bytes; cap size at
-  **10 MB** (`MAX_UPLOAD_MB`, configurable).
-- **Rate limiting:** `slowapi` on AI endpoints (analysis, generation) to protect the
-  single Ollama instance from pile-ups.
-- **Logging:** never log resume text, emails, or secrets. Redact in production.
+- `POST /api/resumes/upload` with multipart PDF/DOCX upload.
+- `GET /api/resumes`
+- `GET /api/resumes/{id}`
+- `PATCH /api/resumes/{id}`
+- `DELETE /api/resumes/{id}`
+- `POST /api/resumes/{id}/parse`
+- `GET /api/resumes/{id}/export.pdf`
 
----
+Jobs:
 
-## 6. AI provider layer
+- `POST /api/jobs`
+- `GET /api/jobs`
+- `GET /api/jobs/{id}`
+- `PATCH /api/jobs/{id}`
+- `DELETE /api/jobs/{id}`
 
-A thin abstraction so the engine is swappable. Verified against the Ollama Python
-client (`format` accepts a JSON schema; `temperature: 0` for determinism; async API).
+Admin invites:
+
+- `GET /api/invites`
+- `POST /api/invites`
+
+### Planned V1 Endpoints
+
+Analysis:
+
+- `POST /api/analysis/resume-job`
+- `GET /api/analysis/{id}`
+- `GET /api/jobs/{job_id}/analysis`
+
+Cover letters:
+
+- `POST /api/cover-letters`
+- `GET /api/cover-letters/{id}`
+- `PATCH /api/cover-letters/{id}`
+
+Applications, contacts, outreach, dashboard:
+
+- `POST/GET/GET {id}/PATCH {id}/DELETE {id}` for `/api/applications`.
+- `POST/GET/GET {id}/PATCH {id}/DELETE {id}` for `/api/contacts`.
+- `POST /api/outreach/generate`
+- `GET /api/outreach/{id}`
+- `PATCH /api/outreach/{id}`
+- `GET /api/dashboard/summary`
+- `GET /api/dashboard/activity`
+
+## 6. Authentication And Isolation
+
+- Password hashes use argon2id.
+- Session tokens are signed JWTs in `jg_session` HTTP-only cookies.
+- MFA challenge state uses a separate pending cookie/token path.
+- Google OAuth state uses Starlette SessionMiddleware in a separate short-lived signed cookie.
+- Registration requires a valid unused invite token, except startup admin seed.
+- Google sign-in is fail-closed unless OAuth credentials and allowlisted emails are configured.
+- Every user-owned query must filter by the authenticated `user_id`.
+- File access must always be authenticated and ownership checked.
+- Logs must not include resume text, secrets, tokens, or sensitive profile data.
+
+## 7. AI Provider Layer
+
+The backend uses a small provider abstraction so AI can be swapped and tests can stay deterministic.
 
 ```python
 class AIProvider(ABC):
     async def generate_text(self, prompt: str, *, system: str | None = None) -> str: ...
     async def generate_json(self, prompt: str, schema: dict, *, system: str | None = None) -> dict: ...
-
-class OllamaProvider(AIProvider):
-    # uses ollama.AsyncClient(host=OLLAMA_BASE_URL)
-    # generate_json -> chat(model, messages, format=schema, options={"temperature": 0})
-
-class MockProvider(AIProvider):
-    # deterministic canned responses for tests — zero external calls
 ```
 
-- **Config:** `AI_PROVIDER=ollama`, `OLLAMA_BASE_URL=http://ollama:11434`,
-  `OLLAMA_MODEL=qwen2.5:7b-instruct`, `OLLAMA_FAST_MODEL=llama3.2:3b`.
-- **Models:** `qwen2.5:7b-instruct` for analysis/structured JSON; `llama3.2:3b` for
-  light/fast generation. Pulled on first boot via an init step.
-- **Prompt guardrails** (system prompt, every call): no fabrication; distinguish
-  *missing keyword you already qualify for* vs *qualification you lack*; explain
-  recommendations; keep resume output ATS-plain.
+Providers:
 
----
+- `OllamaProvider`: real local model calls through `OLLAMA_BASE_URL`.
+- `MockProvider`: deterministic canned output for tests and fast local iteration.
 
-## 7. ATS-style scoring algorithm
+Important config:
 
-Hybrid: **deterministic numeric score** + **AI reasoning**. Deterministic part keeps
-the number explainable and reproducible; AI part adds judgement and language.
+```dotenv
+AI_PROVIDER=ollama
+OLLAMA_BASE_URL=http://ollama:11434
+OLLAMA_MODEL=qwen2.5:7b-instruct
+OLLAMA_FAST_MODEL=llama3.2:3b
+```
 
-**Pipeline:**
+Prompt guardrails should be repeated in AI calls: no fabrication, distinguish missing keywords the user likely already qualifies for from true gaps, explain recommendations, and keep resume output ATS-plain.
 
-1. **Extract JD keywords** — normalize text (lowercase, strip), pull candidate terms
-   via n-gram + a curated skills/tech lexicon, plus capitalized/technical tokens.
-2. **Extract resume terms** from `extracted_text` + `parsed_json.skills`.
-3. **Match** — exact match first; then fuzzy via **`rapidfuzz`** (`token_set_ratio`
-   ≥ threshold) to catch variants (e.g. "CI/CD" ≈ "continuous integration").
-4. **Score by category** with the spec weights:
-   keyword 30 · skills 25 · experience 20 · role 10 · education 5 · formatting 10.
-5. **AI pass** (`generate_json`, schema-enforced) — produce `explanation`,
-   `recommendations`, and classify each missing keyword `likely_qualified: bool`.
-6. **Persist** numeric scores + AI output as a `JobAnalysis`; label as *estimate*.
+## 8. Resume Parsing And Storage
 
-**Dependencies:** `rapidfuzz` (fast fuzzy matching, no heavy NLP). A curated skills
-lexicon ships as a data file. **V2 upgrade:** semantic matching via Ollama embeddings
-(`nomic-embed-text`, ~270 MB — runs easily on the RTX 4070) for synonym-aware scoring.
+Parsing pipeline:
 
----
+1. Validate uploaded PDF/DOCX type and size (`MAX_UPLOAD_MB`, default 10).
+2. Store the original file with an opaque key.
+3. Extract text with pdfplumber for PDF and python-docx for DOCX.
+4. Ask the AI provider for structured JSON sections when available.
+5. Let the user edit extracted text and re-run parsing.
+6. Export structured resume data to PDF when requested.
 
-## 8. Resume parsing
-
-1. **Extract text** by type:
-   - PDF → **`pdfplumber`** (good layout-aware extraction; `pypdf` fallback).
-   - DOCX → **`python-docx`**.
-2. Store original file (storage layer) + `extracted_text`.
-3. **Section parse** — `generate_json` with a `ParsedResume` schema
-   (summary, skills[], experience[], education[], projects[], certifications[]).
-4. User can **edit** `extracted_text` and re-run parse (`POST /resumes/{id}/parse`)
-   since extraction is never perfect.
-
----
-
-## 9. File storage abstraction
+Storage interface:
 
 ```python
 class StorageBackend(ABC):
     async def save(self, key: str, data: bytes, content_type: str) -> None: ...
     async def load(self, key: str) -> bytes: ...
     async def delete(self, key: str) -> None: ...
-
-class LocalStorage(StorageBackend):   # MVP — mounted Docker volume at FILE_STORAGE_PATH
-class S3Storage(StorageBackend):      # future — boto3, works with Cloudflare R2 / MinIO
 ```
 
-Keys are opaque (`{user_id}/{uuid}{ext}`); files never served by raw path.
+The MVP implementation is local filesystem storage mounted at `FILE_STORAGE_PATH`. Future S3/R2/MinIO support should preserve opaque keys and authenticated access.
 
----
+## 9. Resume-To-Job Scoring Plan
+
+The scoring feature is planned for Phase 3.
+
+Hybrid approach:
+
+1. Extract job-description keywords and categories deterministically.
+2. Extract resume terms from `extracted_text` and parsed skills.
+3. Match exact terms first, then fuzzy terms with `rapidfuzz`.
+4. Score weighted categories: keyword 30, skills 25, experience 20, role 10, education 5, formatting 10.
+5. Use AI for explanation, recommendations, and missing-keyword classification.
+6. Persist results to `job_analyses` and label UI output as an estimate.
+
+Future upgrade: semantic matching through local embeddings after the deterministic MVP is working.
 
 ## 10. Configuration
 
-`pydantic-settings`, all via env (`.env.example` documents every var):
+`.env.example` documents committed config. `.env` is gitignored.
 
-```
+Key variables:
+
+```dotenv
 APP_ENV=development
-APP_SECRET_KEY=
-DATABASE_URL=postgresql+psycopg://jobgoblin:***@db:5432/jobgoblin
+APP_SECRET_KEY=change-me
+DATABASE_URL=postgresql+psycopg://jobgoblin:jobgoblin@db:5432/jobgoblin
 AI_PROVIDER=ollama
 OLLAMA_BASE_URL=http://ollama:11434
-OLLAMA_MODEL=qwen2.5:7b-instruct
-OLLAMA_FAST_MODEL=llama3.2:3b
 FILE_STORAGE_PATH=/data/uploads
 MAX_UPLOAD_MB=10
 ADMIN_EMAIL=
 ADMIN_PASSWORD=
-FRONTEND_ORIGIN=http://localhost:3000   # dev only; prod is same-origin
+FRONTEND_ORIGIN=http://localhost:3000
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+OAUTH_REDIRECT_BASE_URL=http://localhost:8080
+ALLOWED_EMAILS=
+TOTP_ISSUER=JobGoblin
 ```
 
----
+For fast local iteration, set `AI_PROVIDER=mock` and seed a local admin:
 
-## 11. Deployment (Docker Compose)
-
-Services (all `restart: unless-stopped`, auto-start on boot):
-
-| Service | Image / build | Volume |
-|---------|---------------|--------|
-| `caddy` | caddy:2 | caddy config; routes `/`→frontend, `/api`→backend |
-| `frontend` | build `frontend/` | — |
-| `backend` | build `backend/` | `uploads:/data/uploads` |
-| `db` | postgres:16 | `pgdata:/var/lib/postgresql/data` |
-| `ollama` | ollama/ollama | `ollama:/root/.ollama` (model cache) |
-| `cloudflared` | cloudflare/cloudflared | tunnel token via env; planned, not yet in compose |
-
-- **GPU:** `ollama` container gets the NVIDIA GPU via the container toolkit (CUDA).
-- **Model setup:** pull `qwen2.5:7b-instruct` into the Ollama volume before using the real provider; tests and fast dev use `AI_PROVIDER=mock`.
-- **Migrations:** `alembic upgrade head` on backend start.
-- **CI:** `.github/workflows/ci.yml` runs backend ruff + pytest and frontend lint + build.
-
----
-
-## 12. Testing strategy
-
-- **Backend:** `pytest` + `httpx.AsyncClient`; ephemeral Postgres (Docker/testcontainers);
-  **`MockProvider`** for all AI so tests are deterministic and offline. Cover auth +
-  ownership isolation, scoring math (deterministic part), parsing, CRUD.
-- **Frontend:** component tests (Vitest) + a Playwright smoke of the core loop later.
-
----
-
-## 13. Repository structure
-
+```dotenv
+ADMIN_EMAIL=admin@jobgoblin.local
+ADMIN_PASSWORD=goblin-demo-pass-123
 ```
+
+## 11. Deployment
+
+Current compose services:
+
+| Service | Purpose | Notes |
+|---------|---------|-------|
+| `caddy` | Local entry point | Routes `/` to frontend and `/api/*` to backend. |
+| `frontend` | Next.js app | Built from `frontend/`; uses standalone output. |
+| `backend` | FastAPI API | Runs migrations on startup; mounts uploads volume. |
+| `db` | PostgreSQL 16 | Uses `pgdata` Docker volume. |
+| `ollama` | Local LLM runtime | Uses `ollama` Docker volume; model pull/setup is separate. |
+
+Planned:
+
+- `cloudflared` service/config after local auth is stable.
+- HTTPS tunnel validation for secure-cookie behavior.
+
+## 12. Testing Strategy
+
+Backend:
+
+- `pytest` with a test PostgreSQL database on port 5433.
+- `MockProvider` for AI tests.
+- Coverage should prioritize auth branches, ownership isolation, migrations/model behavior, resume parsing/storage/export, and each CRUD module as it lands.
+- `ruff check .` for linting.
+
+Frontend:
+
+- `npm run lint` and `npm run build` are required now.
+- Add focused component or Playwright smoke tests later when core workflows stabilize.
+
+CI:
+
+- `.github/workflows/ci.yml` runs backend ruff/pytest with a Postgres service and frontend lint/build on pull requests.
+
+## 13. Repository Structure
+
+```text
 jobgoblin/
-├── backend/   app/{core,models,schemas,api/routes,services,workers,tests}/ · Dockerfile · pyproject.toml · alembic/
-├── frontend/  app/{login,dashboard,resumes,jobs,applications,contacts,settings}/ · components/ · lib/ · Dockerfile
-├── infra/     Caddyfile · cloudflared config planned
-├── docs/      architecture.{html,md} · design.md
-├── docker-compose.yml · .env.example · README.md
+|-- backend/   # FastAPI app, models, schemas, routes, services, migrations, tests
+|-- frontend/  # Next.js app, components, lib helpers, Dockerfile
+|-- infra/     # Caddyfile; cloudflared config planned
+|-- docs/      # architecture, design, roadmap
+|-- docker-compose.yml
+|-- .env.example
+|-- README.md
 ```
 
----
+## 14. Decisions Log
 
-## 14. Decisions log & open questions
+Decided:
 
-**Decided:** Ollama (`qwen2.5:7b`) · self-host on laptop + Cloudflare Tunnel (non-24/7)
-· same-origin via Caddy (no CORS) · invite-only registration · SQLModel + Alembic ·
-deterministic+AI scoring (embeddings deferred to V2) · pipeline status on `applications`.
+- Self-host on the owner's laptop for $0 hosting and local Ollama.
+- Caddy same-origin routing for browser auth simplicity.
+- Invite-only registration and fail-closed Google OAuth allowlist.
+- TOTP MFA instead of SMS or email OTP.
+- SQLModel and Alembic for the backend model/migration layer.
+- Local storage abstraction for uploads.
+- Deterministic plus AI scoring for explainable estimated match results.
+- Pipeline status lives on `applications`, not `jobs`.
 
-**Resolved:** registration uses the **invite-token** model · upload cap **10 MB**
-(`MAX_UPLOAD_MB`, configurable). Building `feature/backend-foundation` next.
+Resolved:
+
+- Phase 0 local-login fixes are complete.
+- Phase 1 delivery foundation is complete.
+- The next implementation phase is core resource modules.

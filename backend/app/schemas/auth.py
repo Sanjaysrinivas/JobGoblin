@@ -8,8 +8,9 @@ they touch the database.
 
 import re
 import uuid
+from datetime import datetime
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
@@ -31,6 +32,14 @@ class RegisterRequest(BaseModel):
     def _check_email(cls, value: str) -> str:
         return _validate_email(value)
 
+    @field_validator("invite_token")
+    @classmethod
+    def _check_invite_token(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("invite token is required")
+        return value
+
 
 class LoginRequest(BaseModel):
     email: str
@@ -47,6 +56,21 @@ class UserPublic(BaseModel):
     email: str
     display_name: str
     is_admin: bool
+
+    model_config = {"from_attributes": True}
+
+
+class InviteCreateRequest(BaseModel):
+    expires_in_days: int = Field(default=7, ge=1, le=90)
+
+
+class InviteTokenPublic(BaseModel):
+    id: uuid.UUID
+    token: str
+    created_by: uuid.UUID
+    used_by: uuid.UUID | None
+    expires_at: datetime
+    created_at: datetime
 
     model_config = {"from_attributes": True}
 

@@ -130,6 +130,22 @@ export interface Job {
   updated_at: string;
 }
 
+export interface JobCreatePayload {
+  company_name: string;
+  title: string;
+  location?: string | null;
+  work_mode?: WorkMode;
+  source?: JobSource;
+  source_url?: string | null;
+  description: string;
+  salary_min?: number | null;
+  salary_max?: number | null;
+  currency?: string | null;
+  priority?: Priority;
+}
+
+export type JobUpdatePayload = Partial<JobCreatePayload>;
+
 export interface JobAnalysis {
   id: string;
   job_id: string;
