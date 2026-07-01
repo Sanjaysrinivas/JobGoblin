@@ -65,7 +65,9 @@ Application pipeline statuses: `saved`, `interested`, `resume_tailored`,
 `phone_screen`, `technical_interview`, `final_interview`, `offer`, `rejected`,
 `withdrawn`, `archived`.
 
-## 5. Core AI Flow: Resume To Job Analysis
+## 5. Planned Core AI Flow: Resume To Job Analysis
+
+This is planned for Phase 3. The resume upload, storage, extraction, parsing, and PDF export pieces already exist; the job-description comparison flow is still pending.
 
 1. User uploads a resume; backend stores the file and extracts plain text.
 2. User pastes a job description and selects a resume.

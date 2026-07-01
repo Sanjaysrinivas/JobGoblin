@@ -1,67 +1,88 @@
-# JobGoblin — Frontend
+# JobGoblin Frontend
 
-The Next.js (App Router) web client for JobGoblin. TypeScript (strict),
-Tailwind CSS v4, and shadcn/ui, in the **"Goblin Workshop"** design system:
-warm-neutral stone surfaces, a single goblin-green accent, lantern-amber as
-the secondary signal, and a first-class dark mode.
+The Next.js App Router web client for JobGoblin. It uses TypeScript strict mode, Tailwind CSS v4, shadcn/ui primitives, lucide-react icons, and a private-workspace UI built around the app shell in `app/(app)`.
 
 ## Stack
 
-- **Next.js 16** (App Router, React 19, Turbopack)
-- **Tailwind CSS v4** (CSS-variable tokens in `app/globals.css`)
-- **shadcn/ui** (new-york style) — `components/ui/*`
-- **lucide-react** icons, **next-themes** for dark mode
-- Fonts (self-hosted via `next/font/google`): Sora (display),
-  Plus Jakarta Sans (body), JetBrains Mono (data)
+- Next.js 16, React 19, App Router, Turbopack in dev.
+- Tailwind CSS v4 with CSS-variable tokens in `app/globals.css`.
+- shadcn/ui primitives in `components/ui/*`.
+- lucide-react icons and next-themes dark mode.
+- Fonts loaded through `next/font/google`: Sora, Plus Jakarta Sans, JetBrains Mono.
 
 ## Structure
 
-```
+```text
 frontend/
-├── app/
-│   ├── layout.tsx           # root layout: fonts + ThemeProvider
-│   ├── page.tsx             # redirects → /dashboard
-│   ├── globals.css          # design tokens (light + dark) + base styles
-│   ├── login/page.tsx       # full-bleed login (outside the app shell)
-│   └── (app)/               # authenticated shell (sidebar + topbar)
-│       ├── layout.tsx
-│       ├── dashboard/       # pipeline, activity, quick actions
-│       ├── resumes/  jobs/  applications/  contacts/  settings/
-├── components/
-│   ├── ui/                  # shadcn primitives: button, input, card, label, badge
-│   ├── app-sidebar.tsx  app-topbar.tsx
-│   ├── login-form.tsx       # POSTs /api/auth/login (credentials: include)
-│   ├── theme-provider.tsx  theme-toggle.tsx
-│   ├── page-header.tsx  empty-state.tsx  goblin-mark.tsx
-├── lib/
-│   ├── api.ts               # typed fetch wrapper (always credentials: include)
-│   ├── auth.ts              # login / register / logout / getCurrentUser
-│   ├── types.ts             # shared API types (mirrors docs/design.md §3–4)
-│   ├── nav.ts               # sidebar navigation config
-│   └── utils.ts             # cn() class merge
-├── Dockerfile               # multi-stage standalone production build
-└── components.json          # shadcn config
+|-- app/
+|   |-- layout.tsx                 # root layout: fonts + ThemeProvider
+|   |-- page.tsx                   # redirects to /dashboard
+|   |-- globals.css                # design tokens and base styles
+|   |-- login/page.tsx             # login outside the app shell
+|   `-- (app)/                     # authenticated shell protected by AuthGate
+|       |-- layout.tsx
+|       |-- dashboard/
+|       |-- resumes/
+|       |-- resumes/[id]/
+|       |-- jobs/
+|       |-- applications/
+|       |-- contacts/
+|       `-- settings/
+|-- components/
+|   |-- ui/                        # shadcn primitives
+|   |-- auth-gate.tsx
+|   |-- app-sidebar.tsx
+|   |-- app-topbar.tsx
+|   |-- login-form.tsx
+|   |-- mfa-form.tsx
+|   |-- page-header.tsx
+|   `-- empty-state.tsx
+|-- lib/
+|   |-- api.ts                     # typed fetch wrapper, credentials included
+|   |-- auth.ts                    # auth API helpers
+|   |-- resumes.ts                 # resume API helpers, including PDF export
+|   |-- types.ts                   # shared API-facing types
+|   |-- nav.ts                     # sidebar navigation config
+|   `-- utils.ts                   # cn() class merge
+|-- Dockerfile                     # standalone production build
+`-- components.json                # shadcn config
 ```
 
 ## Develop
 
+Install dependencies and run the frontend directly:
+
 ```bash
 npm install
-npm run dev      # http://localhost:3000
+npm run dev
 ```
 
-**Browser** calls go to the same origin under `/api` (production, behind
-Caddy). When running `next dev` outside Docker, point the browser at the
-backend directly:
+Direct frontend dev runs at http://localhost:3000. In that mode, point browser API calls at the backend:
 
-```bash
-# .env.local
+```dotenv
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
 ```
 
-**Server-side** calls (Server Components / Actions) need an absolute URL and
-skip the Caddy hop, so `lib/api.ts` reads `INTERNAL_API_BASE_URL` (default
-`http://backend:8000`). docker-compose sets this for the `frontend` service.
+The preferred full-stack path is still the root Docker Compose stack through Caddy:
+
+```bash
+docker compose up -d --build
+# open http://localhost:8080
+```
+
+In Docker, browser calls use the same-origin `/api` prefix through Caddy. Server-side calls need an absolute URL, so `lib/api.ts` reads `INTERNAL_API_BASE_URL`; `docker-compose.yml` sets it to `http://backend:8000`.
+
+## Current API Usage
+
+The frontend currently talks to implemented backend endpoints for:
+
+- Auth: login, invite-only signup, logout, current user, MFA challenge/enroll/verify, and Google OAuth redirect entry points.
+- Resumes: upload, list, detail, edit, delete, re-parse, and PDF export.
+- Jobs: list, create, detail, edit, and delete.
+
+Applications, contacts, dashboard data, cover letters, and resume-to-job analysis pages still use placeholder UI until their backend modules are built.
+
+All API requests use `credentials: "include"` so the HTTP-only session cookie flows with same-origin Docker/Caddy requests and direct dev requests.
 
 ## Verify
 
@@ -70,24 +91,8 @@ npm run lint
 npm run build
 ```
 
+The same commands run in GitHub Actions for pull requests.
+
 ## Production / Docker
 
-`next.config.ts` sets `output: "standalone"`, and the `Dockerfile` produces a
-minimal Node 22 image. In the stack the frontend sits behind Caddy (see the
-root `docker-compose.yml` + `infra/Caddyfile`):
-
-```bash
-docker compose up --build
-# open http://localhost:8080  (Caddy → / = frontend, /api/* = backend)
-```
-
-## API contract
-
-The backend auth endpoints are built in parallel on another branch. This app
-codes against the agreed contract (`docs/design.md` §4):
-
-- `POST /api/auth/login` `{email, password}` → sets session cookie, `{user}`
-- `POST /api/auth/logout`, `GET /api/auth/me`, `POST /api/auth/register`
-
-All requests use `credentials: "include"` so the HTTP-only session cookie
-flows on every call.
+`next.config.ts` sets `output: "standalone"`, and the Dockerfile produces the frontend image used by the root compose stack. Caddy is the public local entry point on http://localhost:8080 and routes `/api/*` to FastAPI while serving everything else from Next.js.
