@@ -411,7 +411,7 @@ Services (all `restart: unless-stopped`, auto-start on boot):
 - **GPU:** `ollama` container gets the NVIDIA GPU via the container toolkit (CUDA).
 - **Model setup:** pull `qwen2.5:7b-instruct` into the Ollama volume before using the real provider; tests and fast dev use `AI_PROVIDER=mock`.
 - **Migrations:** `alembic upgrade head` on backend start.
-- **CI:** `.github/workflows/ci.yml` currently runs backend ruff + pytest. Frontend lint/build is planned for the delivery-foundation phase.
+- **CI:** `.github/workflows/ci.yml` runs backend ruff + pytest and frontend lint + build.
 
 ---
 

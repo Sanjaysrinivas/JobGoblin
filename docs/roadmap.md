@@ -36,7 +36,7 @@ Scope:
 
 - Add backend route auto-discovery for `app/api/routes/*.py` modules that export
   `router`.
-- Add GitHub Actions frontend CI: `npm ci`, `npm run lint`, `npm run build`.
+- Add GitHub Actions frontend CI: `npm ci`, `npm run lint`, `npm run build`. Completed in `.github/workflows/ci.yml`.
 - Refresh project docs when behavior changes, especially README, design, and this
   roadmap.
 - Confirm `HANDOVER.md` is intentionally tracked or intentionally local-only.

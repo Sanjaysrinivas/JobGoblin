@@ -131,12 +131,16 @@ def test_google_login_redirects(client, monkeypatch):
     get_settings().google_client_id = "test-client-id"
     get_settings().google_client_secret = "test-secret"
 
+    from starlette.responses import RedirectResponse
+
     from app.core import google_oauth
 
-    def fake_url(state):
-        return "https://accounts.google.com/o/oauth2/v2/auth?client_id=test"
+    async def fake_redirect(request):
+        return RedirectResponse(
+            "https://accounts.google.com/o/oauth2/v2/auth?client_id=test"
+        )
 
-    monkeypatch.setattr(google_oauth, "build_authorization_url", fake_url)
+    monkeypatch.setattr(google_oauth, "build_authorization_redirect", fake_redirect)
 
     resp = client.get("/api/auth/google/login", follow_redirects=False)
     assert resp.status_code in (302, 307)
