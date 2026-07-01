@@ -110,12 +110,16 @@ export function JobForm({
 }: JobFormProps) {
   const [state, setState] = React.useState<FormState>(() => toState(job));
 
-
   const payload = toPayload(state);
+  const isSalaryRangeInvalid =
+    typeof payload.salary_min === "number" &&
+    typeof payload.salary_max === "number" &&
+    payload.salary_min > payload.salary_max;
   const canSubmit =
     payload.company_name.length > 0 &&
     payload.title.length > 0 &&
-    payload.description.length > 0;
+    payload.description.length > 0 &&
+    !isSalaryRangeInvalid;
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setState((prev) => ({ ...prev, [key]: value }));
@@ -266,6 +270,12 @@ export function JobForm({
           />
         </div>
       </div>
+
+      {isSalaryRangeInvalid && (
+        <p className="text-destructive text-sm">
+          Salary minimum must be less than or equal to salary maximum.
+        </p>
+      )}
 
       <div className="space-y-1.5">
         <Label htmlFor="job-description">Job description</Label>

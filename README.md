@@ -101,7 +101,6 @@ GitHub Actions runs the same backend and frontend checks for pull requests.
 
 ## Essential Docs
 
-- [Agent handover](HANDOVER.md)
 - [Architecture](docs/architecture.md)
 - [Detailed design](docs/design.md)
 - [Roadmap and phases](docs/roadmap.md)

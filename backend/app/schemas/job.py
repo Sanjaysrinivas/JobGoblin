@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator
 
 from app.models.enums import JobSource, Priority, WorkMode
 
@@ -19,12 +19,20 @@ class JobBase(BaseModel):
     currency: str | None = Field(default=None, min_length=3, max_length=3)
     priority: Priority = Priority.medium
 
-    @field_validator("company_name", "title", "location", "source_url", "description", "currency")
+    @field_validator(
+        "company_name",
+        "title",
+        "location",
+        "source_url",
+        "description",
+        "currency",
+        mode="before",
+    )
     @classmethod
-    def strip_strings(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        return value.strip()
+    def strip_strings(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip()
+        return value
 
     @field_validator("company_name", "title", "description")
     @classmethod
@@ -37,16 +45,6 @@ class JobBase(BaseModel):
     @classmethod
     def normalize_currency(cls, value: str | None) -> str | None:
         return value.upper() if value else value
-
-    @model_validator(mode="after")
-    def salary_range_is_ordered(self) -> "JobBase":
-        if (
-            self.salary_min is not None
-            and self.salary_max is not None
-            and self.salary_min > self.salary_max
-        ):
-            raise ValueError("salary_min must be less than or equal to salary_max")
-        return self
 
 
 class JobCreate(JobBase):
@@ -66,12 +64,20 @@ class JobUpdate(BaseModel):
     currency: str | None = Field(default=None, min_length=3, max_length=3)
     priority: Priority | None = None
 
-    @field_validator("company_name", "title", "location", "source_url", "description", "currency")
+    @field_validator(
+        "company_name",
+        "title",
+        "location",
+        "source_url",
+        "description",
+        "currency",
+        mode="before",
+    )
     @classmethod
-    def strip_strings(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        return value.strip()
+    def strip_strings(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.strip()
+        return value
 
     @field_validator("company_name", "title", "description")
     @classmethod
@@ -84,16 +90,6 @@ class JobUpdate(BaseModel):
     @classmethod
     def normalize_currency(cls, value: str | None) -> str | None:
         return value.upper() if value else value
-
-    @model_validator(mode="after")
-    def salary_range_is_ordered(self) -> "JobUpdate":
-        if (
-            self.salary_min is not None
-            and self.salary_max is not None
-            and self.salary_min > self.salary_max
-        ):
-            raise ValueError("salary_min must be less than or equal to salary_max")
-        return self
 
 
 class JobOut(BaseModel):

@@ -69,6 +69,17 @@ def test_create_get_update_delete_job(client, session, user):
     assert body["priority"] == "high"
     assert body["currency"] == "USD"
 
+    spaced = _create_job(
+        client,
+        company_name="  TrimCo  ",
+        title="  Platform Engineer  ",
+        currency=" usd ",
+    )
+    assert spaced.status_code == 201, spaced.text
+    assert spaced.json()["company_name"] == "TrimCo"
+    assert spaced.json()["title"] == "Platform Engineer"
+    assert spaced.json()["currency"] == "USD"
+
     job_id = uuid.UUID(body["id"])
     stored = session.get(Job, job_id)
     assert stored is not None
@@ -153,6 +164,7 @@ def test_create_rejects_invalid_enum(client):
 def test_create_rejects_invalid_salary_range(client):
     resp = _create_job(client, salary_min=200000, salary_max=100000)
     assert resp.status_code == 422
+    assert resp.json()["code"] == "invalid_salary_range"
 
 
 def test_patch_rejects_blank_required_field(client):

@@ -36,7 +36,6 @@ Completed scope:
 - Added backend route auto-discovery for `app/api/routes/*.py` modules that export `router`.
 - Added GitHub Actions frontend CI: `npm ci`, `npm run lint`, `npm run build`.
 - Refreshed project docs around the current Docker/Caddy/Ollama architecture, local auth state, and phase plan.
-- Kept `HANDOVER.md` tracked as the durable agent/session handover.
 
 Exit criteria met:
 

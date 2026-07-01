@@ -346,7 +346,6 @@ jobgoblin/
 |-- docker-compose.yml
 |-- .env.example
 |-- README.md
-`-- HANDOVER.md
 ```
 
 ## 14. Decisions Log

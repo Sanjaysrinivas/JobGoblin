@@ -33,3 +33,7 @@ uploads/
 Thumbs.db
 .idea/
 .vscode/
+
+# Local agent handover
+HANDOVER.md
+AGENT_HANDOVER.md

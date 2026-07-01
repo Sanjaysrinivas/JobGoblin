@@ -65,6 +65,7 @@ def create_job(
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_session)],
 ) -> Job:
+    _validate_salary_range(payload.salary_min, payload.salary_max)
     job = Job(user_id=current_user.id, **payload.model_dump())
     session.add(job)
     session.commit()
