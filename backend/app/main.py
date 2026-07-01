@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 from starlette.middleware.sessions import SessionMiddleware
 
-from app.api.routes import auth, health, resumes
+from app.api.routes import include_discovered_routers
 from app.core.config import get_settings
 from app.core.ratelimit import limiter, rate_limit_exceeded_handler
 from app.core.startup import seed_admin
@@ -69,6 +69,4 @@ if settings.app_env == "development":
         allow_headers=["*"],
     )
 
-app.include_router(health.router, prefix="/api")
-app.include_router(auth.router, prefix="/api")
-app.include_router(resumes.router, prefix="/api")
+include_discovered_routers(app, prefix="/api")

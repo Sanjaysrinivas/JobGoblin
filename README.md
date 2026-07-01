@@ -59,7 +59,7 @@ jobgoblin/
 
 Implemented:
 
-- Backend foundation, health endpoint, settings, migrations, CI backend job.
+- Backend foundation, health endpoint, settings, migrations, CI backend and frontend jobs.
 - Email/password auth, Google OAuth plumbing, allowlist, TOTP MFA.
 - Resume upload, extraction, AI parse, edit, list/detail, delete, and PDF export.
 - Frontend app shell, login/MFA screens, and resume screens.
