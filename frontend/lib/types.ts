@@ -1,47 +1,90 @@
 /**
- * Shared types for the JobGoblin API contract (docs/design.md §3–4).
- *
- * These mirror the backend's JSON shapes. The backend is built in parallel on
- * another branch; treat this file as the agreed contract until both merge.
+ * Shared types for the JobGoblin API contract (docs/design.md sections 3-4).
+ * These mirror the backend JSON shapes currently implemented or specified.
  */
 
 // ---------------------------------------------------------------------------
-// Enumerations (design.md §3.1)
+// Enumerations (design.md section 3.1)
 // ---------------------------------------------------------------------------
+
+export type WorkMode = "onsite" | "remote" | "hybrid" | "unknown";
+
+export type JobSource =
+  | "linkedin"
+  | "company_site"
+  | "indeed"
+  | "referral"
+  | "recruiter"
+  | "other";
+
+export type Priority = "low" | "medium" | "high";
 
 export type ApplicationStatus =
   | "saved"
+  | "interested"
+  | "resume_tailored"
+  | "cover_letter_created"
   | "applied"
-  | "interviewing"
+  | "contacted_recruiter"
+  | "referred"
+  | "phone_screen"
+  | "technical_interview"
+  | "final_interview"
   | "offer"
   | "rejected"
-  | "withdrawn";
+  | "withdrawn"
+  | "archived";
 
-export type CoverLetterStatus = "draft" | "final";
+export type CoverLetterTone =
+  | "professional"
+  | "friendly"
+  | "concise"
+  | "enthusiastic";
+
+export type CoverLetterStatus =
+  | "draft"
+  | "reviewed"
+  | "accepted"
+  | "rejected"
+  | "exported";
 
 export type OutreachChannel = "email" | "linkedin" | "other";
 
-export type OutreachMessageType =
-  | "intro"
-  | "follow_up"
-  | "thank_you"
-  | "referral_request";
+export type OutreachStatus = "draft" | "copied" | "sent" | "replied" | "closed";
 
 // ---------------------------------------------------------------------------
-// Core resources
+// Auth
 // ---------------------------------------------------------------------------
 
 export interface User {
   id: string;
   email: string;
-  created_at: string;
+  display_name: string;
+  is_admin: boolean;
 }
+
+export interface SessionUser extends User {
+  mfa_enrollment_required?: boolean;
+}
+
+export interface MfaRequiredResponse {
+  mfa_required: true;
+}
+
+export type PrimaryAuthResponse = SessionUser | MfaRequiredResponse;
+
+// ---------------------------------------------------------------------------
+// Core resources
+// ---------------------------------------------------------------------------
 
 export interface Resume {
   id: string;
   title: string;
+  original_filename: string;
+  content_type: string;
+  file_size: number;
   is_default: boolean;
-  extracted_text: string;
+  extracted_text: string | null;
   parsed_json: ParsedResume | null;
   created_at: string;
   updated_at: string;
@@ -72,12 +115,19 @@ export interface ParsedEducation {
 
 export interface Job {
   id: string;
+  company_name: string;
   title: string;
-  company: string;
   location: string | null;
-  url: string | null;
+  work_mode: WorkMode;
+  source: JobSource;
+  source_url: string | null;
   description: string;
+  salary_min: number | null;
+  salary_max: number | null;
+  currency: string | null;
+  priority: Priority;
   created_at: string;
+  updated_at: string;
 }
 
 export interface JobAnalysis {
@@ -85,23 +135,23 @@ export interface JobAnalysis {
   job_id: string;
   resume_id: string;
   overall_score: number;
-  category_scores: {
-    keyword: number;
-    skills: number;
-    experience: number;
-    role: number;
-    education: number;
-    formatting: number;
-  };
-  matched_keywords: string[];
-  missing_keywords: MissingKeyword[];
-  explanation: string;
-  recommendations: string[];
+  keyword_score: number;
+  skills_score: number;
+  experience_score: number;
+  role_score: number;
+  education_score: number;
+  formatting_score: number;
+  matched_keywords: string[] | null;
+  missing_keywords: MissingKeyword[] | null;
+  explanation: string | null;
+  recommendations: string[] | null;
+  provider: string;
+  model_used: string;
   created_at: string;
 }
 
 export interface MissingKeyword {
-  term: string;
+  keyword: string;
   likely_qualified: boolean;
 }
 
@@ -109,15 +159,18 @@ export interface CoverLetter {
   id: string;
   job_id: string;
   resume_id: string;
-  tone: string;
+  tone: CoverLetterTone;
   content: string;
   status: CoverLetterStatus;
   created_at: string;
+  updated_at: string;
 }
 
 export interface Application {
   id: string;
   job_id: string;
+  resume_id: string | null;
+  cover_letter_id: string | null;
   status: ApplicationStatus;
   applied_at: string | null;
   follow_up_at: string | null;
@@ -128,13 +181,16 @@ export interface Application {
 
 export interface Contact {
   id: string;
+  job_id: string | null;
   name: string;
   email: string | null;
   company: string | null;
   role: string | null;
   linkedin_url: string | null;
   notes: string | null;
+  contacted: boolean;
   created_at: string;
+  updated_at: string;
 }
 
 export interface Outreach {
@@ -142,13 +198,15 @@ export interface Outreach {
   contact_id: string | null;
   job_id: string | null;
   channel: OutreachChannel;
-  message_type: OutreachMessageType;
+  message_type: string;
   content: string;
+  status: OutreachStatus;
   created_at: string;
+  updated_at: string;
 }
 
 // ---------------------------------------------------------------------------
-// Dashboard (design.md §4.4)
+// Dashboard (design.md section 4.4)
 // ---------------------------------------------------------------------------
 
 export interface DashboardSummary {
@@ -162,9 +220,12 @@ export interface DashboardSummary {
 
 export interface ActivityEvent {
   id: string;
-  kind: string;
-  message: string;
-  occurred_at: string;
+  entity_type: string;
+  entity_id: string;
+  event_type: string;
+  description: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -181,7 +242,7 @@ export interface RegisterPayload extends LoginPayload {
 }
 
 // ---------------------------------------------------------------------------
-// Error envelope (design.md §4)
+// Error envelope (design.md section 4)
 // ---------------------------------------------------------------------------
 
 export interface ApiErrorBody {

@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy import text
 from sqlmodel import Session, SQLModel, create_engine
 
-from app import models  # noqa: F401  — import to populate SQLModel.metadata
+from app import models  # noqa: F401  - import to populate SQLModel.metadata
 
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL", "postgresql+psycopg://test:test@localhost:5433/test"
@@ -33,6 +33,7 @@ def _reset_settings():
         "auth_rate_limit",
         "mfa_rate_limit",
         "rate_limit_enabled",
+        "app_env",
     )
     saved = {k: getattr(s, k) for k in keys}
     yield

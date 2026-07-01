@@ -37,6 +37,10 @@ def _error(status_code: int, message: str, code: str) -> HTTPException:
     return HTTPException(status_code=status_code, detail={"detail": message, "code": code})
 
 
+def _cookie_secure() -> bool:
+    return settings.app_env.lower() != "development"
+
+
 def _set_session_cookie(response: Response, user: User) -> None:
     token = security.create_access_token(str(user.id))
     response.set_cookie(
@@ -44,7 +48,7 @@ def _set_session_cookie(response: Response, user: User) -> None:
         value=token,
         max_age=settings.access_token_expire_minutes * 60,
         httponly=True,
-        secure=True,
+        secure=_cookie_secure(),
         samesite="lax",
         path="/",
     )
@@ -58,7 +62,7 @@ def _set_mfa_pending_cookie(response: Response, user: User) -> None:
         value=token,
         max_age=settings.mfa_pending_token_expire_minutes * 60,
         httponly=True,
-        secure=True,
+        secure=_cookie_secure(),
         samesite="lax",
         path="/",
     )
@@ -68,7 +72,7 @@ def _clear_mfa_pending_cookie(response: Response) -> None:
     response.delete_cookie(
         key=settings.mfa_cookie_name,
         httponly=True,
-        secure=True,
+        secure=_cookie_secure(),
         samesite="lax",
         path="/",
     )
@@ -156,7 +160,7 @@ def logout(response: Response) -> Response:
     response.delete_cookie(
         key=settings.session_cookie_name,
         httponly=True,
-        secure=True,
+        secure=_cookie_secure(),
         samesite="lax",
         path="/",
     )
@@ -228,7 +232,7 @@ async def google_callback(
             session.add(user)
         else:
             # The email maps to an account already linked to a DIFFERENT Google
-            # sub. Never silently re-link — that's an account-takeover hazard.
+            # sub. Never silently re-link - that's an account-takeover hazard.
             raise _error(
                 status.HTTP_409_CONFLICT,
                 "This account is already linked to a different Google identity",

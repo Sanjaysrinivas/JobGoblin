@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 
 import { GoblinMark, GoblinWordmark } from "@/components/goblin-mark";
 import { LoginForm } from "@/components/login-form";
@@ -32,10 +33,12 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <LoginForm />
+        <Suspense fallback={null}>
+          <LoginForm />
+        </Suspense>
 
         <p className="text-muted-foreground mt-6 text-center text-xs leading-relaxed">
-          A private productivity tool — never a spam or auto-apply bot. Every
+          A private productivity tool, never a spam or auto-apply bot. Every
           external action needs your explicit approval.
         </p>
       </div>

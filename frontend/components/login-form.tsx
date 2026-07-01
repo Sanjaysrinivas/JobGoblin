@@ -1,10 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Eye, EyeOff, Loader2, LogIn } from "lucide-react";
 
-import { api, ApiError } from "@/lib/api";
+import { ApiError } from "@/lib/api";
+import { login } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -38,6 +39,7 @@ const GOOGLE_LOGIN_URL = `${
 
 export function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [showPassword, setShowPassword] = React.useState(false);
@@ -46,16 +48,21 @@ export function LoginForm() {
   const [step, setStep] = React.useState<Step>("credentials");
 
   function goToWorkspace() {
-    router.push("/dashboard");
+    const next = searchParams.get("next") || "/dashboard";
+    const safeNext =
+      next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\")
+        ? next
+        : "/dashboard";
+    router.push(safeNext);
     router.refresh();
   }
 
   function routeAfterPrimaryAuth(result: AuthResult) {
     if (result.mfa_required) {
-      // TOTP enabled: only an mfa_pending cookie was set — challenge required.
+      // TOTP enabled: only an mfa_pending cookie was set - challenge required.
       setStep("challenge");
     } else if (result.mfa_enrollment_required) {
-      // Session set, but no second factor yet — guide enrollment.
+      // Session set, but no second factor yet - guide enrollment.
       setStep("enroll");
     } else {
       goToWorkspace();
@@ -69,7 +76,7 @@ export function LoginForm() {
     try {
       // POSTs to /api/auth/login with credentials: "include", so the session or
       // mfa_pending cookie is set on success. We read the result to branch.
-      const result = await api.post<AuthResult>("/auth/login", { email, password });
+      const result = await login({ email, password });
       routeAfterPrimaryAuth(result ?? {});
     } catch (err) {
       if (err instanceof ApiError) {
@@ -91,7 +98,13 @@ export function LoginForm() {
   }
   if (step === "enroll") {
     // Session is already set; enrolling enables MFA, then on to the workspace.
-    return <MfaForm mode="enroll" onComplete={goToWorkspace} />;
+    return (
+      <MfaForm
+        mode="enroll"
+        onComplete={goToWorkspace}
+        onSkip={goToWorkspace}
+      />
+    );
   }
 
   return (
@@ -127,7 +140,7 @@ export function LoginForm() {
                 name="password"
                 type={showPassword ? "text" : "password"}
                 autoComplete="current-password"
-                placeholder="••••••••"
+                placeholder="********"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -163,7 +176,7 @@ export function LoginForm() {
             {pending ? (
               <>
                 <Loader2 className="size-4 animate-spin" />
-                Signing in…
+                Signing in...
               </>
             ) : (
               <>
