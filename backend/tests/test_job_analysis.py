@@ -1,0 +1,94 @@
+from app.models import Job, Resume
+from app.services.ai_provider import MockProvider
+from app.services.job_analysis import analyze_resume_for_job, score_resume_for_job
+
+
+def _resume(text: str, parsed_json: dict | None = None) -> Resume:
+    return Resume(
+        user_id="00000000-0000-0000-0000-000000000001",
+        title="Resume",
+        original_filename="resume.pdf",
+        file_key="resume.pdf",
+        content_type="application/pdf",
+        file_size=len(text),
+        extracted_text=text,
+        parsed_json=parsed_json,
+    )
+
+
+def _job(description: str, title: str = "Backend Engineer") -> Job:
+    return Job(
+        user_id="00000000-0000-0000-0000-000000000001",
+        company_name="Acme",
+        title=title,
+        description=description,
+    )
+
+
+async def test_analyze_resume_for_job_scores_and_uses_mock_ai():
+    resume = _resume(
+        "Backend engineer with Python, FastAPI, PostgreSQL, Docker, and REST API "
+        "experience. Built reliable services.",
+        parsed_json={
+            "skills": ["Python", "FastAPI", "PostgreSQL", "Docker"],
+            "experience": [{"role": "Backend Engineer", "highlights": ["Built APIs"]}],
+        },
+    )
+    job = _job(
+        "Build backend services with Python, FastAPI, PostgreSQL, Docker, REST APIs, "
+        "and Kubernetes."
+    )
+
+    result = await analyze_resume_for_job(resume, job, MockProvider())
+
+    assert result.overall_score == sum(
+        [
+            result.keyword_score,
+            result.skills_score,
+            result.experience_score,
+            result.role_score,
+            result.education_score,
+            result.formatting_score,
+        ]
+    )
+    assert result.keyword_score > 20
+    assert {"python", "fastapi", "postgresql", "docker"}.issubset(
+        set(result.matched_keywords)
+    )
+    assert "kubernetes" in result.missing_keywords
+    assert result.explanation == "sample"
+    assert result.recommendations == ["sample"]
+
+
+def test_score_resume_for_job_matches_high_confidence_fuzzy_terms():
+    scores = score_resume_for_job(
+        "Platform engineer with Kubernetees and Docker experience.",
+        None,
+        "Platform Engineer",
+        "Must have Kubernetes and Docker experience.",
+    )
+
+    assert "kubernetes" in scores.matched_keywords
+    assert "docker" in scores.matched_keywords
+    assert "kubernetes" not in scores.missing_keywords
+
+
+def test_missing_keywords_lower_keyword_score():
+    complete = score_resume_for_job(
+        "Python FastAPI PostgreSQL Docker Kubernetes backend engineer.",
+        None,
+        "Backend Engineer",
+        "Python FastAPI PostgreSQL Docker Kubernetes backend engineer.",
+    )
+    sparse = score_resume_for_job(
+        "Python backend engineer.",
+        None,
+        "Backend Engineer",
+        "Python FastAPI PostgreSQL Docker Kubernetes backend engineer.",
+    )
+
+    assert complete.keyword_score > sparse.keyword_score
+    assert complete.overall_score > sparse.overall_score
+    assert {"fastapi", "postgresql", "docker", "kubernetes"}.issubset(
+        set(sparse.missing_keywords)
+    )
