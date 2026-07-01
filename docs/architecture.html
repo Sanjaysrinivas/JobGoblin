@@ -298,14 +298,14 @@
 
       </div>
     </div>
-    <div class="callout"><p>💡 The entire stack — FE, BE, Postgres, and Ollama — runs in <strong>one Docker Compose on the owner's laptop</strong>, exposed via a free Cloudflare Tunnel. One origin behind Caddy means secure HTTP-only cookies with no cross-origin hacks. Storage sits behind an interface, so swapping to S3/R2 later is a config change.</p></div>
+    <div class="callout"><p>💡 The entire stack — FE, BE, Postgres, and Ollama — runs in <strong>one Docker Compose on the owner's laptop</strong>; external access is planned via a free Cloudflare Tunnel. One origin behind Caddy means secure HTTP-only cookies with no cross-origin hacks. Storage sits behind an interface, so swapping to S3/R2 later is a config change.</p></div>
   </section>
 
   <!-- HOSTING -->
   <section id="hosting">
     <p class="sec-num">03</p>
     <h2>Self-hosted on one laptop — $0</h2>
-    <p>The whole stack runs in one Docker Compose on the owner's laptop (Ryzen 7 · 31 GB RAM · RTX 4070 8 GB) and reaches the internet through a free Cloudflare Tunnel. This is what makes <strong>Ollama</strong> viable — it needs real RAM/GPU and can't run on free cloud tiers — while keeping everything at $0.</p>
+    <p>The whole stack runs in one Docker Compose on the owner's laptop. External access is planned through a free Cloudflare Tunnel after local auth is stable. This keeps hosting cost at zero while letting the app use local Ollama.</p>
     <div class="table-scroll">
       <table>
         <thead><tr><th>Component</th><th>Runs as</th><th>Cost</th></tr></thead>
@@ -314,7 +314,7 @@
           <tr><td><strong>PostgreSQL</strong></td><td>container + persistent volume</td><td class="free">$0</td></tr>
           <tr><td><strong>Ollama</strong> (qwen2.5:7b)</td><td>container, GPU-accelerated</td><td class="free">$0</td></tr>
           <tr><td><strong>File storage</strong></td><td>mounted volume</td><td class="free">$0</td></tr>
-          <tr><td><strong>Public access</strong></td><td>Cloudflare Tunnel (HTTPS)</td><td class="free">$0</td></tr>
+          <tr><td><strong>Public access</strong></td><td>Cloudflare Tunnel (HTTPS, planned)</td><td class="free">$0</td></tr>
           <tr><td><strong>Repo / CI</strong></td><td>GitHub Actions</td><td class="free">$0</td></tr>
         </tbody>
       </table>
@@ -360,13 +360,13 @@
   <section id="data">
     <p class="sec-num">05</p>
     <h2>Data model</h2>
-    <p>Every row is scoped to a <code style="font-family:var(--mono);color:var(--cyan)">user_id</code> — the foundation of multi-user isolation. Core tables:</p>
+    <p>Current tables include <code style="font-family:var(--mono);color:var(--cyan)">users</code>, <code style="font-family:var(--mono);color:var(--cyan)">invite_tokens</code>, and user-owned tables scoped to <code style="font-family:var(--mono);color:var(--cyan)">user_id</code>:</p>
     <div class="chips">
-      <span class="chip">users</span><span class="chip">resumes</span><span class="chip">resume_versions</span>
-      <span class="chip">jobs</span><span class="chip">job_analyses</span><span class="chip">tailored_resume_drafts</span>
+      <span class="chip">resumes</span><span class="chip">jobs</span><span class="chip">job_analyses</span>
       <span class="chip">cover_letters</span><span class="chip">applications</span><span class="chip">contacts</span>
-      <span class="chip">outreach_messages</span><span class="chip">email_drafts</span><span class="chip">activity_events</span>
+      <span class="chip">outreach_messages</span><span class="chip">activity_events</span>
     </div>
+    <p>Deferred V2 tables: <code style="font-family:var(--mono);color:var(--cyan)">resume_versions</code>, <code style="font-family:var(--mono);color:var(--cyan)">tailored_resume_drafts</code>, <code style="font-family:var(--mono);color:var(--cyan)">email_drafts</code>.</p>
     <h3>Application pipeline statuses</h3>
     <div class="chips">
       <span class="chip">saved</span><span class="chip">interested</span><span class="chip">resume_tailored</span>
