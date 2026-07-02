@@ -11,10 +11,13 @@ import argparse
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 DEFAULT_MODEL = "qwen2.5:7b-instruct"
 DEFAULT_FAST_MODEL = "llama3.2:3b"
+DEFAULT_READINESS_TIMEOUT = 90
+READINESS_INTERVAL = 3
 
 
 def repo_root() -> Path:
@@ -71,6 +74,28 @@ def model_names() -> set[str]:
         if parts:
             names.add(parts[0])
     return names
+
+
+def wait_for_ollama_ready(*, timeout: int = DEFAULT_READINESS_TIMEOUT) -> None:
+    deadline = time.monotonic() + timeout
+    last_result: subprocess.CompletedProcess[str] | None = None
+    while time.monotonic() < deadline:
+        last_result = run(
+            ["docker", "compose", "exec", "-T", "ollama", "ollama", "list"], timeout=30
+        )
+        if last_result.returncode == 0:
+            return
+        print(f"Ollama is not ready yet; retrying in {READINESS_INTERVAL}s...")
+        time.sleep(READINESS_INTERVAL)
+
+    details = ""
+    if last_result:
+        combined = "\n".join(
+            part.strip() for part in (last_result.stdout, last_result.stderr) if part.strip()
+        )
+        if combined:
+            details = f" Last output: {combined}"
+    raise SystemExit(f"ERROR: Ollama did not become ready within {timeout}s.{details}")
 
 
 def ensure_model(model: str, *, pull: bool) -> None:
@@ -149,6 +174,7 @@ def main() -> int:
         require_ok(
             run(["docker", "compose", "up", "-d", "ollama"]), "failed to start ollama service"
         )
+        wait_for_ollama_ready()
 
     ensure_model(args.model, pull=args.pull)
     if args.fast_model:
