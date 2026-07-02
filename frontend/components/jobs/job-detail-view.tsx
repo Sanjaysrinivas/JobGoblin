@@ -15,6 +15,7 @@ import { ApiError } from "@/lib/api";
 import { deleteJob, getJob, updateJob } from "@/lib/jobs";
 import type { Job, JobCreatePayload, Priority, WorkMode } from "@/lib/types";
 import { JobForm } from "@/components/jobs/job-form";
+import { JobAnalysisPanel } from "@/components/jobs/job-analysis-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -303,6 +304,8 @@ export function JobDetailView({ jobId }: { jobId: string }) {
           </CardContent>
         </Card>
       </div>
+
+      <JobAnalysisPanel jobId={job.id} />
     </div>
   );
 }

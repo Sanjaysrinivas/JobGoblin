@@ -1,5 +1,6 @@
 """Resume-to-job analysis endpoints."""
 
+import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -27,6 +28,10 @@ def _target_not_found() -> HTTPException:
     )
 
 
+def _analysis_not_found() -> HTTPException:
+    return _error(status.HTTP_404_NOT_FOUND, "Analysis not found", "analysis_not_found")
+
+
 def _get_owned_resume_and_job(
     session: Session,
     user: User,
@@ -41,6 +46,15 @@ def _get_owned_resume_and_job(
     if resume is None or job is None:
         raise _target_not_found()
     return resume, job
+
+
+def _get_owned_analysis(session: Session, user: User, analysis_id: uuid.UUID) -> JobAnalysis:
+    analysis = session.exec(
+        select(JobAnalysis).where(JobAnalysis.id == analysis_id, JobAnalysis.user_id == user.id)
+    ).first()
+    if analysis is None:
+        raise _analysis_not_found()
+    return analysis
 
 
 @router.post(
@@ -87,3 +101,12 @@ async def create_resume_job_analysis(
     session.commit()
     session.refresh(analysis)
     return analysis
+
+
+@router.get("/{analysis_id}", response_model=JobAnalysisOut)
+def get_analysis(
+    analysis_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> JobAnalysis:
+    return _get_owned_analysis(session, current_user, analysis_id)

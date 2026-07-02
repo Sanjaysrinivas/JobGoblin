@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -192,3 +193,81 @@ def test_requires_authentication(session):
 
     assert resp.status_code == 401
     assert resp.json()["code"] == "not_authenticated"
+
+
+def _analysis(session, user: User, resume: Resume, job: Job, **overrides) -> JobAnalysis:
+    values = {
+        "user_id": user.id,
+        "resume_id": resume.id,
+        "job_id": job.id,
+        "overall_score": 74,
+        "keyword_score": 20,
+        "skills_score": 18,
+        "experience_score": 16,
+        "role_score": 8,
+        "education_score": 5,
+        "formatting_score": 7,
+        "matched_keywords": ["python"],
+        "missing_keywords": ["kubernetes"],
+        "recommendations": ["Add truthful Kubernetes context if applicable."],
+        "explanation": "Estimated match.",
+        "provider": "mock",
+        "model_used": "mock",
+    }
+    values.update(overrides)
+    analysis = JobAnalysis(**values)
+    session.add(analysis)
+    session.commit()
+    session.refresh(analysis)
+    return analysis
+
+
+def test_get_analysis_returns_owned_analysis(client, session, user):
+    resume = _create_resume(session, user)
+    job = _create_job(session, user)
+    analysis = _analysis(session, user, resume, job)
+
+    resp = client.get(f"/api/analysis/{analysis.id}")
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["id"] == str(analysis.id)
+    assert body["missing_keywords"] == ["kubernetes"]
+
+
+def test_get_analysis_cross_user_returns_404(client, session, other_user):
+    resume = _create_resume(session, other_user)
+    job = _create_job(session, other_user)
+    analysis = _analysis(session, other_user, resume, job)
+
+    resp = client.get(f"/api/analysis/{analysis.id}")
+
+    assert resp.status_code == 404
+    assert resp.json()["code"] == "analysis_not_found"
+
+
+def test_list_job_analyses_is_owned_and_newest_first(client, session, user, other_user):
+    resume = _create_resume(session, user)
+    job = _create_job(session, user)
+    older = _analysis(
+        session,
+        user,
+        resume,
+        job,
+        overall_score=60,
+        created_at=datetime.now(UTC) - timedelta(days=1),
+    )
+    newer = _analysis(session, user, resume, job, overall_score=90)
+    other_resume = _create_resume(session, other_user)
+    other_job = _create_job(session, other_user)
+    _analysis(session, other_user, other_resume, other_job, overall_score=10)
+
+    resp = client.get(f"/api/jobs/{job.id}/analysis")
+
+    assert resp.status_code == 200, resp.text
+    assert [item["id"] for item in resp.json()] == [str(newer.id), str(older.id)]
+
+    cross_user_job = client.get(f"/api/jobs/{other_job.id}/analysis")
+    assert cross_user_job.status_code == 404
+    assert cross_user_job.json()["code"] == "job_not_found"
+
