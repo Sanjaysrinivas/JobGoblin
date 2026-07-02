@@ -90,6 +90,25 @@ class Resume(_UUIDMixin, _TimeMixin, table=True):
     parsed_json: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
     is_default: bool = Field(default=False)
 
+class Profile(_UUIDMixin, _TimeMixin, table=True):
+    __tablename__ = "profiles"
+    __table_args__ = (UniqueConstraint("user_id", name="uq_profiles_user_id"),)
+
+    user_id: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE", index=True)
+    source_resume_id: uuid.UUID | None = Field(
+        default=None, foreign_key="resumes.id", ondelete="SET NULL"
+    )
+    full_name: str | None = None
+    headline: str | None = None
+    location: str | None = None
+    website_url: str | None = None
+    linkedin_url: str | None = None
+    summary: str | None = None
+    skills: list[str] = Field(default_factory=list, sa_column=Column(JSONB, nullable=False))
+    experience: list[dict] = Field(default_factory=list, sa_column=Column(JSONB, nullable=False))
+    education: list[dict] = Field(default_factory=list, sa_column=Column(JSONB, nullable=False))
+    projects: list[str] = Field(default_factory=list, sa_column=Column(JSONB, nullable=False))
+    certifications: list[str] = Field(default_factory=list, sa_column=Column(JSONB, nullable=False))
 
 class Job(_UUIDMixin, _TimeMixin, table=True):
     __tablename__ = "jobs"
