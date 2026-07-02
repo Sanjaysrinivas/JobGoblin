@@ -3,6 +3,7 @@
 import * as React from "react";
 import {
   Bell,
+  CalendarClock,
   ClipboardList,
   Loader2,
   Plus,
@@ -14,8 +15,10 @@ import { ApiError } from "@/lib/api";
 import {
   createApplication,
   deleteApplication,
+  listApplicationFollowUps,
   listApplications,
   updateApplication,
+  type ApplicationFollowUp,
   type TrackedApplication,
 } from "@/lib/applications";
 import { listJobs } from "@/lib/jobs";
@@ -127,6 +130,9 @@ export default function ApplicationsPage() {
   const [applications, setApplications] = React.useState<
     TrackedApplication[] | null
   >(null);
+  const [followUps, setFollowUps] = React.useState<ApplicationFollowUp[] | null>(
+    null
+  );
   const [jobs, setJobs] = React.useState<Job[]>([]);
   const [drafts, setDrafts] = React.useState<Record<string, Draft>>({});
   const [showCreate, setShowCreate] = React.useState(false);
@@ -140,16 +146,26 @@ export default function ApplicationsPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [formError, setFormError] = React.useState<string | null>(null);
 
+  async function refreshFollowUps() {
+    try {
+      setFollowUps(await listApplicationFollowUps(14));
+    } catch {
+      setFollowUps([]);
+    }
+  }
+
   React.useEffect(() => {
     let active = true;
     (async () => {
       try {
-        const [applicationData, jobData] = await Promise.all([
+        const [applicationData, jobData, followUpData] = await Promise.all([
           listApplications(),
           listJobs(),
+          listApplicationFollowUps(14),
         ]);
         if (!active) return;
         setApplications(applicationData);
+        setFollowUps(followUpData);
         setJobs(jobData);
         setDrafts(
           Object.fromEntries(
@@ -164,6 +180,7 @@ export default function ApplicationsPage() {
             : "Could not load applications. Is the backend running?"
         );
         setApplications([]);
+        setFollowUps([]);
       } finally {
         if (active) setLoading(false);
       }
@@ -175,7 +192,10 @@ export default function ApplicationsPage() {
 
   const trackedJobIds = new Set(applications?.map((app) => app.job_id) ?? []);
   const availableJobs = jobs.filter((job) => !trackedJobIds.has(job.id));
-  const dueCount = applications?.filter(isFollowUpDue).length ?? 0;
+  const dueCount =
+    followUps?.filter((app) => app.due).length ??
+    applications?.filter(isFollowUpDue).length ??
+    0;
   const selectedNewJobId = availableJobs.some((job) => job.id === newJobId)
     ? newJobId
     : availableJobs[0]?.id ?? "";
@@ -205,6 +225,7 @@ export default function ApplicationsPage() {
         ...current,
         [created.id]: draftFromApplication(created),
       }));
+      await refreshFollowUps();
       setShowCreate(false);
       setNewStatus("saved");
       setNewFollowUpDate("");
@@ -237,6 +258,7 @@ export default function ApplicationsPage() {
         ...current,
         [updated.id]: draftFromApplication(updated),
       }));
+      await refreshFollowUps();
     } catch (err) {
       setFormError(
         err instanceof ApiError
@@ -261,6 +283,7 @@ export default function ApplicationsPage() {
         delete next[app.id];
         return next;
       });
+      await refreshFollowUps();
     } catch (err) {
       setFormError(
         err instanceof ApiError
@@ -299,6 +322,50 @@ export default function ApplicationsPage() {
           </Badge>
         ))}
       </div>
+
+      {followUps && followUps.length > 0 && (
+        <section className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-display text-base font-semibold">
+              Upcoming reminders
+            </h2>
+            <Badge variant="outline">
+              <CalendarClock className="size-3" />
+              Next 14 days
+            </Badge>
+          </div>
+          <ul className="grid gap-3 md:grid-cols-2">
+            {followUps.slice(0, 4).map((item) => (
+              <li key={item.id}>
+                <Card className="gap-0 py-4">
+                  <CardContent className="space-y-2 px-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">
+                          {item.job.title}
+                        </p>
+                        <p className="text-muted-foreground truncate text-xs">
+                          {item.job.company_name}
+                          {item.job.location ? ` - ${item.job.location}` : ""}
+                        </p>
+                      </div>
+                      <Badge variant={item.due ? "warning" : "outline"}>
+                        {item.due ? "Due" : formatDate(item.follow_up_at)}
+                      </Badge>
+                    </div>
+                    {item.latest_activity && (
+                      <p className="text-muted-foreground line-clamp-2 text-xs">
+                        {item.latest_activity.description ??
+                          label(item.latest_activity.event_type)}
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {error && (
         <p

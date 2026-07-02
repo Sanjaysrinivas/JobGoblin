@@ -17,6 +17,19 @@ export interface TrackedApplication extends Application {
   job: ApplicationJobSummary;
 }
 
+export interface ApplicationFollowUpActivity {
+  event_type: string;
+  description: string | null;
+  created_at: string;
+}
+
+export interface ApplicationFollowUp extends Omit<Application, "follow_up_at"> {
+  follow_up_at: string;
+  due: boolean;
+  job: ApplicationJobSummary;
+  latest_activity: ApplicationFollowUpActivity | null;
+}
+
 export interface ApplicationCreatePayload {
   job_id: string;
   resume_id?: string | null;
@@ -34,6 +47,14 @@ export type ApplicationUpdatePayload = Partial<
 /** GET /api/applications - list the current user's tracked applications. */
 export function listApplications(): Promise<TrackedApplication[]> {
   return api.get<TrackedApplication[]>("/applications");
+}
+
+/** GET /api/applications/follow-ups - list due and upcoming reminders. */
+export function listApplicationFollowUps(
+  days = 14
+): Promise<ApplicationFollowUp[]> {
+  const params = new URLSearchParams({ days: String(days) });
+  return api.get<ApplicationFollowUp[]>(`/applications/follow-ups?${params}`);
 }
 
 /** POST /api/applications - start tracking one saved job. */

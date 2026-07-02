@@ -51,6 +51,12 @@ class ApplicationJobOut(BaseModel):
     location: str | None = None
 
 
+class ApplicationFollowUpActivityOut(BaseModel):
+    event_type: str
+    description: str | None = None
+    created_at: datetime
+
+
 class ApplicationOut(BaseModel):
     id: uuid.UUID
     job_id: uuid.UUID
@@ -65,3 +71,15 @@ class ApplicationOut(BaseModel):
     job: ApplicationJobOut
 
     model_config = {"from_attributes": True}
+
+
+class ApplicationFollowUpOut(BaseModel):
+    id: uuid.UUID
+    job_id: uuid.UUID
+    status: ApplicationStatus
+    follow_up_at: datetime
+    notes: str | None = None
+    updated_at: datetime
+    due: bool
+    job: ApplicationJobOut
+    latest_activity: ApplicationFollowUpActivityOut | None = None

@@ -5,9 +5,10 @@ applications, or perform any external action.
 """
 
 import uuid
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
 from sqlmodel import Session, select
 
@@ -15,9 +16,22 @@ from app.api.deps import get_current_user
 from app.core.database import get_session
 from app.models import ActivityEvent, Application, CoverLetter, Job, Resume, User
 from app.models.enums import ApplicationStatus
-from app.schemas.application import ApplicationCreate, ApplicationOut, ApplicationUpdate
+from app.schemas.application import (
+    ApplicationCreate,
+    ApplicationFollowUpActivityOut,
+    ApplicationFollowUpOut,
+    ApplicationOut,
+    ApplicationUpdate,
+)
 
 router = APIRouter(prefix="/applications", tags=["applications"])
+
+_TERMINAL_STATUSES = (
+    ApplicationStatus.offer,
+    ApplicationStatus.rejected,
+    ApplicationStatus.withdrawn,
+    ApplicationStatus.archived,
+)
 
 
 def _error(status_code: int, message: str, code: str) -> HTTPException:
@@ -112,6 +126,60 @@ def _serialize(application: Application, job: Job) -> ApplicationOut:
     )
 
 
+def _serialize_follow_up(
+    application: Application,
+    job: Job,
+    latest_activity: ApplicationFollowUpActivityOut | None,
+    now: datetime,
+) -> ApplicationFollowUpOut:
+    if application.follow_up_at is None:
+        raise ValueError("Follow-up reminders require follow_up_at")
+    return ApplicationFollowUpOut(
+        id=application.id,
+        job_id=application.job_id,
+        status=application.status,
+        follow_up_at=application.follow_up_at,
+        notes=application.notes,
+        updated_at=application.updated_at,
+        due=application.follow_up_at <= now,
+        job={
+            "id": job.id,
+            "company_name": job.company_name,
+            "title": job.title,
+            "location": job.location,
+        },
+        latest_activity=latest_activity,
+    )
+
+
+def _latest_activity_by_application(
+    session: Session,
+    user: User,
+    application_ids: list[uuid.UUID],
+) -> dict[uuid.UUID, ApplicationFollowUpActivityOut]:
+    if not application_ids:
+        return {}
+    events = session.exec(
+        select(ActivityEvent)
+        .where(
+            ActivityEvent.user_id == user.id,
+            ActivityEvent.entity_type == "application",
+            ActivityEvent.entity_id.in_(application_ids),
+        )
+        .order_by(ActivityEvent.created_at.desc())
+    ).all()
+    latest: dict[uuid.UUID, ApplicationFollowUpActivityOut] = {}
+    for event in events:
+        if event.entity_id in latest:
+            continue
+        latest[event.entity_id] = ApplicationFollowUpActivityOut(
+            event_type=event.event_type,
+            description=event.description,
+            created_at=event.created_at,
+        )
+    return latest
+
+
 def _add_activity(
     session: Session,
     user: User,
@@ -144,6 +212,39 @@ def list_applications(
         .order_by(Application.updated_at.desc())
     ).all()
     return [_serialize(application, job) for application, job in rows]
+
+
+@router.get("/follow-ups", response_model=list[ApplicationFollowUpOut])
+def list_follow_ups(
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+    days: Annotated[int, Query(ge=0, le=90)] = 14,
+) -> list[ApplicationFollowUpOut]:
+    now = datetime.now(UTC)
+    horizon = now + timedelta(days=days)
+    rows = session.exec(
+        select(Application, Job)
+        .join(Job, Job.id == Application.job_id)
+        .where(
+            Application.user_id == current_user.id,
+            Job.user_id == current_user.id,
+            Application.follow_up_at.is_not(None),
+            Application.follow_up_at <= horizon,
+            Application.status.notin_(_TERMINAL_STATUSES),
+        )
+        .order_by(Application.follow_up_at.asc(), Application.updated_at.desc())
+    ).all()
+    application_ids = [application.id for application, _job in rows]
+    latest_activity = _latest_activity_by_application(session, current_user, application_ids)
+    return [
+        _serialize_follow_up(
+            application,
+            job,
+            latest_activity.get(application.id),
+            now,
+        )
+        for application, job in rows
+    ]
 
 
 @router.post("", response_model=ApplicationOut, status_code=status.HTTP_201_CREATED)
@@ -217,6 +318,7 @@ def update_application(
     )
 
     old_status: ApplicationStatus = application.status
+    old_follow_up_at = application.follow_up_at
     for field, value in updates.items():
         setattr(application, field, value)
 
@@ -228,6 +330,19 @@ def update_application(
             "application_status_changed",
             f"Moved {job.title} at {job.company_name} to {application.status.value}",
             {"from": old_status.value, "to": application.status.value},
+        )
+
+    if "follow_up_at" in updates and application.follow_up_at != old_follow_up_at:
+        _add_activity(
+            session,
+            current_user,
+            application,
+            "application_follow_up_changed",
+            f"Updated follow-up for {job.title} at {job.company_name}",
+            {
+                "from": old_follow_up_at.isoformat() if old_follow_up_at else None,
+                "to": application.follow_up_at.isoformat() if application.follow_up_at else None,
+            },
         )
 
     session.add(application)
