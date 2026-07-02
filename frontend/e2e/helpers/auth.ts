@@ -16,8 +16,10 @@ export async function loginAsAdmin(page: Page) {
   ]);
 
   if (await skip.isVisible().catch(() => false)) {
-    await skip.click();
-    await page.goto("/dashboard");
+    await Promise.all([
+      page.waitForURL(/\/dashboard$/, { timeout: 10000 }),
+      skip.click(),
+    ]);
   }
 
   await expect(page).toHaveURL(/\/dashboard$/);
