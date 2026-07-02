@@ -10,6 +10,11 @@ export async function loginAsAdmin(page: Page) {
   await page.getByRole("button", { name: "Sign in" }).click();
 
   const skip = page.getByRole("button", { name: "Skip for now" });
+  await Promise.race([
+    page.waitForURL(/\/dashboard$/, { timeout: 10000 }).catch(() => null),
+    skip.waitFor({ state: "visible", timeout: 10000 }).catch(() => null),
+  ]);
+
   if (await skip.isVisible().catch(() => false)) {
     await skip.click();
     await page.goto("/dashboard");
