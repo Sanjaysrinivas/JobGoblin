@@ -3,6 +3,11 @@ from app.services.ai_provider import MockProvider
 from app.services.job_analysis import analyze_resume_for_job, score_resume_for_job
 
 
+class FailingProvider(MockProvider):
+    async def generate_json(self, prompt: str, schema: dict, *, system: str | None = None) -> dict:
+        raise RuntimeError("provider unavailable")
+
+
 def _resume(text: str, parsed_json: dict | None = None) -> Resume:
     return Resume(
         user_id="00000000-0000-0000-0000-000000000001",
@@ -52,9 +57,7 @@ async def test_analyze_resume_for_job_scores_and_uses_mock_ai():
         ]
     )
     assert result.keyword_score > 20
-    assert {"python", "fastapi", "postgresql", "docker"}.issubset(
-        set(result.matched_keywords)
-    )
+    assert {"python", "fastapi", "postgresql", "docker"}.issubset(set(result.matched_keywords))
     assert "kubernetes" in result.missing_keywords
     assert result.explanation == "sample"
     assert result.recommendations == ["sample"]
@@ -89,6 +92,52 @@ def test_missing_keywords_lower_keyword_score():
 
     assert complete.keyword_score > sparse.keyword_score
     assert complete.overall_score > sparse.overall_score
-    assert {"fastapi", "postgresql", "docker", "kubernetes"}.issubset(
-        set(sparse.missing_keywords)
+    assert {"fastapi", "postgresql", "docker", "kubernetes"}.issubset(set(sparse.missing_keywords))
+
+
+async def test_analyze_resume_for_job_falls_back_when_ai_provider_fails():
+    resume = _resume("Python developer with backend API experience.")
+    job = _job("Build backend APIs with Python and FastAPI.")
+
+    result = await analyze_resume_for_job(resume, job, FailingProvider())
+
+    assert result.explanation.startswith("Estimated match is ")
+    assert result.recommendations
+    assert result.overall_score == sum(
+        [
+            result.keyword_score,
+            result.skills_score,
+            result.experience_score,
+            result.role_score,
+            result.education_score,
+            result.formatting_score,
+        ]
     )
+
+
+def test_score_resume_for_job_uses_short_skills_for_experience_overlap():
+    matching = score_resume_for_job(
+        "Implemented CI pipelines for backend services.",
+        None,
+        "DevOps Engineer",
+        "Own CI and CD pipelines for service delivery.",
+    )
+    missing = score_resume_for_job(
+        "Wrote release documentation for backend services.",
+        None,
+        "DevOps Engineer",
+        "Own CI and CD pipelines for service delivery.",
+    )
+
+    assert matching.experience_score > missing.experience_score
+
+
+def test_score_resume_for_job_handles_short_role_title_terms():
+    scores = score_resume_for_job(
+        "Backend engineer with Python experience.",
+        None,
+        "QA",
+        "Manual and automated QA testing.",
+    )
+
+    assert scores.role_score == 0

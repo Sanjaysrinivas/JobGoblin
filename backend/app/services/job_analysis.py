@@ -121,6 +121,14 @@ _ROLE_TERMS = {
     "lead",
     "senior",
     "principal",
+    "qa",
+    "ui",
+    "ux",
+    "pm",
+    "it",
+    "hr",
+    "dev",
+    "ops",
 }
 
 _EDUCATION_TERMS = {
@@ -219,9 +227,7 @@ def _contains_term(text: str, term: str) -> bool:
 def extract_job_keywords(job_text: str, *, max_keywords: int = MAX_KEYWORDS) -> list[str]:
     """Return stable job keywords, preferring known skills before general terms."""
     normalized = _normalize_text(job_text)
-    found: list[str] = [
-        skill for skill in _KNOWN_SKILLS if _contains_term(normalized, skill)
-    ]
+    found: list[str] = [skill for skill in _KNOWN_SKILLS if _contains_term(normalized, skill)]
 
     tokens = _meaningful_tokens(normalized)
     counts = Counter(tokens)
@@ -272,11 +278,19 @@ def _matches_term(term: str, resume_text: str, candidates: set[str]) -> bool:
     variants = _term_variants(term)
     if any(variant in candidates for variant in variants):
         return True
-    return any(
-        fuzz.ratio(variant, candidate) >= FUZZY_THRESHOLD
-        for variant in variants
-        for candidate in candidates
-    )
+    for variant in variants:
+        variant_length = len(variant)
+        max_diff = max(1, int(variant_length * 0.15))
+        eligible_candidates = [
+            candidate
+            for candidate in candidates
+            if abs(len(candidate) - variant_length) <= max_diff
+        ]
+        if any(
+            fuzz.ratio(variant, candidate) >= FUZZY_THRESHOLD for candidate in eligible_candidates
+        ):
+            return True
+    return False
 
 
 def _weighted_score(weight: int, matched: int, total: int) -> int:
@@ -295,14 +309,12 @@ def _score_experience(job_text: str, resume_text: str, parsed_resume: dict | Non
     has_resume_experience = has_parsed_experience or bool(
         re.search(r"\b(experience|developed|built|implemented|led|managed)\b", resume_text, re.I)
     )
-    job_role_terms = set(_meaningful_tokens(job_text)) & (_ROLE_TERMS | set(_skills_in(job_text)))
+    job_role_terms = (set(_meaningful_tokens(job_text)) & _ROLE_TERMS) | set(_skills_in(job_text))
     if not job_role_terms:
         return EXPERIENCE_WEIGHT if has_resume_experience else EXPERIENCE_WEIGHT // 2
 
     candidates = _resume_candidates(resume_text, parsed_resume)
-    matched = sum(
-        1 for term in job_role_terms if _matches_term(term, resume_text, candidates)
-    )
+    matched = sum(1 for term in job_role_terms if _matches_term(term, resume_text, candidates))
     role_overlap = matched / len(job_role_terms)
     base = 0.35 if has_resume_experience else 0.15
     return round(EXPERIENCE_WEIGHT * min(1.0, base + (0.65 * role_overlap)))
@@ -311,13 +323,11 @@ def _score_experience(job_text: str, resume_text: str, parsed_resume: dict | Non
 def _score_role(job_title: str, resume_text: str, parsed_resume: dict | None) -> int:
     title_terms = [
         term
-        for term in _meaningful_tokens(job_title)
-        if term in _ROLE_TERMS or len(term) >= 4
+        for term in _tokens(job_title)
+        if term in _ROLE_TERMS or (len(term) >= 4 and term not in _STOPWORDS)
     ]
     candidates = _resume_candidates(resume_text, parsed_resume)
-    matched = sum(
-        1 for term in title_terms if _matches_term(term, resume_text, candidates)
-    )
+    matched = sum(1 for term in title_terms if _matches_term(term, resume_text, candidates))
     return _weighted_score(ROLE_WEIGHT, matched, len(title_terms))
 
 
@@ -359,13 +369,9 @@ def score_resume_for_job(
     candidates = _resume_candidates(resume_text, parsed_resume)
 
     matched_keywords = [
-        keyword
-        for keyword in job_keywords
-        if _matches_term(keyword, resume_text, candidates)
+        keyword for keyword in job_keywords if _matches_term(keyword, resume_text, candidates)
     ]
-    missing_keywords = [
-        keyword for keyword in job_keywords if keyword not in matched_keywords
-    ]
+    missing_keywords = [keyword for keyword in job_keywords if keyword not in matched_keywords]
 
     job_skills = _skills_in(job_text)
     matched_skills = [
@@ -434,11 +440,14 @@ async def analyze_resume_for_job(
         job.title,
         job.description,
     )
-    narrative = await provider.generate_json(
-        _build_prompt(resume, job, scores),
-        ANALYSIS_NARRATIVE_SCHEMA,
-        system=_SYSTEM,
-    )
+    try:
+        narrative = await provider.generate_json(
+            _build_prompt(resume, job, scores),
+            ANALYSIS_NARRATIVE_SCHEMA,
+            system=_SYSTEM,
+        )
+    except Exception:
+        narrative = {}
     recommendations = _clean_recommendations(narrative.get("recommendations"))
     explanation = str(narrative.get("explanation") or "").strip()
 
