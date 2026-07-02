@@ -8,30 +8,41 @@
 ![Docker](https://img.shields.io/badge/Docker-compose-2496ED?logo=docker&logoColor=white)
 ![Status](https://img.shields.io/badge/status-MVP%20in%20progress-f5b945)
 
-JobGoblin is a private, self-hosted job-search workspace for one owner and a few invited users. It stores resumes and jobs, extracts structured resume data, and is building toward resume-to-job scoring, cover letters, outreach drafts, and application pipeline management.
+JobGoblin is a private, self-hosted job-search workspace for one owner and a few invited users. It stores resumes, jobs, contacts, applications, analyses, cover-letter drafts, and outreach drafts while keeping the workflow local and review-driven.
 
 It is not an auto-apply or spam tool. External actions such as sending email, contacting recruiters, or applying to jobs must remain human-reviewed. AI output must stay grounded in user-provided facts and never invent experience, skills, education, or credentials.
 
 ## Current Status
 
-MVP build in progress. Phase 0 local-login fixes and Phase 1 delivery foundation are merged.
+MVP build in progress. Phase 0 local-login fixes and Phase 1 delivery foundation are complete, and the merged `dev` branch now includes the core MVP workflow.
+
+Phase status:
+
+- Phase 2 core resource modules are implemented: jobs, contacts, applications, dashboard, cover-letter drafts, and outreach drafts.
+- Phase 3 resume-to-job analysis is implemented and needs integrated post-merge validation.
+- Phase 4 runtime tooling and the optional Cloudflare Tunnel profile are implemented; real Ollama, OAuth, and tunnel smoke testing are still required.
+- Phase 5 has started with the profile builder and follow-up reminders merged. Resume versions, tailored resume drafts, email draft/export integration, and interview prep are still ahead.
 
 Implemented:
 
 - Docker Compose stack with Caddy as the same-origin entry point.
+- Optional Cloudflare Tunnel compose profile, disabled by default.
 - FastAPI backend, PostgreSQL, Alembic migrations, SQLModel models, and health endpoint.
 - Email/password auth, admin-created invite tokens, invite-only signup, Google OAuth plumbing, email allowlist, TOTP MFA, and environment-aware auth cookies.
 - Resume upload, text extraction, AI parse, edit/list/detail/delete, and PDF export.
 - Jobs CRUD API and jobs list/create/detail/edit/delete UI.
-- Next.js app shell, auth guard, login/MFA/signup flow, and resume screens.
-- CI for backend ruff/pytest and frontend lint/build.
+- Contacts, applications, dashboard data, resume-to-job analysis, cover-letter draft, profile builder, follow-up reminder, and review-only outreach APIs.
+- Next.js app shell, auth guard, login/MFA/signup flow, resume, jobs, contacts, applications, dashboard, job-detail analysis/cover-letter, outreach, and profile screens.
+- Runtime operator checks for Ollama, local smoke testing, and Cloudflare Tunnel setup.
+- CI for backend ruff/pytest, frontend lint/build, and the merged E2E harness.
 
-Not built yet:
+Remaining validation and future work:
 
-- Contacts, applications, dashboard data endpoints, and cover letters.
-- Resume-to-job analysis.
-- Cloudflare Tunnel service.
-- Email sending and approval-gated external actions.
+- Integrated post-merge smoke pass across the browser workflow.
+- Real local AI verification with `AI_PROVIDER=ollama`.
+- Google OAuth, allowlist, HTTPS tunnel, and secure-cookie validation with real credentials.
+- Resume versions, tailored resume drafts, email draft/export integration, and interview prep.
+- Any external sending remains out of scope unless it is explicit, user-reviewed, and approval-gated.
 
 ## Quick Start
 
@@ -66,6 +77,7 @@ Demo login, when the seed admin values above are configured:
 - Password: `goblin-demo-pass-123`
 
 The Docker/Caddy path is the intended integration path. Caddy routes `/` to the frontend and `/api/*` to the backend so browser traffic is same-origin and auth can use HTTP-only cookies without CORS workarounds.
+
 ## Runtime Notes
 
 Ollama is included in the Compose stack, but model download is a one-time host action. For the intended local AI runtime, pull the default model after the stack is up:
@@ -120,7 +132,7 @@ GitHub Actions runs the same backend and frontend checks for pull requests.
 
 - [Architecture](docs/architecture.md)
 - [Detailed design](docs/design.md)
-- [Roadmap and phases](docs/roadmap.md)
+- [Roadmap](docs/roadmap.md)
 - [Frontend notes](frontend/README.md)
 
 Branch flow: `main -> dev -> feature/*`. Keep `main` release-ready, integrate through `dev`, and use focused PRs for feature work.

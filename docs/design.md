@@ -1,6 +1,6 @@
 # JobGoblin Detailed Design Specification
 
-Status: implementation reference; Phase 0/1 complete; Phase 2 in progress. Target: V1 MVP. Last updated: 2026-07-01.
+Status: implementation reference; merged MVP feature set documented; integrated runtime/OAuth/tunnel validation still required. Target: V1 MVP. Last updated: 2026-07-03.
 
 This is the durable design reference for the data model, API contract, auth, AI layer, scoring approach, parsing pipeline, deployment, and testing. See `docs/architecture.md` for the shorter architecture companion and `docs/roadmap.md` for phase sequencing.
 
@@ -19,7 +19,7 @@ The app is self-hosted on the owner's laptop in one Docker Compose stack. Caddy 
 ```text
 Browser
   |
-  | http://localhost:8080 now; HTTPS tunnel planned
+  | http://localhost:8080 now; optional HTTPS tunnel profile
   v
 Caddy reverse proxy
   |-- /      -> Next.js frontend
@@ -31,7 +31,7 @@ Caddy reverse proxy
 
 The same-origin design lets auth use HTTP-only SameSite=Lax cookies without CORS or cross-site cookie workarounds. Cookie `Secure` is disabled in local development and enabled outside development.
 
-External access through Cloudflare Tunnel is planned after local auth and runtime behavior are stable. Availability is laptop-bound; state persists in Docker volumes.
+External access through Cloudflare Tunnel is scaffolded as an optional compose profile, with HTTPS/runtime smoke validation still pending. Availability is laptop-bound; state persists in Docker volumes.
 
 ## 3. Current Implementation Status
 
@@ -42,15 +42,23 @@ Implemented now:
 - SQLModel tables for the V1 domain model.
 - Resume upload, storage, text extraction, AI parse, edit/list/detail/delete, and PDF export.
 - Jobs CRUD API and jobs list/create/detail/edit/delete UI.
-- Next.js app shell, auth guard, login/MFA/signup flow, resume UI, and placeholder pages for later resources.
-- CI for backend ruff/pytest and frontend lint/build.
+- Contacts, applications, dashboard, resume-to-job analysis, cover-letter draft, profile builder, follow-up reminder, and review-only outreach APIs.
+- Contacts, applications, dashboard, jobs, resumes, job-detail analysis/cover-letter, outreach, and profile frontend screens.
+- Optional Cloudflare Tunnel compose profile, disabled by default.
+- Runtime operator tooling for Ollama checks, smoke tests, and Cloudflare Tunnel checks.
+- CI for backend ruff/pytest, frontend lint/build, and the merged E2E harness.
 
-Planned next:
+Remaining validation and V2 work:
 
-- Contacts, applications, dashboard data, and cover letters.
-- Resume-to-job analysis.
-- Real Ollama model setup, Google OAuth owner setup, and Cloudflare Tunnel.
-- Email sending/export workflows that remain review-gated.
+- Integrated post-merge browser workflow validation.
+- Real local AI verification with `AI_PROVIDER=ollama`.
+- Google OAuth, allowlist, HTTPS tunnel, and secure-cookie validation with real credentials.
+- Resume versions, tailored resume drafts, email draft/export integration, and interview prep.
+
+Review posture:
+
+- External sending is not implemented as a silent side effect. Email, recruiter outreach, and applying must stay explicit and approval-gated.
+- AI output must remain grounded in user-provided facts and scoped to the authenticated `user_id`.
 
 ## 4. Data Model
 
@@ -67,6 +75,11 @@ PostgreSQL via SQLModel and Alembic. Primary keys are UUIDs. User-owned tables i
 
 - Supports private/invite-only registration.
 - Tracks creator, optional used-by user, expiry, and created timestamp.
+
+`profiles`
+
+- Stores one editable private user profile seeded from parsed resume sections or maintained manually.
+- Keeps profile facts scoped to the authenticated `user_id` and available for grounded generation workflows.
 
 `resumes`
 
@@ -164,35 +177,65 @@ Jobs:
 - `GET /api/jobs/{id}`
 - `PATCH /api/jobs/{id}`
 - `DELETE /api/jobs/{id}`
+- `GET /api/jobs/{job_id}/analysis`
 
 Admin invites:
 
 - `GET /api/invites`
 - `POST /api/invites`
 
-### Planned V1 Endpoints
-
 Analysis:
 
 - `POST /api/analysis/resume-job`
 - `GET /api/analysis/{id}`
-- `GET /api/jobs/{job_id}/analysis`
 
 Cover letters:
 
+- `GET /api/cover-letters`
 - `POST /api/cover-letters`
 - `GET /api/cover-letters/{id}`
 - `PATCH /api/cover-letters/{id}`
 
-Applications, contacts, outreach, dashboard:
+Profile:
 
-- `POST/GET/GET {id}/PATCH {id}/DELETE {id}` for `/api/applications`.
-- `POST/GET/GET {id}/PATCH {id}/DELETE {id}` for `/api/contacts`.
-- `POST /api/outreach/generate`
+- `GET /api/profile`
+- `PUT /api/profile`
+- `POST /api/profile/seed`
+- `DELETE /api/profile`
+
+Applications:
+
+- `GET /api/applications`
+- `GET /api/applications/follow-ups`
+- `POST /api/applications`
+- `GET /api/applications/{id}`
+- `PATCH /api/applications/{id}`
+- `DELETE /api/applications/{id}`
+
+Contacts:
+
+- `GET /api/contacts`
+- `POST /api/contacts`
+- `GET /api/contacts/{id}`
+- `PATCH /api/contacts/{id}`
+- `DELETE /api/contacts/{id}`
+
+Outreach:
+
+- `GET /api/outreach`
+- `POST /api/outreach`
 - `GET /api/outreach/{id}`
 - `PATCH /api/outreach/{id}`
+- `DELETE /api/outreach/{id}`
+
+Dashboard:
+
 - `GET /api/dashboard/summary`
 - `GET /api/dashboard/activity`
+
+### Pending V2 Work
+
+- Resume versions, tailored resume drafts, email draft/export integration, and interview prep.
 
 ## 6. Authentication And Isolation
 
@@ -256,7 +299,7 @@ The MVP implementation is local filesystem storage mounted at `FILE_STORAGE_PATH
 
 ## 9. Resume-To-Job Scoring Plan
 
-The scoring feature is planned for Phase 3.
+The scoring feature is implemented and pending integrated validation.
 
 Hybrid approach:
 
@@ -311,10 +354,11 @@ Current compose services:
 | `backend` | FastAPI API | Runs migrations on startup; mounts uploads volume. |
 | `db` | PostgreSQL 16 | Uses `pgdata` Docker volume. |
 | `ollama` | Local LLM runtime | Uses `ollama` Docker volume; model pull/setup is separate. |
+| `cloudflared` | Optional tunnel profile | Disabled by default; requires `CLOUDFLARED_TUNNEL_TOKEN`. |
 
-Planned:
+Pending validation:
 
-- `cloudflared` service/config after local auth is stable.
+- Host model pull and Ollama smoke for real local AI behavior.
 - HTTPS tunnel validation for secure-cookie behavior.
 
 ## 12. Testing Strategy
@@ -329,7 +373,7 @@ Backend:
 Frontend:
 
 - `npm run lint` and `npm run build` are required now.
-- Add focused component or Playwright smoke tests later when core workflows stabilize.
+- Keep Playwright smoke coverage focused on high-value browser workflows as the merged MVP stabilizes.
 
 CI:
 
@@ -341,7 +385,7 @@ CI:
 jobgoblin/
 |-- backend/   # FastAPI app, models, schemas, routes, services, migrations, tests
 |-- frontend/  # Next.js app, components, lib helpers, Dockerfile
-|-- infra/     # Caddyfile; cloudflared config planned
+|-- infra/     # Caddy and local access configuration
 |-- docs/      # architecture, design, roadmap
 |-- docker-compose.yml
 |-- .env.example
@@ -365,4 +409,7 @@ Resolved:
 
 - Phase 0 local-login fixes are complete.
 - Phase 1 delivery foundation is complete.
-- The next implementation phase is core resource modules.
+- Phase 2 core resource modules are implemented.
+- Phase 3 resume-to-job analysis is implemented, pending integrated validation.
+- Phase 4 tooling is in place, pending real runtime/tunnel smoke.
+- Phase 5 has started with profile builder and follow-up reminders merged.
