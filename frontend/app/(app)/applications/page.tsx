@@ -95,27 +95,42 @@ function dateToIso(value: string): string | null {
   return value ? new Date(`${value}T00:00:00Z`).toISOString() : null;
 }
 
+function parseApiInstant(value: string): Date {
+  const hasTimezone = /(?:[zZ]|[+-]\d{2}:?\d{2})$/.test(value);
+  return new Date(hasTimezone ? value : `${value}Z`);
+}
+
 function formatDate(value: string | null): string {
   if (!value) return "No reminder";
+  const date = parseApiInstant(value);
+  if (!Number.isFinite(date.getTime())) return "No reminder";
   return new Intl.DateTimeFormat(undefined, {
     month: "short",
     day: "numeric",
     year: "numeric",
     timeZone: "UTC",
-  }).format(new Date(value));
+  }).format(date);
+}
+
+function isInstantDue(value: string | null): boolean {
+  if (!value) return false;
+  const followUpTime = parseApiInstant(value).getTime();
+  return Number.isFinite(followUpTime) && followUpTime <= Date.now();
 }
 
 function isFollowUpDue(app: TrackedApplication): boolean {
-  if (!app.follow_up_at) return false;
   if (["offer", "rejected", "withdrawn", "archived"].includes(app.status)) {
     return false;
   }
-  const today = new Date();
-  const todayStr = `${today.getFullYear()}-${String(
-    today.getMonth() + 1
-  ).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-  const followUpStr = app.follow_up_at.slice(0, 10);
-  return followUpStr <= todayStr;
+  return isInstantDue(app.follow_up_at);
+}
+
+async function loadFollowUps(): Promise<ApplicationFollowUp[] | null> {
+  try {
+    return await listApplicationFollowUps(14);
+  } catch {
+    return null;
+  }
 }
 
 function draftFromApplication(app: TrackedApplication): Draft {
@@ -147,11 +162,7 @@ export default function ApplicationsPage() {
   const [formError, setFormError] = React.useState<string | null>(null);
 
   async function refreshFollowUps() {
-    try {
-      setFollowUps(await listApplicationFollowUps(14));
-    } catch {
-      setFollowUps([]);
-    }
+    setFollowUps(await loadFollowUps());
   }
 
   React.useEffect(() => {
@@ -161,7 +172,7 @@ export default function ApplicationsPage() {
         const [applicationData, jobData, followUpData] = await Promise.all([
           listApplications(),
           listJobs(),
-          listApplicationFollowUps(14),
+          loadFollowUps(),
         ]);
         if (!active) return;
         setApplications(applicationData);
@@ -180,7 +191,7 @@ export default function ApplicationsPage() {
             : "Could not load applications. Is the backend running?"
         );
         setApplications([]);
-        setFollowUps([]);
+        setFollowUps(null);
       } finally {
         if (active) setLoading(false);
       }
@@ -193,9 +204,9 @@ export default function ApplicationsPage() {
   const trackedJobIds = new Set(applications?.map((app) => app.job_id) ?? []);
   const availableJobs = jobs.filter((job) => !trackedJobIds.has(job.id));
   const dueCount =
-    followUps?.filter((app) => app.due).length ??
-    applications?.filter(isFollowUpDue).length ??
-    0;
+    followUps === null
+      ? applications?.filter(isFollowUpDue).length ?? 0
+      : followUps.filter((app) => app.due).length;
   const selectedNewJobId = availableJobs.some((job) => job.id === newJobId)
     ? newJobId
     : availableJobs[0]?.id ?? "";

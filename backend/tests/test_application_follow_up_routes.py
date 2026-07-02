@@ -1,10 +1,11 @@
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
 from sqlmodel import select
 
 from app.api.deps import get_current_user
+from app.api.routes.applications import _datetime_changed, _serialize_follow_up
 from app.core.database import get_session
 from app.models import ActivityEvent, Application, Job, User
 from app.models.enums import ApplicationStatus
@@ -148,6 +149,39 @@ def test_follow_ups_respect_days_window(session):
 
     assert response.status_code == 200
     assert [item["id"] for item in response.json()] == [str(today.id)]
+
+
+def test_follow_up_due_handles_naive_database_datetimes():
+    user_id = uuid.uuid4()
+    job = Job(
+        user_id=user_id,
+        company_name="NaiveCo",
+        title="Engineer",
+        description="Build reliable services.",
+    )
+    now = datetime(2026, 1, 2, 12, 0, tzinfo=UTC)
+    naive_now = now.replace(tzinfo=None)
+    application = Application(
+        user_id=user_id,
+        job_id=job.id,
+        follow_up_at=naive_now,
+        updated_at=naive_now,
+    )
+
+    result = _serialize_follow_up(application, job, latest_activity=None, now=now)
+
+    assert result.due is True
+    assert result.follow_up_at == now
+    assert result.updated_at == now
+
+
+def test_follow_up_change_comparison_uses_normalized_instants():
+    naive_utc = datetime(2026, 1, 2, 12, 0)
+    same_instant = datetime(2026, 1, 2, 7, 0, tzinfo=timezone(timedelta(hours=-5)))
+    later = naive_utc + timedelta(minutes=1)
+
+    assert _datetime_changed(naive_utc, same_instant) is False
+    assert _datetime_changed(naive_utc, later) is True
 
 
 def test_follow_ups_require_authentication(session):

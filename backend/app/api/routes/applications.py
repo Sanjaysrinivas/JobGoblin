@@ -42,6 +42,30 @@ def _application_not_found() -> HTTPException:
     return _error(status.HTTP_404_NOT_FOUND, "Application not found", "application_not_found")
 
 
+def _as_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None or value.tzinfo.utcoffset(value) is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def _datetime_changed(left: datetime | None, right: datetime | None) -> bool:
+    return _as_utc(left) != _as_utc(right)
+
+
+def _datetime_metadata(value: datetime | None) -> str | None:
+    normalized = _as_utc(value)
+    return normalized.isoformat() if normalized is not None else None
+
+
+def _normalize_application_datetimes(data: dict) -> dict:
+    for field in ("applied_at", "follow_up_at"):
+        if field in data:
+            data[field] = _as_utc(data[field])
+    return data
+
+
 def _get_owned_job(session: Session, user: User, job_id: uuid.UUID) -> Job:
     job = session.exec(select(Job).where(Job.id == job_id, Job.user_id == user.id)).first()
     if job is None:
@@ -112,11 +136,11 @@ def _serialize(application: Application, job: Job) -> ApplicationOut:
         resume_id=application.resume_id,
         cover_letter_id=application.cover_letter_id,
         status=application.status,
-        applied_at=application.applied_at,
-        follow_up_at=application.follow_up_at,
+        applied_at=_as_utc(application.applied_at),
+        follow_up_at=_as_utc(application.follow_up_at),
         notes=application.notes,
-        created_at=application.created_at,
-        updated_at=application.updated_at,
+        created_at=_as_utc(application.created_at),
+        updated_at=_as_utc(application.updated_at),
         job={
             "id": job.id,
             "company_name": job.company_name,
@@ -132,16 +156,20 @@ def _serialize_follow_up(
     latest_activity: ApplicationFollowUpActivityOut | None,
     now: datetime,
 ) -> ApplicationFollowUpOut:
-    if application.follow_up_at is None:
+    follow_up_at = _as_utc(application.follow_up_at)
+    if follow_up_at is None:
         raise ValueError("Follow-up reminders require follow_up_at")
+    now = _as_utc(now)
+    if now is None:
+        raise ValueError("Follow-up due checks require now")
     return ApplicationFollowUpOut(
         id=application.id,
         job_id=application.job_id,
         status=application.status,
-        follow_up_at=application.follow_up_at,
+        follow_up_at=follow_up_at,
         notes=application.notes,
-        updated_at=application.updated_at,
-        due=application.follow_up_at <= now,
+        updated_at=_as_utc(application.updated_at),
+        due=follow_up_at <= now,
         job={
             "id": job.id,
             "company_name": job.company_name,
@@ -175,7 +203,7 @@ def _latest_activity_by_application(
         latest[event.entity_id] = ApplicationFollowUpActivityOut(
             event_type=event.event_type,
             description=event.description,
-            created_at=event.created_at,
+            created_at=_as_utc(event.created_at),
         )
     return latest
 
@@ -270,7 +298,10 @@ def create_application(
             "application_exists",
         )
 
-    application = Application(user_id=current_user.id, **payload.model_dump())
+    application = Application(
+        user_id=current_user.id,
+        **_normalize_application_datetimes(payload.model_dump()),
+    )
     session.add(application)
     session.flush()
     _add_activity(
@@ -304,7 +335,7 @@ def update_application(
     session: Annotated[Session, Depends(get_session)],
 ) -> ApplicationOut:
     application, job = _get_owned_application(session, current_user, application_id)
-    updates = payload.model_dump(exclude_unset=True)
+    updates = _normalize_application_datetimes(payload.model_dump(exclude_unset=True))
     if updates.get("status") is None and "status" in updates:
         raise _error(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -318,7 +349,7 @@ def update_application(
     )
 
     old_status: ApplicationStatus = application.status
-    old_follow_up_at = application.follow_up_at
+    old_follow_up_at = _as_utc(application.follow_up_at)
     for field, value in updates.items():
         setattr(application, field, value)
 
@@ -332,7 +363,7 @@ def update_application(
             {"from": old_status.value, "to": application.status.value},
         )
 
-    if "follow_up_at" in updates and application.follow_up_at != old_follow_up_at:
+    if "follow_up_at" in updates and _datetime_changed(application.follow_up_at, old_follow_up_at):
         _add_activity(
             session,
             current_user,
@@ -340,8 +371,8 @@ def update_application(
             "application_follow_up_changed",
             f"Updated follow-up for {job.title} at {job.company_name}",
             {
-                "from": old_follow_up_at.isoformat() if old_follow_up_at else None,
-                "to": application.follow_up_at.isoformat() if application.follow_up_at else None,
+                "from": _datetime_metadata(old_follow_up_at),
+                "to": _datetime_metadata(application.follow_up_at),
             },
         )
 
