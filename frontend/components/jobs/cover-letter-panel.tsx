@@ -64,7 +64,8 @@ const selectClass =
 const textareaClass =
   "border-input bg-card focus-visible:border-ring focus-visible:ring-ring/40 min-h-72 w-full rounded-md border px-3 py-2 text-sm leading-relaxed shadow-xs outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50";
 
-function label(value: string): string {
+function label(value: string | null | undefined): string {
+  if (!value) return "Unknown";
   return value
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
@@ -72,10 +73,12 @@ function label(value: string): string {
 }
 
 function formatDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Unknown date";
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
     timeStyle: "short",
-  }).format(new Date(value));
+  }).format(date);
 }
 
 function resumeLabel(resumes: ResumeDetail[], resumeId: string): string {
@@ -101,7 +104,9 @@ function draftFromCoverLetter(coverLetter: CoverLetter): DraftState {
 }
 
 function errorMessage(err: unknown, fallback: string): string {
-  return err instanceof ApiError ? err.message || fallback : fallback;
+  if (err instanceof ApiError) return err.message || fallback;
+  if (err instanceof Error) return err.message || fallback;
+  return fallback;
 }
 
 export function CoverLetterPanel({ jobId }: CoverLetterPanelProps) {
@@ -162,10 +167,21 @@ export function CoverLetterPanel({ jobId }: CoverLetterPanelProps) {
     }
   }
 
+  function fallbackDraft(id: string): DraftState {
+    const item = coverLetters?.find((coverLetter) => coverLetter.id === id);
+    return item
+      ? draftFromCoverLetter(item)
+      : { content: "", tone: "professional", status: "draft" };
+  }
+
+  function draftForCoverLetter(item: CoverLetter): DraftState {
+    return { ...draftFromCoverLetter(item), ...drafts[item.id] };
+  }
+
   function updateDraft(id: string, changes: Partial<DraftState>) {
     setDrafts((current) => ({
       ...current,
-      [id]: { ...current[id], ...changes },
+      [id]: { ...fallbackDraft(id), ...current[id], ...changes },
     }));
   }
 
@@ -197,7 +213,7 @@ export function CoverLetterPanel({ jobId }: CoverLetterPanelProps) {
 
   function onSave(item: CoverLetter) {
     return run(`save:${item.id}`, async () => {
-      const draft = drafts[item.id] ?? draftFromCoverLetter(item);
+      const draft = draftForCoverLetter(item);
       const updated = await updateCoverLetter(item.id, draft);
       replaceCoverLetter(updated);
     });
@@ -205,7 +221,7 @@ export function CoverLetterPanel({ jobId }: CoverLetterPanelProps) {
 
   function onCopy(item: CoverLetter) {
     return run(`copy:${item.id}`, async () => {
-      const draft = drafts[item.id] ?? draftFromCoverLetter(item);
+      const draft = draftForCoverLetter(item);
       if (!navigator.clipboard?.writeText) {
         throw new Error("Clipboard API is not supported in this browser or context.");
       }
@@ -325,7 +341,7 @@ export function CoverLetterPanel({ jobId }: CoverLetterPanelProps) {
         ) : (
           <ul className="space-y-4">
             {coverLetters.map((item) => {
-              const draft = drafts[item.id] ?? draftFromCoverLetter(item);
+              const draft = draftForCoverLetter(item);
               const saving = busy === `save:${item.id}`;
               const copying = busy === `copy:${item.id}`;
               const disabled = busy !== null;
