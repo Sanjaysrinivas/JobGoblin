@@ -14,7 +14,7 @@ test.describe("jobs", () => {
     await page.getByLabel("Location").fill("Remote");
     await page.getByLabel("Work mode").selectOption("remote");
     await page.getByLabel("Priority").selectOption("high");
-    await page.getByLabel("Source").selectOption("company_site");
+    await page.getByLabel("Source", { exact: true }).selectOption("company_site");
     await page
       .getByLabel("Job description")
       .fill("Build FastAPI services, PostgreSQL data flows, and production dashboards.");
