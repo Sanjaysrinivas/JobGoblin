@@ -8,7 +8,7 @@ test.describe("jobs", () => {
     await page.getByRole("link", { name: /Jobs/ }).click();
     await expect(page.getByRole("heading", { name: "Jobs", exact: true })).toBeVisible();
 
-    await page.getByRole("button", { name: "Add job" }).click();
+    await page.getByRole("button", { name: "Add a job", exact: true }).click();
     await page.getByLabel("Role title").fill("Senior Platform Engineer");
     await page.getByLabel("Company").fill("E2E Systems");
     await page.getByLabel("Location").fill("Remote");
