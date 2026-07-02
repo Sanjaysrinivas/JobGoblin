@@ -121,9 +121,7 @@ def test_create_list_update_and_delete_application(client, session, user):
     assert updated.status_code == 200, updated.text
     assert updated.json()["status"] == "applied"
 
-    events = session.exec(
-        select(ActivityEvent).order_by(ActivityEvent.created_at)
-    ).all()
+    events = session.exec(select(ActivityEvent).order_by(ActivityEvent.created_at)).all()
     assert [event.event_type for event in events] == [
         "application_created",
         "application_status_changed",
@@ -175,13 +173,23 @@ def test_cross_user_detail_update_and_delete_are_404(client, session, other_user
     assert detail.status_code == 404
     assert detail.json()["code"] == "application_not_found"
 
-    updated = client.patch(
-        f"/api/applications/{application.id}", json={"status": "applied"}
-    )
+    updated = client.patch(f"/api/applications/{application.id}", json={"status": "applied"})
     assert updated.status_code == 404
 
     deleted = client.delete(f"/api/applications/{application.id}")
     assert deleted.status_code == 404
+
+
+def test_detail_rejects_application_linked_to_cross_user_job(client, session, user, other_user):
+    other_job = _job(session, other_user)
+    application = Application(user_id=user.id, job_id=other_job.id)
+    session.add(application)
+    session.commit()
+    session.refresh(application)
+
+    detail = client.get(f"/api/applications/{application.id}")
+    assert detail.status_code == 404
+    assert detail.json()["code"] == "application_not_found"
 
 
 def test_create_enforces_owned_references(client, session, user, other_user):

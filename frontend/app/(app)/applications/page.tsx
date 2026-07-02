@@ -89,7 +89,7 @@ function dateInputValue(value: string | null): string {
 }
 
 function dateToIso(value: string): string | null {
-  return value ? new Date(`${value}T12:00:00`).toISOString() : null;
+  return value ? new Date(`${value}T00:00:00Z`).toISOString() : null;
 }
 
 function formatDate(value: string | null): string {
@@ -98,6 +98,7 @@ function formatDate(value: string | null): string {
     month: "short",
     day: "numeric",
     year: "numeric",
+    timeZone: "UTC",
   }).format(new Date(value));
 }
 
@@ -106,9 +107,12 @@ function isFollowUpDue(app: TrackedApplication): boolean {
   if (["offer", "rejected", "withdrawn", "archived"].includes(app.status)) {
     return false;
   }
-  const endOfToday = new Date();
-  endOfToday.setHours(23, 59, 59, 999);
-  return new Date(app.follow_up_at).getTime() <= endOfToday.getTime();
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(
+    today.getMonth() + 1
+  ).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const followUpStr = app.follow_up_at.slice(0, 10);
+  return followUpStr <= todayStr;
 }
 
 function draftFromApplication(app: TrackedApplication): Draft {

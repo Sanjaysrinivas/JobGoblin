@@ -25,15 +25,11 @@ def _error(status_code: int, message: str, code: str) -> HTTPException:
 
 
 def _application_not_found() -> HTTPException:
-    return _error(
-        status.HTTP_404_NOT_FOUND, "Application not found", "application_not_found"
-    )
+    return _error(status.HTTP_404_NOT_FOUND, "Application not found", "application_not_found")
 
 
 def _get_owned_job(session: Session, user: User, job_id: uuid.UUID) -> Job:
-    job = session.exec(
-        select(Job).where(Job.id == job_id, Job.user_id == user.id)
-    ).first()
+    job = session.exec(select(Job).where(Job.id == job_id, Job.user_id == user.id)).first()
     if job is None:
         raise _error(status.HTTP_404_NOT_FOUND, "Job not found", "job_not_found")
     return job
@@ -45,7 +41,11 @@ def _get_owned_application(
     row = session.exec(
         select(Application, Job)
         .join(Job, Job.id == Application.job_id)
-        .where(Application.id == application_id, Application.user_id == user.id)
+        .where(
+            Application.id == application_id,
+            Application.user_id == user.id,
+            Job.user_id == user.id,
+        )
     ).first()
     if row is None:
         raise _application_not_found()
@@ -53,9 +53,7 @@ def _get_owned_application(
     return application, job
 
 
-def _validate_resume_reference(
-    session: Session, user: User, resume_id: uuid.UUID | None
-) -> None:
+def _validate_resume_reference(session: Session, user: User, resume_id: uuid.UUID | None) -> None:
     if resume_id is None:
         return
     resume = session.exec(
@@ -156,9 +154,7 @@ def create_application(
 ) -> ApplicationOut:
     job = _get_owned_job(session, current_user, payload.job_id)
     _validate_resume_reference(session, current_user, payload.resume_id)
-    _validate_cover_letter_reference(
-        session, current_user, payload.cover_letter_id, payload.job_id
-    )
+    _validate_cover_letter_reference(session, current_user, payload.cover_letter_id, payload.job_id)
 
     existing = session.exec(
         select(Application).where(
