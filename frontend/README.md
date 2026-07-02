@@ -27,9 +27,17 @@ frontend/
 |       |-- jobs/
 |       |-- applications/
 |       |-- contacts/
+|       |-- outreach/
+|       |-- profile/
 |       `-- settings/
 |-- components/
 |   |-- ui/                        # shadcn primitives
+|   |-- contacts/                  # contact forms and list views
+|   |-- dashboard/                 # dashboard summary/activity view
+|   |-- jobs/                      # jobs list/detail/edit views
+|   |-- outreach/                  # review-only outreach draft UI
+|   |-- profile/                   # profile builder view
+|   |-- resumes/                   # resume upload/list/detail views
 |   |-- auth-gate.tsx
 |   |-- app-sidebar.tsx
 |   |-- app-topbar.tsx
@@ -41,6 +49,14 @@ frontend/
 |   |-- api.ts                     # typed fetch wrapper, credentials included
 |   |-- auth.ts                    # auth API helpers
 |   |-- resumes.ts                 # resume API helpers, including PDF export
+|   |-- jobs.ts                    # jobs API helpers
+|   |-- contacts.ts                # contacts API helpers
+|   |-- applications.ts            # applications and follow-up helper calls
+|   |-- cover-letters.ts           # local cover-letter draft helpers
+|   |-- dashboard.ts               # dashboard summary/activity helpers
+|   |-- analysis.ts                # resume-to-job analysis helpers
+|   |-- outreach.ts                # review-only local outreach draft helpers
+|   |-- profile.ts                 # private profile builder helpers
 |   |-- types.ts                   # shared API-facing types
 |   |-- nav.ts                     # sidebar navigation config
 |   `-- utils.ts                   # cn() class merge
@@ -78,9 +94,16 @@ The frontend currently talks to implemented backend endpoints for:
 
 - Auth: login, invite-only signup, logout, current user, MFA challenge/enroll/verify, and Google OAuth redirect entry points.
 - Resumes: upload, list, detail, edit, delete, re-parse, and PDF export.
-- Jobs: list, create, detail, edit, and delete.
+- Jobs: list, create, detail, edit, delete, and saved analysis history.
+- Contacts: list, create, detail, edit, and delete.
+- Applications: list, create, edit, delete, manual status tracking, and follow-up reminder fields.
+- Dashboard: summary counts and recent activity.
+- Resume-to-job analysis: run an estimated match and fetch saved results.
+- Cover letters: create grounded job/resume drafts from job detail, edit content, and update local review status.
+- Outreach: local review-only draft list/create/edit/delete flows; no email or external send action is performed.
+- Profile: view, save, delete, and seed a private profile from parsed resume facts.
 
-Applications, contacts, dashboard data, cover letters, and resume-to-job analysis pages still use placeholder UI until their backend modules are built.
+Resume versions, tailored drafts, email draft/export integration, and interview prep are still future work.
 
 All API requests use `credentials: "include"` so the HTTP-only session cookie flows with same-origin Docker/Caddy requests and direct dev requests.
 

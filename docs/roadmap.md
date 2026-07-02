@@ -1,127 +1,256 @@
-# JobGoblin Roadmap And Phases
+# JobGoblin Roadmap
 
-Last updated: 2026-07-01.
+This roadmap describes where JobGoblin is now, what the final application should become, and the remaining work needed to get there. It intentionally avoids dates and timelines.
 
-This roadmap tracks the practical build order from the current `dev` branch. It is intentionally phase-based rather than date-based because the project is a private self-hosted tool and depends on local verification, OAuth setup, and the owner's laptop runtime.
+## Product Direction
 
-## Phase 0: Restore A Usable Local App
+JobGoblin is a private, self-hosted job-search workspace for one owner and a small set of invited users. It should help users organize job opportunities, understand resume fit, draft application materials, plan follow-ups, and prepare for interviews while keeping every external action under human control.
 
-Status: complete.
+The product boundaries are fixed:
 
-Goal: make the browser app usable through `http://localhost:8080` so every later feature can be tested end to end.
+- JobGoblin is not an auto-apply tool.
+- JobGoblin does not silently send email, contact recruiters, submit forms, scrape LinkedIn, or perform external outreach.
+- AI output must stay grounded in user-provided facts: resumes, profiles, job descriptions, notes, contacts, and application history.
+- User data must remain scoped by `user_id`.
+- The default deployment remains private and self-hosted.
 
-Completed scope:
+## Where We Are Now
 
-- Made `jg_session` and `jg_mfa` cookie `Secure` flags environment-aware.
-- Implemented a skippable MFA enrollment path during login.
-- Aligned frontend auth helpers with the backend's flat auth response shape and MFA branches.
-- Added the app-shell auth guard.
-- Kept Google OAuth disabled gracefully until credentials are configured.
+The application has moved past the foundation stage and now has most of the MVP workflow in place.
 
-Exit criteria met:
+Implemented:
 
-- Demo admin can log in through Caddy on `http://localhost:8080` when seed credentials are configured.
-- `/api/auth/me` returns the current user after browser login.
-- Backend auth tests cover development cookie behavior and MFA branching.
-- Backend ruff/pytest and frontend lint/build are part of the expected verification path.
+- Local Docker Compose stack with PostgreSQL, FastAPI backend, Next.js frontend, Caddy, optional Ollama, and optional Cloudflare Tunnel.
+- Invite-only authentication with email/password, admin invite tokens, allowlist support, Google OAuth plumbing, TOTP MFA, and environment-aware cookies.
+- Resume upload, text extraction, AI parsing, editing, listing, detail view, deletion, and PDF export.
+- Job CRUD with list, create, detail, edit, delete, and source metadata.
+- Contacts CRUD for recruiters, referrals, and job-linked relationships.
+- Applications workflow with status tracking, notes, activity events, and follow-up reminders.
+- Dashboard with pipeline counts, follow-up counts, average analysis score, and recent activity.
+- Resume-to-job analysis with deterministic scoring, AI explanation, persisted results, and estimate language in the UI.
+- Cover-letter draft generation, editing, statuses, and job-detail UI.
+- Review-only outreach draft workflow with local copy/export behavior.
+- Profile builder seeded from parsed resume sections and editable by the user.
+- Playwright E2E harness through Docker Compose and Caddy.
+- Runtime operator tooling for Ollama checks, runtime smoke tests, and Cloudflare Tunnel checks.
 
-## Phase 1: Delivery Foundation
+Still not proven enough:
 
-Status: complete.
+- Full integrated verification after the latest merged feature set.
+- Real Ollama runtime behavior from the browser with `AI_PROVIDER=ollama`.
+- Google OAuth with real credentials and allowlisted users.
+- Cloudflare Tunnel HTTPS access and secure-cookie behavior.
+- End-to-end manual UX pass across the full job-search loop.
 
-Goal: reduce merge conflicts and catch frontend breakage before broader feature fan-out.
+## Final Application State
 
-Completed scope:
+The final JobGoblin application should feel like a private command center for a job search.
 
-- Added backend route auto-discovery for `app/api/routes/*.py` modules that export `router`.
-- Added GitHub Actions frontend CI: `npm ci`, `npm run lint`, `npm run build`.
-- Refreshed project docs around the current Docker/Caddy/Ollama architecture, local auth state, and phase plan.
+A user should be able to:
 
-Exit criteria met:
+- Sign in securely through local or tunnel access.
+- Maintain a trusted master profile of their own facts.
+- Upload multiple resumes and manage resume versions.
+- Save jobs and keep the original posting text.
+- Compare any resume or tailored draft against any saved job.
+- See clear estimated match scores, matched keywords, gaps, and recommendations.
+- Generate grounded cover-letter drafts from selected resume/profile/job facts.
+- Generate tailored resume drafts without inventing experience or credentials.
+- Track contacts, recruiters, referrals, outreach drafts, and conversation notes.
+- Track each application from saved role through interviews, offer, rejection, withdrawal, or archival.
+- See upcoming follow-ups and recent activity without relying on memory.
+- Prepare for interviews from the job description, resume/profile, and application notes.
+- Export or copy drafts for manual use.
+- Keep every external action explicit and human-reviewed.
 
-- New route modules no longer require editing `backend/app/main.py`.
-- CI includes backend ruff/pytest and frontend lint/build.
-- The docs describe the actual local Docker/Caddy/Ollama architecture.
+The app should not need any hosted SaaS backend to function. The normal operating model should be local-first, with optional private tunnel access.
 
-## Phase 2: Core Resource Modules
+## Remaining Roadmap
 
-Status: in progress.
+### 1. Stabilize The Merged MVP
 
-Goal: expose the existing database model through focused, isolated API and UI modules.
+Goal: make the merged feature set reliable enough to use daily.
 
-Recommended order:
+Remaining work:
 
-1. Jobs: CRUD API, ownership tests, list/create/detail/edit UI. In this branch.
-2. Contacts: CRUD API, optional job link validation, contact management UI.
-3. Applications: CRUD API, unique `(user_id, job_id)` behavior, status changes, `activity_events`, pipeline UI.
-4. Dashboard: summary counts, follow-up due count, average analysis score, recent activity timeline.
-5. Cover letters: AI-generated drafts, edit/status workflow, no external sending.
+- Keep local `dev` aligned with the latest merged state.
+- Run backend ruff and pytest.
+- Run frontend lint and build.
+- Run Playwright E2E through Docker Compose and Caddy.
+- Start the full local stack and manually smoke the main flows:
+  - login and MFA
+  - resumes
+  - jobs
+  - analysis
+  - contacts
+  - applications
+  - follow-up reminders
+  - dashboard
+  - cover letters
+  - outreach drafts
+  - profile builder
+- Fix regressions found during the integrated pass.
+- Keep README, architecture, design, frontend notes, and handover docs aligned with the merged code.
 
-Exit criteria:
+Done when:
 
-- Each user-owned query is scoped by `user_id`.
-- Cross-user access returns 404 or 401 without leaking object existence.
-- Frontend pages stop using placeholder figures for implemented resources.
-- Activity events are written for meaningful user actions.
+- The app works through `http://localhost:8080`.
+- CI and local verification agree.
+- Docs do not describe merged features as planned or placeholders.
 
-## Phase 3: Resume-To-Job Analysis
+### 2. Prove The Real Local AI Runtime
 
-Status: planned.
+Goal: move from mock AI to real local model behavior.
 
-Goal: deliver the signature ATS-style estimated match feature.
+Remaining work:
 
-Scope:
+- Pull required Ollama models.
+- Set `AI_PROVIDER=ollama`.
+- Verify the backend can reach Ollama through Compose.
+- Run runtime smoke tests for resume parsing, analysis, and cover-letter generation.
+- Manually inspect AI output quality for grounding and usefulness.
+- Tune prompts or parsing behavior where outputs are weak.
+- Document the working local AI setup.
 
-- Deterministic keyword extraction from job descriptions and resumes.
-- Exact and fuzzy matching using `rapidfuzz`, already in backend dependencies.
-- Weighted category scoring: keyword, skills, experience, role, education, formatting.
-- AI explanation and recommendations through the existing `AIProvider`.
-- Persist results to `JobAnalysis` and label scores as estimates in the UI.
+Done when:
 
-Exit criteria:
+- Browser workflows produce useful real AI output.
+- The app still works without external AI APIs.
+- AI output remains grounded in user-provided facts.
 
-- Analysis can be run for an owned resume and owned job.
-- Analysis cannot cross user boundaries.
-- Tests cover deterministic scoring and provider-mocked AI output.
-- UI shows matched keywords, missing keywords, recommendations, and the estimate disclaimer.
+### 3. Prove Private External Access
 
-## Phase 4: Real Local Runtime And External Access
+Goal: make the app usable from a private HTTPS URL without weakening security.
 
-Status: planned.
+Remaining work:
 
-Goal: move from mock/dev behavior to the intended private self-hosted runtime.
+- Configure Cloudflare Tunnel for the local Caddy origin.
+- Configure Google OAuth redirect settings for the tunnel hostname.
+- Verify owner login through the tunnel.
+- Verify allowlisted friend login through the tunnel.
+- Verify unallowlisted users are rejected.
+- Confirm production-mode cookies are `Secure`, `HttpOnly`, and `SameSite=Lax`.
+- Document operator steps and failure modes.
 
-Scope:
+Done when:
 
-- Pull and verify `qwen2.5:7b-instruct` in Ollama.
-- Set `AI_PROVIDER=ollama` and smoke-test resume parsing and generation.
-- Configure Google OAuth credentials and allowlisted users.
-- Add Cloudflare Tunnel service/config after local auth is stable.
-- Verify secure-cookie behavior under HTTPS tunnel access.
+- The owner and invited users can access the app through HTTPS.
+- The app remains private and allowlist-gated.
+- Local-only operation still works without tunnel credentials.
 
-Exit criteria:
+### 4. Add Resume Versions
 
-- Owner and allowlisted friends can sign in through the tunnel URL.
-- AI features work through Ollama without external API keys.
-- The app remains non-public: allowlist and human-review gates remain intact.
+Goal: make resumes first-class evolving artifacts, not just uploaded files.
 
-## Phase 5: V2 Workflow Expansion
+Remaining work:
 
-Status: planned.
+- Add resume version records or version metadata.
+- Let users duplicate a resume into a new version.
+- Preserve original uploaded resume facts separately from edited/tailored versions.
+- Show version history and current/default version.
+- Support comparing versions against the same job.
+- Keep export behavior clear.
 
-Goal: deepen the job-search workflow after the MVP loop is usable.
+Done when:
 
-Scope:
+- Users can maintain a base resume and multiple role-specific versions.
+- Tailoring work does not overwrite source facts by accident.
 
-- Profile builder from parsed resumes and user edits.
-- Resume versions and tailored resume drafts.
-- Outreach draft generation with review-only status transitions.
-- Follow-up reminders.
-- Email draft/export integration; no auto-send without explicit review.
-- Interview prep assistant.
+### 5. Add Tailored Resume Drafts
 
-Exit criteria:
+Goal: generate reviewable resume drafts for a specific job using only verified user facts.
 
-- External actions remain approval-gated.
-- AI-generated content remains grounded in user-provided facts.
-- New tables and migrations are introduced only when the workflow needs them.
+Remaining work:
+
+- Use profile, selected resume/version, job description, and analysis gaps as inputs.
+- Generate tailored bullet suggestions and section edits.
+- Show what changed and why.
+- Block invented companies, credentials, dates, or skills.
+- Let the user accept, edit, reject, or export draft changes.
+- Persist tailored drafts with status and provenance.
+
+Done when:
+
+- A user can create a tailored resume draft for a job.
+- Every generated change is editable and grounded.
+- The app clearly distinguishes source facts from AI-suggested wording.
+
+### 6. Improve Application Workflow Links
+
+Goal: connect jobs, resumes, cover letters, outreach, contacts, and follow-ups into one coherent workflow.
+
+Remaining work:
+
+- Link applications to selected resume versions and cover-letter drafts.
+- Show related contacts and outreach drafts from the application view.
+- Make next action and follow-up state more visible.
+- Add richer activity events for meaningful workflow changes.
+- Add filters for active, due, interviewing, archived, and outcome states.
+
+Done when:
+
+- The application detail view explains the full state of a job pursuit.
+- Users can quickly answer what happened, what was sent manually, and what comes next.
+
+### 7. Add Email Draft And Export Integration
+
+Goal: make outbound communication easier while preserving explicit human review.
+
+Remaining work:
+
+- Generate email-style drafts for recruiter follow-ups, referrals, thank-yous, and status checks.
+- Support copy/export actions and record them locally.
+- Optionally open a mail client with a draft only after explicit user action.
+- Avoid background sending.
+- Keep a clear audit trail of copied/exported drafts.
+
+Done when:
+
+- JobGoblin helps prepare messages but never sends them silently.
+- Users can track what they manually used outside the app.
+
+### 8. Add Interview Prep
+
+Goal: turn saved jobs and user facts into practical interview preparation.
+
+Remaining work:
+
+- Generate likely interview questions from the job description.
+- Generate user-grounded answer outlines from resume/profile facts.
+- Add STAR/story bank support.
+- Add company/job-specific preparation notes.
+- Track interview rounds and prep status on applications.
+
+Done when:
+
+- Users can prepare for interviews from the same trusted data already in JobGoblin.
+- AI answers remain suggestions, not fabricated claims.
+
+### 9. Harden Operations And Maintenance
+
+Goal: make the private deployment boring to run.
+
+Remaining work:
+
+- Add backup and restore guidance for Postgres volumes and uploaded files.
+- Add migration and rollback guidance.
+- Add health checks and operator diagnostics.
+- Improve startup failure messages.
+- Document secrets handling.
+- Decide whether `main` should receive stable releases from `dev`.
+
+Done when:
+
+- The owner can recover data, update the app, and diagnose common failures without digging through code.
+
+## Definition Of Done For The Final Product
+
+JobGoblin reaches its final intended state when:
+
+- The core job-search loop is complete from resume/profile to job analysis, tailored drafts, application tracking, follow-up, outreach prep, and interview prep.
+- Real local AI works reliably through Ollama.
+- The app is usable through local Caddy and optional HTTPS tunnel access.
+- User isolation and invite-only access are enforced.
+- External actions remain explicit and human-reviewed.
+- Generated content is grounded, editable, and traceable to user-provided facts.
+- The owner has clear docs for setup, operation, backup, restore, and troubleshooting.

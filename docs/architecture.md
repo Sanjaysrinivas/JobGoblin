@@ -24,7 +24,7 @@ one reverse proxy so the browser sees a single origin:
 
 State and AI run as local containers alongside them:
 
-- PostgreSQL: users, resumes, jobs, analyses, applications, and activity data.
+- PostgreSQL: users, profiles, resumes, jobs, analyses, cover letters, applications, contacts, outreach messages, and activity data.
 - File storage: uploaded resume files on a mounted local volume behind a storage
   interface, so object storage remains a later swap.
 - Ollama: local LLM runtime. `MockProvider` is used for tests and fast dev.
@@ -33,7 +33,7 @@ State and AI run as local containers alongside them:
 
 Everything runs in one Docker Compose stack on the owner's laptop (Ryzen 7,
 31 GB RAM, RTX 4070 8 GB). External access is scaffolded through an optional Cloudflare
-Tunnel compose profile after local auth is stable. This keeps hosting at zero monthly cost while
+Tunnel compose profile, with HTTPS/runtime validation still pending. This keeps hosting at zero monthly cost while
 letting the app use local Ollama.
 
 | Component | Runs as | Cost |
@@ -55,8 +55,8 @@ the Secure flag is used outside local development.
 Current tables include `users`, `invite_tokens`, and these user-owned tables
 scoped to `user_id`:
 
-`resumes`, `jobs`, `job_analyses`, `cover_letters`, `applications`, `contacts`,
-`outreach_messages`, `activity_events`.
+`profiles`, `resumes`, `jobs`, `job_analyses`, `cover_letters`,
+`applications`, `contacts`, `outreach_messages`, `activity_events`.
 
 Deferred V2 tables: `resume_versions`, `tailored_resume_drafts`, `email_drafts`.
 
@@ -65,9 +65,9 @@ Application pipeline statuses: `saved`, `interested`, `resume_tailored`,
 `phone_screen`, `technical_interview`, `final_interview`, `offer`, `rejected`,
 `withdrawn`, `archived`.
 
-## 5. Planned Core AI Flow: Resume To Job Analysis
+## 5. Core AI Flow: Resume To Job Analysis
 
-This is planned for Phase 3. The resume upload, storage, extraction, parsing, and PDF export pieces already exist; the job-description comparison flow is still pending.
+This is implemented and pending integrated validation. The resume upload, storage, extraction, parsing, PDF export, and job-description comparison flow are in place, with final integrated smoke still pending.
 
 1. User uploads a resume; backend stores the file and extracts plain text.
 2. User pastes a job description and selects a resume.
@@ -77,7 +77,7 @@ This is planned for Phase 3. The resume upload, storage, extraction, parsing, an
    qualifies for from qualifications they lack, and suggests truthful changes.
 5. Persist numeric score, matched/missing keywords, explanation, and
    recommendations.
-6. User saves the job to the tracker and advances it through the pipeline.
+6. User saves the job to the tracker, creates local review-only drafts as needed, and advances the application through the pipeline with optional follow-up reminders.
 
 ## 6. Branching Workflow
 
