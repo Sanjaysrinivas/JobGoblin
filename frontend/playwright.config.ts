@@ -7,11 +7,14 @@ export default defineConfig({
   testDir: "./e2e",
   timeout: 30_000,
   expect: { timeout: 10_000 },
+  outputDir: "test-results",
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
-  reporter: process.env.CI ? [["github"], ["html"], ["list"]] : [["list"], ["html"]],
+  reporter: process.env.CI
+    ? [["github"], ["html", { outputFolder: "playwright-report", open: "never" }], ["list"]]
+    : [["list"], ["html", { outputFolder: "playwright-report" }]],
   use: {
     baseURL,
     trace: "retain-on-failure",

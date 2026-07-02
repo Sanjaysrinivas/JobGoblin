@@ -1,4 +1,4 @@
-name: CI
+﻿name: CI
 
 on:
   push:
@@ -61,3 +61,96 @@ jobs:
         run: npm run lint
       - name: Build
         run: npm run build
+
+  e2e:
+    name: Playwright E2E (Docker Compose + Caddy)
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      E2E_ADMIN_EMAIL: admin@jobgoblin.local
+      E2E_ADMIN_PASSWORD: goblin-demo-pass-123
+      PLAYWRIGHT_BASE_URL: http://127.0.0.1:8080
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Configure E2E environment
+        run: |
+          cat > .env <<EOF
+          APP_ENV=development
+          APP_SECRET_KEY=ci-e2e-secret-key-change-me
+          DATABASE_URL=postgresql+psycopg://jobgoblin:jobgoblin@db:5432/jobgoblin
+          AI_PROVIDER=mock
+          OLLAMA_BASE_URL=http://ollama:11434
+          OLLAMA_MODEL=qwen2.5:7b-instruct
+          OLLAMA_FAST_MODEL=llama3.2:3b
+          FILE_STORAGE_PATH=/data/uploads
+          MAX_UPLOAD_MB=10
+          ADMIN_EMAIL=${E2E_ADMIN_EMAIL}
+          ADMIN_PASSWORD=${E2E_ADMIN_PASSWORD}
+          FRONTEND_ORIGIN=http://localhost:3000
+          GOOGLE_CLIENT_ID=
+          GOOGLE_CLIENT_SECRET=
+          OAUTH_REDIRECT_BASE_URL=http://localhost:8080
+          ALLOWED_EMAILS=
+          TOTP_ISSUER=JobGoblin
+          CLOUDFLARED_TUNNEL_TOKEN=
+          EOF
+
+      - name: Start Docker Compose stack
+        run: docker compose up -d --build db backend frontend caddy
+
+      - name: Wait for Caddy health route
+        run: |
+          for attempt in {1..60}; do
+            if curl --fail --silent --show-error "${PLAYWRIGHT_BASE_URL}/api/health"; then
+              exit 0
+            fi
+            docker compose ps
+            sleep 5
+          done
+          docker compose logs --no-color backend frontend caddy
+          exit 1
+
+      - name: Run Playwright E2E
+        working-directory: frontend
+        run: npx playwright test
+
+      - name: Collect Docker Compose diagnostics
+        if: failure()
+        run: |
+          mkdir -p test/e2e-artifacts
+          docker compose ps > test/e2e-artifacts/docker-compose-ps.txt
+          docker compose logs --no-color > test/e2e-artifacts/docker-compose.log
+
+      - name: Upload E2E artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-e2e-artifacts
+          if-no-files-found: ignore
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+            test/e2e-artifacts/
+
+      - name: Stop Docker Compose stack
+        if: always()
+        run: docker compose down --volumes --remove-orphans
