@@ -19,7 +19,7 @@ import type { ApiErrorBody } from "@/lib/types";
  *   so "" is correct: requests go to same-origin `/api/...`. For dev outside
  *   Docker, set NEXT_PUBLIC_API_BASE_URL=http://localhost:8000.
  * - On the **server** (Server Components / Actions / Route Handlers) `fetch`
- *   needs an absolute URL — a bare `/api/...` throws "Failed to parse URL".
+ *   needs an absolute URL - a bare `/api/...` throws "Failed to parse URL".
  *   There is no Caddy hop server-side, so we talk to the backend container
  *   directly. Configure INTERNAL_API_BASE_URL in the server environment
  *   (docker-compose sets it to http://backend:8000); fall back to that host.
@@ -68,7 +68,7 @@ async function parseError(res: Response): Promise<ApiError> {
     if (body?.detail) detail = body.detail;
     code = body?.code;
   } catch {
-    // Non-JSON error body — fall back to the status text.
+    // Non-JSON error body - fall back to the status text.
   }
   return new ApiError(res.status, detail, code);
 }
@@ -123,6 +123,8 @@ export const api = {
     apiFetch<T>(path, { ...options, method: "GET" }),
   post: <T>(path: string, json?: unknown, options?: RequestOptions) =>
     apiFetch<T>(path, { ...options, method: "POST", json }),
+  put: <T>(path: string, json?: unknown, options?: RequestOptions) =>
+    apiFetch<T>(path, { ...options, method: "PUT", json }),
   patch: <T>(path: string, json?: unknown, options?: RequestOptions) =>
     apiFetch<T>(path, { ...options, method: "PATCH", json }),
   delete: <T>(path: string, options?: RequestOptions) =>

@@ -240,6 +240,39 @@ export interface OutreachCreatePayload {
 
 export type OutreachUpdatePayload = Partial<OutreachCreatePayload>;
 
+export interface UserProfile {
+  id: string;
+  source_resume_id: string | null;
+  full_name: string | null;
+  headline: string | null;
+  location: string | null;
+  website_url: string | null;
+  linkedin_url: string | null;
+  summary: string | null;
+  skills: string[];
+  experience: ParsedExperience[];
+  education: ParsedEducation[];
+  projects: string[];
+  certifications: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserProfilePayload {
+  full_name?: string | null;
+  headline?: string | null;
+  location?: string | null;
+  website_url?: string | null;
+  linkedin_url?: string | null;
+  summary?: string | null;
+  skills?: string[];
+  experience?: ParsedExperience[];
+  education?: ParsedEducation[];
+  projects?: string[];
+  certifications?: string[];
+}
+
+
 // ---------------------------------------------------------------------------
 // Dashboard (design.md section 4.4)
 // ---------------------------------------------------------------------------

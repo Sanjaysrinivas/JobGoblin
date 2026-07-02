@@ -7,6 +7,7 @@ from app.models.core import (
     Job,
     JobAnalysis,
     OutreachMessage,
+    Profile,
     Resume,
     User,
 )
@@ -36,6 +37,7 @@ __all__ = [
     "OutreachChannel",
     "OutreachMessage",
     "OutreachStatus",
+    "Profile",
     "Priority",
     "Resume",
     "User",

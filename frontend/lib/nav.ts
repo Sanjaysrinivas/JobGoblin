@@ -4,6 +4,7 @@ import {
   Briefcase,
   ClipboardList,
   MessageSquareText,
+  UserRound,
   Users,
   Settings,
   type LucideIcon,
@@ -16,7 +17,7 @@ export interface NavItem {
   description: string;
 }
 
-/** Primary application navigation (design.md §13). */
+/** Primary application navigation (design.md section 13). */
 export const navItems: NavItem[] = [
   {
     title: "Dashboard",
@@ -29,6 +30,12 @@ export const navItems: NavItem[] = [
     href: "/resumes",
     icon: FileText,
     description: "Upload, parse, and manage resume versions",
+  },
+  {
+    title: "Profile",
+    href: "/profile",
+    icon: UserRound,
+    description: "Master profile from your own resume facts",
   },
   {
     title: "Jobs",
