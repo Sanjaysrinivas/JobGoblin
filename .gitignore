@@ -37,3 +37,6 @@ Thumbs.db
 # Local agent handover
 HANDOVER.md
 AGENT_HANDOVER.md
+playwright-report/
+test-results/
+blob-report/

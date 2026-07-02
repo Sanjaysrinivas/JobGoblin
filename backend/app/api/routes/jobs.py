@@ -13,7 +13,8 @@ from sqlmodel import Session, select
 
 from app.api.deps import get_current_user
 from app.core.database import get_session
-from app.models import Job, User
+from app.models import Job, JobAnalysis, User
+from app.schemas.analysis import JobAnalysisOut
 from app.schemas.job import JobCreate, JobOut, JobUpdate
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -71,6 +72,22 @@ def create_job(
     session.commit()
     session.refresh(job)
     return job
+
+
+@router.get("/{job_id}/analysis", response_model=list[JobAnalysisOut])
+def list_job_analyses(
+    job_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> list[JobAnalysis]:
+    _get_owned_job(session, current_user, job_id)
+    return list(
+        session.exec(
+            select(JobAnalysis)
+            .where(JobAnalysis.job_id == job_id, JobAnalysis.user_id == current_user.id)
+            .order_by(JobAnalysis.created_at.desc())
+        ).all()
+    )
 
 
 @router.get("/{job_id}", response_model=JobOut)

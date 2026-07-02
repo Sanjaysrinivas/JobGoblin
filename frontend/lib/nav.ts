@@ -3,6 +3,7 @@ import {
   FileText,
   Briefcase,
   ClipboardList,
+  MessageSquareText,
   Users,
   Settings,
   type LucideIcon,
@@ -46,6 +47,12 @@ export const navItems: NavItem[] = [
     href: "/contacts",
     icon: Users,
     description: "Recruiters and referrals for outreach",
+  },
+  {
+    title: "Outreach",
+    href: "/outreach",
+    icon: MessageSquareText,
+    description: "Review local drafts before copying",
   },
   {
     title: "Settings",

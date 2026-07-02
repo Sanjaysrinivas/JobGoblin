@@ -158,17 +158,12 @@ export interface JobAnalysis {
   education_score: number;
   formatting_score: number;
   matched_keywords: string[] | null;
-  missing_keywords: MissingKeyword[] | null;
+  missing_keywords: string[] | null;
   explanation: string | null;
   recommendations: string[] | null;
   provider: string;
   model_used: string;
   created_at: string;
-}
-
-export interface MissingKeyword {
-  keyword: string;
-  likely_qualified: boolean;
 }
 
 export interface CoverLetter {
@@ -234,6 +229,17 @@ export interface Outreach {
   updated_at: string;
 }
 
+export interface OutreachCreatePayload {
+  job_id?: string | null;
+  contact_id?: string | null;
+  channel?: OutreachChannel;
+  message_type: string;
+  content: string;
+  status?: OutreachStatus;
+}
+
+export type OutreachUpdatePayload = Partial<OutreachCreatePayload>;
+
 // ---------------------------------------------------------------------------
 // Dashboard (design.md section 4.4)
 // ---------------------------------------------------------------------------
@@ -278,3 +284,4 @@ export interface ApiErrorBody {
   detail: string;
   code?: string;
 }
+
