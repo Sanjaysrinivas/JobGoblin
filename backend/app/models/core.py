@@ -94,7 +94,7 @@ class Profile(_UUIDMixin, _TimeMixin, table=True):
     __tablename__ = "profiles"
     __table_args__ = (UniqueConstraint("user_id", name="uq_profiles_user_id"),)
 
-    user_id: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE", index=True)
+    user_id: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE")
     source_resume_id: uuid.UUID | None = Field(
         default=None, foreign_key="resumes.id", ondelete="SET NULL"
     )

@@ -53,6 +53,13 @@ def _as_string_list(value: Any) -> list[str]:
     return [str(item).strip() for item in value if str(item).strip()]
 
 
+def _as_optional_string(value: Any) -> str | None:
+    if value is None or isinstance(value, (dict, list, tuple, set)):
+        return None
+    text = str(value).strip()
+    return text or None
+
+
 def _as_experience(value: Any) -> list[dict]:
     if not isinstance(value, list):
         return []
@@ -68,8 +75,8 @@ def _as_experience(value: Any) -> list[dict]:
             {
                 "company": company,
                 "role": role,
-                "start": raw.get("start"),
-                "end": raw.get("end"),
+                "start": _as_optional_string(raw.get("start")),
+                "end": _as_optional_string(raw.get("end")),
                 "highlights": _as_string_list(raw.get("highlights")),
             }
         )
@@ -91,7 +98,7 @@ def _as_education(value: Any) -> list[dict]:
             {
                 "institution": institution,
                 "credential": credential,
-                "year": raw.get("year"),
+                "year": _as_optional_string(raw.get("year")),
             }
         )
     return items

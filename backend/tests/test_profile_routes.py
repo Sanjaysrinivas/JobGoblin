@@ -123,6 +123,45 @@ def test_seed_profile_from_owned_parsed_resume(client, session, user):
     assert body["education"][0]["credential"] == "BS CS"
 
 
+def test_seed_profile_sanitizes_non_scalar_dates_and_years(client, session, user):
+    resume = _resume(
+        session,
+        user,
+        parsed_json={
+            "experience": [
+                {
+                    "company": "Goblin Labs",
+                    "role": "Developer",
+                    "start": {"year": 2021},
+                    "end": ["2024"],
+                    "highlights": ["Built parsers"],
+                },
+                {
+                    "company": "Scalar Co",
+                    "role": "Engineer",
+                    "start": 2020,
+                    "end": None,
+                    "highlights": [],
+                },
+            ],
+            "education": [
+                {"institution": "State", "credential": "BS CS", "year": {"value": "2020"}},
+                {"institution": "Remote U", "credential": "Certificate", "year": 2023},
+            ],
+        },
+    )
+
+    resp = client.post("/api/profile/seed", json={"resume_id": str(resume.id)})
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["experience"][0]["start"] is None
+    assert body["experience"][0]["end"] is None
+    assert body["experience"][1]["start"] == "2020"
+    assert body["education"][0]["year"] is None
+    assert body["education"][1]["year"] == "2023"
+
+
 def test_seed_rejects_unparsed_resume(client, session, user):
     resume = _resume(session, user, parsed_json=None)
 

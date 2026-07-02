@@ -37,14 +37,15 @@ interface DraftProfile {
   website_url: string;
   linkedin_url: string;
   summary: string;
-  skills: string[];
-  experience: ParsedExperience[];
+  skills: string;
+  experience: DraftExperience[];
   education: ParsedEducation[];
-  projects: string[];
-  certifications: string[];
+  projects: string;
+  certifications: string;
 }
 
 type Busy = "load" | "save" | "seed" | null;
+type DraftExperience = Omit<ParsedExperience, "highlights"> & { highlights: string };
 
 const emptyDraft: DraftProfile = {
   full_name: "",
@@ -53,11 +54,11 @@ const emptyDraft: DraftProfile = {
   website_url: "",
   linkedin_url: "",
   summary: "",
-  skills: [],
+  skills: "",
   experience: [],
   education: [],
-  projects: [],
-  certifications: [],
+  projects: "",
+  certifications: "",
 };
 
 function linesToList(value: string): string[] {
@@ -77,7 +78,7 @@ function blankToNull(value: string): string | null {
 }
 
 function toDraft(profile: UserProfile | null): DraftProfile {
-  if (!profile) return { ...emptyDraft, skills: [], experience: [], education: [], projects: [], certifications: [] };
+  if (!profile) return { ...emptyDraft, experience: [], education: [] };
   return {
     full_name: profile.full_name ?? "",
     headline: profile.headline ?? "",
@@ -85,11 +86,14 @@ function toDraft(profile: UserProfile | null): DraftProfile {
     website_url: profile.website_url ?? "",
     linkedin_url: profile.linkedin_url ?? "",
     summary: profile.summary ?? "",
-    skills: profile.skills ?? [],
-    experience: profile.experience ?? [],
+    skills: listToLines(profile.skills ?? []),
+    experience: (profile.experience ?? []).map((item) => ({
+      ...item,
+      highlights: listToLines(item.highlights ?? []),
+    })),
     education: profile.education ?? [],
-    projects: profile.projects ?? [],
-    certifications: profile.certifications ?? [],
+    projects: listToLines(profile.projects ?? []),
+    certifications: listToLines(profile.certifications ?? []),
   };
 }
 
@@ -101,16 +105,19 @@ function toPayload(draft: DraftProfile): UserProfilePayload {
     website_url: blankToNull(draft.website_url),
     linkedin_url: blankToNull(draft.linkedin_url),
     summary: blankToNull(draft.summary),
-    skills: draft.skills,
-    experience: draft.experience,
+    skills: linesToList(draft.skills),
+    experience: draft.experience.map((item) => ({
+      ...item,
+      highlights: linesToList(item.highlights),
+    })),
     education: draft.education,
-    projects: draft.projects,
-    certifications: draft.certifications,
+    projects: linesToList(draft.projects),
+    certifications: linesToList(draft.certifications),
   };
 }
 
-function emptyExperience(): ParsedExperience {
-  return { company: "", role: "", start: null, end: null, highlights: [] };
+function emptyExperience(): DraftExperience {
+  return { company: "", role: "", start: null, end: null, highlights: "" };
 }
 
 function emptyEducation(): ParsedEducation {
@@ -178,7 +185,7 @@ export function ProfileBuilderView() {
     setDraft((current) => ({ ...current, [key]: value }));
   }
 
-  function updateExperience(index: number, patch: Partial<ParsedExperience>) {
+  function updateExperience(index: number, patch: Partial<DraftExperience>) {
     setDraft((current) => ({
       ...current,
       experience: current.experience.map((item, i) =>
@@ -348,8 +355,8 @@ export function ProfileBuilderView() {
               </CardHeader>
               <CardContent>
                 <textarea
-                  value={listToLines(draft.skills)}
-                  onChange={(e) => update("skills", linesToList(e.target.value))}
+                  value={draft.skills}
+                  onChange={(e) => update("skills", e.target.value)}
                   rows={6}
                   className="border-input bg-card focus-visible:border-ring focus-visible:ring-ring/40 w-full rounded-md border px-3 py-2 font-mono text-xs shadow-xs outline-none focus-visible:ring-[3px]"
                 />
@@ -374,8 +381,8 @@ export function ProfileBuilderView() {
                       <Input placeholder="End" value={item.end ?? ""} onChange={(e) => updateExperience(index, { end: blankToNull(e.target.value) })} />
                     </div>
                     <textarea
-                      value={listToLines(item.highlights)}
-                      onChange={(e) => updateExperience(index, { highlights: linesToList(e.target.value) })}
+                      value={item.highlights}
+                      onChange={(e) => updateExperience(index, { highlights: e.target.value })}
                       rows={4}
                       placeholder="Highlights, one per line"
                       className="border-input bg-card focus-visible:border-ring focus-visible:ring-ring/40 w-full rounded-md border px-3 py-2 text-sm shadow-xs outline-none focus-visible:ring-[3px]"
@@ -433,8 +440,8 @@ export function ProfileBuilderView() {
                   <Label htmlFor="projects">Projects</Label>
                   <textarea
                     id="projects"
-                    value={listToLines(draft.projects)}
-                    onChange={(e) => update("projects", linesToList(e.target.value))}
+                    value={draft.projects}
+                    onChange={(e) => update("projects", e.target.value)}
                     rows={6}
                     className="border-input bg-card focus-visible:border-ring focus-visible:ring-ring/40 w-full rounded-md border px-3 py-2 text-sm shadow-xs outline-none focus-visible:ring-[3px]"
                   />
@@ -443,8 +450,8 @@ export function ProfileBuilderView() {
                   <Label htmlFor="certifications">Certifications</Label>
                   <textarea
                     id="certifications"
-                    value={listToLines(draft.certifications)}
-                    onChange={(e) => update("certifications", linesToList(e.target.value))}
+                    value={draft.certifications}
+                    onChange={(e) => update("certifications", e.target.value)}
                     rows={6}
                     className="border-input bg-card focus-visible:border-ring focus-visible:ring-ring/40 w-full rounded-md border px-3 py-2 text-sm shadow-xs outline-none focus-visible:ring-[3px]"
                   />
