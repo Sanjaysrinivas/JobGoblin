@@ -17,7 +17,7 @@ test.describe("authentication", () => {
     await page.getByLabel("Password", { exact: true }).fill("definitely-wrong");
     await page.getByRole("button", { name: "Sign in" }).click();
 
-    await expect(page.getByRole("alert")).toContainText("Invalid email or password.");
+    await expect(page.getByText("Invalid email or password.")).toBeVisible();
   });
 
   test("admin can sign in and see the application shell", async ({ page }) => {

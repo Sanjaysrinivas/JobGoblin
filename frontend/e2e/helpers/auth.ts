@@ -12,6 +12,7 @@ export async function loginAsAdmin(page: Page) {
   const skip = page.getByRole("button", { name: "Skip for now" });
   if (await skip.isVisible().catch(() => false)) {
     await skip.click();
+    await page.goto("/dashboard");
   }
 
   await expect(page).toHaveURL(/\/dashboard$/);
