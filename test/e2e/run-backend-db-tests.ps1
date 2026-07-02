@@ -16,23 +16,11 @@ if ($Python -match "[\\/]") {
 
 Push-Location $repoRoot
 try {
-    docker compose -f $composeFile -p jobgoblin-backend-tests up -d test-db
-
-    $ready = $false
-    for ($attempt = 1; $attempt -le 30; $attempt++) {
-        docker compose -f $composeFile -p jobgoblin-backend-tests exec -T test-db pg_isready -U test -d test | Out-Null
-        if ($LASTEXITCODE -eq 0) {
-            $ready = $true
-            break
-        }
-        Start-Sleep -Seconds 2
-    }
-
-    if (-not $ready) {
+    docker compose -f $composeFile -p jobgoblin-backend-tests up -d --wait test-db
+    if ($LASTEXITCODE -ne 0) {
         docker compose -f $composeFile -p jobgoblin-backend-tests logs --no-color test-db
         throw "Timed out waiting for the backend test database."
     }
-
     if (-not $PytestArgs) {
         $PytestArgs = @("-q")
     }

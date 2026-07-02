@@ -1,4 +1,4 @@
-﻿name: jobgoblin-backend-tests
+name: jobgoblin-backend-tests
 
 services:
   test-db:
@@ -9,6 +9,8 @@ services:
       POSTGRES_DB: test
     ports:
       - "5433:5432"
+    volumes:
+      - test_pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U test -d test"]
       interval: 5s
