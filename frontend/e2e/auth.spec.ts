@@ -25,6 +25,6 @@ test.describe("authentication", () => {
 
     await expect(page.getByRole("link", { name: /Jobs/ })).toBeVisible();
     await expect(page.getByRole("link", { name: /Outreach/ })).toBeVisible();
-    await expect(page.getByText("Pipeline")).toBeVisible();
+    await expect(page.getByText("Pipeline", { exact: true })).toBeVisible();
   });
 });
