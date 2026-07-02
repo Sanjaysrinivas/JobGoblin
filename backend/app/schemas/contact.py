@@ -63,8 +63,17 @@ class ContactUpdate(BaseModel):
     @field_validator("name")
     @classmethod
     def reject_blank_name(cls, value: str | None) -> str | None:
+        if value is None:
+            raise ValueError("Name cannot be null")
         if value == "":
             raise ValueError("Value cannot be blank")
+        return value
+
+    @field_validator("contacted")
+    @classmethod
+    def reject_null_contacted(cls, value: bool | None) -> bool | None:
+        if value is None:
+            raise ValueError("Contacted cannot be null")
         return value
 
 

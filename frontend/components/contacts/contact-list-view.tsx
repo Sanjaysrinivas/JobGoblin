@@ -57,6 +57,16 @@ function errorMessage(err: unknown, fallback: string): string {
   return err instanceof ApiError ? err.message || fallback : fallback;
 }
 
+function safeExternalHref(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:" ? value : null;
+  } catch {
+    return null;
+  }
+}
+
 export function ContactListView() {
   const [contacts, setContacts] = React.useState<Contact[] | null>(null);
   const [jobs, setJobs] = React.useState<ContactJobOption[]>([]);
@@ -209,6 +219,7 @@ export function ContactListView() {
         <ul className="grid grid-cols-1 gap-3">
           {contacts.map((contact) => {
             const relatedJob = jobLabel(jobs, contact.job_id);
+            const linkedinHref = safeExternalHref(contact.linkedin_url);
             const isEditing = editingId === contact.id;
             const isDeleting = busy === `delete:${contact.id}`;
             return (
@@ -250,9 +261,9 @@ export function ContactListView() {
                               {contact.email}
                             </a>
                           )}
-                          {contact.linkedin_url && (
+                          {linkedinHref && (
                             <a
-                              href={contact.linkedin_url}
+                              href={linkedinHref}
                               target="_blank"
                               rel="noreferrer"
                               className="hover:text-foreground inline-flex items-center gap-1"

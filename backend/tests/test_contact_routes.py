@@ -210,6 +210,18 @@ def test_patch_rejects_blank_name(client):
     assert resp.status_code == 422
 
 
+def test_patch_rejects_null_required_fields(client):
+    created = _create_contact(client).json()
+
+    null_name = client.patch(f"/api/contacts/{created['id']}", json={"name": None})
+    assert null_name.status_code == 422
+
+    null_contacted = client.patch(
+        f"/api/contacts/{created['id']}", json={"contacted": None}
+    )
+    assert null_contacted.status_code == 422
+
+
 def test_create_rejects_blank_name(client):
     resp = _create_contact(client, name="   ")
     assert resp.status_code == 422
@@ -219,9 +231,11 @@ def test_requires_authentication(session):
     from app.main import app
 
     app.dependency_overrides[get_session] = lambda: session
-    with TestClient(app) as c:
-        resp = c.get("/api/contacts")
-    app.dependency_overrides.clear()
+    try:
+        with TestClient(app) as c:
+            resp = c.get("/api/contacts")
 
-    assert resp.status_code == 401
-    assert resp.json()["code"] == "not_authenticated"
+        assert resp.status_code == 401
+        assert resp.json()["code"] == "not_authenticated"
+    finally:
+        app.dependency_overrides.clear()
