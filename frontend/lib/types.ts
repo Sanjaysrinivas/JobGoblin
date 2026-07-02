@@ -209,6 +209,19 @@ export interface Contact {
   updated_at: string;
 }
 
+export interface ContactCreatePayload {
+  job_id?: string | null;
+  name: string;
+  email?: string | null;
+  company?: string | null;
+  role?: string | null;
+  linkedin_url?: string | null;
+  notes?: string | null;
+  contacted?: boolean;
+}
+
+export type ContactUpdatePayload = Partial<ContactCreatePayload>;
+
 export interface Outreach {
   id: string;
   contact_id: string | null;
