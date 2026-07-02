@@ -98,11 +98,15 @@ services:
     restart: unless-stopped
 
   cloudflared:
-    image: cloudflare/cloudflared:latest
+    image: cloudflare/cloudflared:2026.6.1
     profiles: ["tunnel"]
     # Token-based tunnel. Configure the public hostname in Cloudflare Zero Trust
     # to point at http://caddy:80, then set CLOUDFLARED_TUNNEL_TOKEN in .env.
     # For named-tunnel config-file mode, see infra/cloudflared-config.example.yml.
+    # Named-tunnel mode requires mounting config and credentials files, e.g.:
+    # volumes:
+    #   - ./infra/cloudflared-config.yml:/etc/cloudflared/config.yml:ro
+    #   - ./infra/cloudflared-credentials.json:/etc/cloudflared/credentials.json:ro
     command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TUNNEL_TOKEN:-}
     depends_on:
       caddy:
