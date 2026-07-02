@@ -95,7 +95,7 @@ def get_dashboard_summary(
                 Application.user_id == current_user.id,
                 Application.follow_up_at.is_not(None),
                 Application.follow_up_at <= now,
-                Application.status.not_in(_TERMINAL_STATUSES),
+                Application.status.notin_(_TERMINAL_STATUSES),
             ),
         ),
         avg_score=float(avg_score) if avg_score is not None else None,

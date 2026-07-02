@@ -138,14 +138,12 @@ def test_summary_counts_only_current_user_data(client, session, user, other_user
 
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["total_jobs"] == 2
-    assert body["total_resumes"] == 1
-    assert body["total_applications"] == 2
-    assert body["total_contacts"] == 1
-    assert body["follow_up_due_count"] == 1
-    assert body["average_analysis_score"] == 85.0
-    assert body["applications_by_status"]["saved"] == 1
-    assert body["applications_by_status"]["rejected"] == 1
+    assert body["saved"] == 2
+    assert body["applied"] == 0
+    assert body["interviewing"] == 0
+    assert body["offers"] == 0
+    assert body["follow_ups_due"] == 1
+    assert body["avg_score"] == 85.0
 
 
 def test_activity_is_user_scoped_ordered_and_limited(client, session, user, other_user):

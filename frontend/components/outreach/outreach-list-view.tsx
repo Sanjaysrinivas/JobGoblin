@@ -219,6 +219,9 @@ export function OutreachListView() {
   function onRecordCopy(item: OutreachDraft) {
     return run(`copy:${item.id}`, async () => {
       const draft = drafts[item.id] ?? draftFromOutreach(item);
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("Clipboard API is not supported in this browser or context.");
+      }
       await navigator.clipboard.writeText(draft.content);
       const updated = await updateOutreach(item.id, {
         ...toPayload(draft),
