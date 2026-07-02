@@ -194,7 +194,7 @@ def _latest_activity_by_application(
             ActivityEvent.entity_type == "application",
             ActivityEvent.entity_id.in_(application_ids),
         )
-        .order_by(ActivityEvent.created_at.desc())
+        .order_by(ActivityEvent.created_at.desc(), ActivityEvent.id.desc())
     ).all()
     latest: dict[uuid.UUID, ApplicationFollowUpActivityOut] = {}
     for event in events:
