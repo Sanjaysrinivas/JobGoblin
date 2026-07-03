@@ -4,6 +4,7 @@ Discovery finds and ranks candidate jobs, but never applies or contacts anyone.
 Users explicitly save selected results into normal Jobs.
 """
 
+import asyncio
 import uuid
 from typing import Annotated
 
@@ -90,6 +91,31 @@ def _profile_terms(profile: Profile | None) -> list[str]:
     return cleaned[:10]
 
 
+def _format_context_value(value: object) -> str:
+    if isinstance(value, list):
+        parts = []
+        for item in value:
+            if isinstance(item, dict):
+                fields = [
+                    str(item.get(key) or "").strip()
+                    for key in ("role", "company", "credential", "institution")
+                ]
+                highlights = item.get("highlights")
+                if isinstance(highlights, list):
+                    fields.extend(str(h).strip() for h in highlights[:3])
+                text = " - ".join(field for field in fields if field)
+            else:
+                text = str(item).strip()
+            if text:
+                parts.append(text)
+        return "; ".join(parts)
+    if isinstance(value, dict):
+        return "; ".join(
+            f"{key}: {text}" for key, raw in value.items() if (text := _format_context_value(raw))
+        )
+    return str(value or "").strip()
+
+
 def _resume_context(session: Session, user_id: uuid.UUID) -> str:
     resume = session.exec(
         select(Resume)
@@ -103,15 +129,17 @@ def _resume_context(session: Session, user_id: uuid.UUID) -> str:
             ResumeVersion.resume_id == resume.id, ResumeVersion.is_current.is_(True)
         )
     ).first()
-    text = version.extracted_text if version else resume.extracted_text
     parsed = version.parsed_json if version else resume.parsed_json
-    parts = [text or ""]
     if isinstance(parsed, dict):
+        parts = []
         for key in ("summary", "skills", "experience", "projects", "certifications"):
-            value = parsed.get(key)
-            if value:
-                parts.append(str(value))
-    return "\n".join(part for part in parts if part).strip()
+            text = _format_context_value(parsed.get(key))
+            if text:
+                parts.append(f"{key}: {text}")
+        if parts:
+            return "\n".join(parts)
+    text = version.extracted_text if version else resume.extracted_text
+    return (text or "").strip()
 
 
 def _saved_job_terms(session: Session, user_id: uuid.UUID) -> list[str]:
@@ -242,7 +270,7 @@ async def create_run(
         session.refresh(run)
         return run
 
-    created = 0
+    candidates = []
     seen_dedupes: set[str] = set()
     for item in raw_results:
         dedupe = _dedupe_key(
@@ -257,36 +285,43 @@ async def create_run(
                 JobSearchResult.dedupe_key == dedupe,
             )
         ).first()
-        if existing is not None:
-            continue
-        fit_score, fit_reason = await rank_result_with_ai(
-            item,
-            preferences,
-            ai_provider,
-            profile_terms=profile_terms,
-            resume_context=resume_context,
-            saved_job_terms=saved_job_terms,
-        )
-        result = JobSearchResult(
-            user_id=current_user.id,
-            run_id=run.id,
-            provider=item.provider,
-            source=item.source,
-            source_url=item.source_url,
-            canonical_url=item.source_url,
-            title=item.title,
-            company_name=item.company_name,
-            location=item.location,
-            work_mode=item.work_mode,
-            description=item.description,
-            posted_at=item.posted_at,
-            dedupe_key=dedupe,
-            fit_score=fit_score,
-            fit_reason=fit_reason,
-        )
-        session.add(result)
-        created += 1
+        if existing is None:
+            candidates.append((item, dedupe))
 
+    rankings = await asyncio.gather(
+        *(
+            rank_result_with_ai(
+                item,
+                preferences,
+                ai_provider,
+                profile_terms=profile_terms,
+                resume_context=resume_context,
+                saved_job_terms=saved_job_terms,
+            )
+            for item, _dedupe in candidates
+        )
+    )
+    for (item, dedupe), (fit_score, fit_reason) in zip(candidates, rankings, strict=False):
+        session.add(
+            JobSearchResult(
+                user_id=current_user.id,
+                run_id=run.id,
+                provider=item.provider,
+                source=item.source,
+                source_url=item.source_url,
+                canonical_url=item.source_url,
+                title=item.title,
+                company_name=item.company_name,
+                location=item.location,
+                work_mode=item.work_mode,
+                description=item.description,
+                posted_at=item.posted_at,
+                dedupe_key=dedupe,
+                fit_score=fit_score,
+                fit_reason=fit_reason,
+            )
+        )
+    created = len(candidates)
     run.status = DiscoveryRunStatus.completed
     run.result_count = created
     session.add(run)

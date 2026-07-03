@@ -17,6 +17,16 @@ class RankingProvider(MockProvider):
         return {"fit_score": 88, "fit_reason": "Strong fit from resume and saved-job context."}
 
 
+class FloatScoreProvider(MockProvider):
+    async def generate_json(self, prompt: str, schema: dict, *, system: str | None = None) -> dict:
+        return {"fit_score": "85.5", "fit_reason": "Float-like score parsed."}
+
+
+class BadPayloadProvider(MockProvider):
+    async def generate_json(self, prompt: str, schema: dict, *, system: str | None = None):
+        return None
+
+
 class SlowProvider(MockProvider):
     async def generate_json(self, prompt: str, schema: dict, *, system: str | None = None) -> dict:
         await asyncio.sleep(1)
@@ -93,6 +103,26 @@ async def test_rank_result_with_ai_falls_back_when_provider_times_out():
     score, reason = await rank_result_with_ai(
         _job(), preferences, SlowProvider(), timeout_seconds=0.01
     )
+
+    assert score > 0
+    assert reason.startswith("Matched")
+
+
+@pytest.mark.asyncio
+async def test_rank_result_with_ai_parses_float_like_scores():
+    preferences = JobSearchPreferencesPayload(required_keywords=["Python"])
+
+    score, reason = await rank_result_with_ai(_job(), preferences, FloatScoreProvider())
+
+    assert score == 85
+    assert reason == "Float-like score parsed."
+
+
+@pytest.mark.asyncio
+async def test_rank_result_with_ai_falls_back_for_non_dict_payload():
+    preferences = JobSearchPreferencesPayload(required_keywords=["Python"])
+
+    score, reason = await rank_result_with_ai(_job(), preferences, BadPayloadProvider())
 
     assert score > 0
     assert reason.startswith("Matched")

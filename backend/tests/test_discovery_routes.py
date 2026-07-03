@@ -212,7 +212,7 @@ async def _asserting_ranker(
     saved_job_terms=None,
 ):
     assert "Data Platform Engineer" in (profile_terms or [])
-    assert "Current resume version with Kubernetes" in (resume_context or "")
+    assert "skills: Kubernetes" in (resume_context or "")
     assert "Saved Platform Role" in (saved_job_terms or [])
     return 91, "AI used resume, profile, and saved-job context."
 

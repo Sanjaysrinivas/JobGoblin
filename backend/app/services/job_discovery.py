@@ -101,7 +101,7 @@ _AI_RANKING_SCHEMA = {
 
 def _clean_ai_score(value: object, fallback: int) -> int:
     try:
-        return max(0, min(100, int(value)))
+        return max(0, min(100, int(float(value))))
     except (TypeError, ValueError):
         return fallback
 
@@ -171,13 +171,14 @@ async def rank_result_with_ai(
             ),
             timeout=timeout_seconds,
         )
+        if not isinstance(payload, dict):
+            return base_score, base_reason
+        reason = str(payload.get("fit_reason") or "").strip()
+        if not reason or reason == "sample":
+            return base_score, base_reason
+        return _clean_ai_score(payload.get("fit_score"), base_score), reason
     except Exception:
         return base_score, base_reason
-
-    reason = str(payload.get("fit_reason") or "").strip()
-    if not reason or reason == "sample":
-        return base_score, base_reason
-    return _clean_ai_score(payload.get("fit_score"), base_score), reason
 
 
 async def search_jobs(
