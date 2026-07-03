@@ -88,10 +88,15 @@ export function TailoredResumePanel({ jobId }: { jobId: string }) {
           listTailoredResumeDrafts(jobId),
         ]);
         if (!active) return;
+        const defaultResume = resumeData.find((resume) => resume.is_default);
+        const nextResumeId = defaultResume?.id ?? resumeData[0]?.id ?? "";
         setResumes(resumeData);
         setDrafts(draftData);
-        const defaultResume = resumeData.find((resume) => resume.is_default);
-        setSelectedResumeId(defaultResume?.id ?? resumeData[0]?.id ?? "");
+        setSelectedResumeId(nextResumeId);
+        if (!nextResumeId) {
+          setVersions([]);
+          setSelectedVersionId("");
+        }
       } catch (err) {
         if (!active) return;
         setError(
@@ -184,7 +189,13 @@ export function TailoredResumePanel({ jobId }: { jobId: string }) {
               className={selectClass}
               value={selectedResumeId}
               disabled={busy !== null || resumes.length === 0}
-              onChange={(event) => setSelectedResumeId(event.target.value)}
+              onChange={(event) => {
+                setSelectedResumeId(event.target.value);
+                if (!event.target.value) {
+                  setVersions([]);
+                  setSelectedVersionId("");
+                }
+              }}
             >
               {resumes.length === 0 ? (
                 <option value="">No resumes available</option>

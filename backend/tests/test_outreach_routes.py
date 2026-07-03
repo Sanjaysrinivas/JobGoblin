@@ -256,7 +256,7 @@ def test_email_export_returns_mailto_text_and_records_activity(client, session, 
     assert body["subject"] == "Backend Engineer at Acme"
     assert body["body"] == "Hello Taylor"
     assert body["mailto_url"].startswith("mailto:taylor%40example.com?")
-    assert "subject=Backend+Engineer+at+Acme" in body["mailto_url"]
+    assert "subject=Backend%20Engineer%20at%20Acme" in body["mailto_url"]
     assert (
         body["text"] == "To: taylor@example.com\nSubject: Backend Engineer at Acme\n\nHello Taylor"
     )

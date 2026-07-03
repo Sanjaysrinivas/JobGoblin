@@ -118,6 +118,9 @@ def test_create_list_get_and_patch_interview_prep(client, session, user):
     assert patched.status_code == 200, patched.text
     assert patched.json()["status"] == "ready"
 
+    null_questions = client.patch(f"/api/interview-prep/{body['id']}", json={"questions": None})
+    assert null_questions.status_code == 422
+
     events = session.exec(select(ActivityEvent).order_by(ActivityEvent.created_at)).all()
     assert [event.event_type for event in events] == [
         "interview_prep_created",

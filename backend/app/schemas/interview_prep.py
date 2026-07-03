@@ -50,6 +50,15 @@ class InterviewPrepUpdate(BaseModel):
             raise ValueError("Status cannot be null")
         return value
 
+    @field_validator("questions")
+    @classmethod
+    def reject_null_questions(
+        cls, value: list[InterviewPrepQuestion] | None
+    ) -> list[InterviewPrepQuestion] | None:
+        if value is None:
+            raise ValueError("Questions cannot be null")
+        return value
+
 
 class InterviewPrepOut(BaseModel):
     id: uuid.UUID

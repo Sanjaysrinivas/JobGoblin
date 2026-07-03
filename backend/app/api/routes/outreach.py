@@ -201,7 +201,8 @@ def export_outreach_email(
     subject = f"{job.title} at {job.company_name}" if job else outreach.message_type
     to = contact.email if contact else None
     body = outreach.content
-    mailto_url = f"mailto:{quote(to or '')}?{urlencode({'subject': subject, 'body': body})}"
+    query = urlencode({"subject": subject, "body": body}, quote_via=quote)
+    mailto_url = f"mailto:{quote(to or '')}?{query}"
     text = f"To: {to or ''}\nSubject: {subject}\n\n{body}"
     _add_activity(
         session,
