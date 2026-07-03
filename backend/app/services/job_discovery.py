@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -11,6 +12,7 @@ import httpx
 from app.core.config import get_settings
 from app.models.enums import JobSource, WorkMode
 from app.schemas.discovery import JobSearchPreferencesPayload
+from app.services.ai_provider import AIProvider
 
 
 @dataclass
@@ -79,6 +81,103 @@ def rank_result(
     score = max(0, min(100, score))
     reason = "Matched " + ", ".join(matched[:5]) if matched else "Matched saved search preferences."
     return score, reason
+
+
+_AI_RANKING_SYSTEM = (
+    "You rank discovered jobs for a private job-search workspace. Use only the "
+    "provided preferences, profile/resume facts, saved-job history, and job text. "
+    "Never invent experience, credentials, employers, or application claims."
+)
+
+_AI_RANKING_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "fit_score": {"type": "integer"},
+        "fit_reason": {"type": "string"},
+    },
+    "required": ["fit_score", "fit_reason"],
+}
+
+
+def _clean_ai_score(value: object, fallback: int) -> int:
+    try:
+        return max(0, min(100, int(value)))
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _build_ai_ranking_prompt(
+    result: DiscoveredJob,
+    preferences: JobSearchPreferencesPayload,
+    base_score: int,
+    base_reason: str,
+    *,
+    profile_terms: list[str] | None,
+    resume_context: str | None,
+    saved_job_terms: list[str] | None,
+) -> str:
+    return (
+        "Review this discovered job and return JSON with fit_score 0-100 and "
+        "a concise fit_reason. Keep the score near the deterministic estimate "
+        "unless the provided user facts clearly support a change.\n\n"
+        f"Deterministic estimate: {base_score}/100 - {base_reason}\n"
+        "Preferences:\n"
+        f"- titles: {', '.join(preferences.desired_titles) or 'none'}\n"
+        f"- required keywords: {', '.join(preferences.required_keywords) or 'none'}\n"
+        f"- optional keywords: {', '.join(preferences.optional_keywords) or 'none'}\n"
+        f"- excluded keywords: {', '.join(preferences.excluded_keywords) or 'none'}\n"
+        f"- work mode: {preferences.work_mode.value}\n"
+        f"- target locations: {', '.join(preferences.target_locations) or 'none'}\n"
+        f"Profile terms: {', '.join(profile_terms or []) or 'none'}\n"
+        f"Saved job history terms: {', '.join(saved_job_terms or []) or 'none'}\n"
+        f"Resume/profile context:\n{(resume_context or 'none')[:2000]}\n\n"
+        "Discovered job:\n"
+        f"Title: {result.title}\n"
+        f"Company: {result.company_name}\n"
+        f"Location: {result.location or 'unknown'}\n"
+        f"Work mode: {result.work_mode.value}\n"
+        f"Description:\n{result.description[:3000]}"
+    )
+
+
+async def rank_result_with_ai(
+    result: DiscoveredJob,
+    preferences: JobSearchPreferencesPayload,
+    provider: AIProvider,
+    *,
+    profile_terms: list[str] | None = None,
+    resume_context: str | None = None,
+    saved_job_terms: list[str] | None = None,
+    timeout_seconds: float = 5.0,
+) -> tuple[int, str]:
+    base_score, base_reason = rank_result(result, preferences, profile_terms=profile_terms)
+    if base_score == 0:
+        return base_score, base_reason
+
+    try:
+        payload = await asyncio.wait_for(
+            provider.generate_json(
+                _build_ai_ranking_prompt(
+                    result,
+                    preferences,
+                    base_score,
+                    base_reason,
+                    profile_terms=profile_terms,
+                    resume_context=resume_context,
+                    saved_job_terms=saved_job_terms,
+                ),
+                _AI_RANKING_SCHEMA,
+                system=_AI_RANKING_SYSTEM,
+            ),
+            timeout=timeout_seconds,
+        )
+    except Exception:
+        return base_score, base_reason
+
+    reason = str(payload.get("fit_reason") or "").strip()
+    if not reason or reason == "sample":
+        return base_score, base_reason
+    return _clean_ai_score(payload.get("fit_score"), base_score), reason
 
 
 async def search_jobs(

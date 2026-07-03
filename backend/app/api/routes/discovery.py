@@ -21,6 +21,8 @@ from app.models import (
     JobSearchResult,
     JobSearchRun,
     Profile,
+    Resume,
+    ResumeVersion,
     User,
 )
 from app.schemas.discovery import (
@@ -32,7 +34,8 @@ from app.schemas.discovery import (
     JobSearchRunOut,
 )
 from app.schemas.job import JobOut
-from app.services.job_discovery import build_query, rank_result, search_jobs
+from app.services.ai_provider import get_ai_provider
+from app.services.job_discovery import build_query, rank_result_with_ai, search_jobs
 
 router = APIRouter(prefix="/discovery", tags=["discovery"])
 
@@ -85,6 +88,46 @@ def _profile_terms(profile: Profile | None) -> list[str]:
             cleaned.append(text)
             seen.add(key)
     return cleaned[:10]
+
+
+def _resume_context(session: Session, user_id: uuid.UUID) -> str:
+    resume = session.exec(
+        select(Resume)
+        .where(Resume.user_id == user_id)
+        .order_by(Resume.is_default.desc(), Resume.created_at.desc())
+    ).first()
+    if resume is None:
+        return ""
+    version = session.exec(
+        select(ResumeVersion).where(
+            ResumeVersion.resume_id == resume.id, ResumeVersion.is_current.is_(True)
+        )
+    ).first()
+    text = version.extracted_text if version else resume.extracted_text
+    parsed = version.parsed_json if version else resume.parsed_json
+    parts = [text or ""]
+    if isinstance(parsed, dict):
+        for key in ("summary", "skills", "experience", "projects", "certifications"):
+            value = parsed.get(key)
+            if value:
+                parts.append(str(value))
+    return "\n".join(part for part in parts if part).strip()
+
+
+def _saved_job_terms(session: Session, user_id: uuid.UUID) -> list[str]:
+    jobs = session.exec(
+        select(Job).where(Job.user_id == user_id).order_by(Job.created_at.desc()).limit(10)
+    ).all()
+    terms: list[str] = []
+    seen = set()
+    for job in jobs:
+        for term in (job.title, job.company_name):
+            text = (term or "").strip()
+            key = text.lower()
+            if text and key not in seen:
+                terms.append(text)
+                seen.add(key)
+    return terms[:20]
 
 
 def _get_result(session: Session, user: User, result_id: uuid.UUID) -> JobSearchResult:
@@ -162,6 +205,9 @@ async def create_run(
         preferences.target_locations[0] if preferences.target_locations else None
     )
     provider = payload.provider or settings.job_discovery_provider
+    resume_context = _resume_context(session, current_user.id)
+    saved_job_terms = _saved_job_terms(session, current_user.id)
+    ai_provider = get_ai_provider()
     query = build_query(preferences, payload.query, profile_terms=profile_terms)
     run = JobSearchRun(
         user_id=current_user.id,
@@ -173,6 +219,7 @@ async def create_run(
         preferences_snapshot={
             **preferences.model_dump(mode="json"),
             "profile_terms": profile_terms,
+            "saved_job_terms": saved_job_terms,
         },
     )
     session.add(run)
@@ -212,7 +259,14 @@ async def create_run(
         ).first()
         if existing is not None:
             continue
-        fit_score, fit_reason = rank_result(item, preferences, profile_terms=profile_terms)
+        fit_score, fit_reason = await rank_result_with_ai(
+            item,
+            preferences,
+            ai_provider,
+            profile_terms=profile_terms,
+            resume_context=resume_context,
+            saved_job_terms=saved_job_terms,
+        )
         result = JobSearchResult(
             user_id=current_user.id,
             run_id=run.id,

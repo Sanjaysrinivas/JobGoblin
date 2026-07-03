@@ -12,6 +12,8 @@ from app.models import (
     JobSearchResult,
     JobSource,
     Profile,
+    Resume,
+    ResumeVersion,
     User,
     WorkMode,
 )
@@ -198,3 +200,63 @@ def test_run_dedupes_results_within_same_provider_response(client, monkeypatch):
     assert run.status_code == 201
     assert run.json()["result_count"] == 1
     assert len(client.get("/api/discovery/results").json()) == 1
+
+
+async def _asserting_ranker(
+    item,
+    preferences,
+    provider,
+    *,
+    profile_terms=None,
+    resume_context=None,
+    saved_job_terms=None,
+):
+    assert "Data Platform Engineer" in (profile_terms or [])
+    assert "Current resume version with Kubernetes" in (resume_context or "")
+    assert "Saved Platform Role" in (saved_job_terms or [])
+    return 91, "AI used resume, profile, and saved-job context."
+
+
+def test_run_passes_resume_profile_and_saved_jobs_to_ranker(client, session, user, monkeypatch):
+    import app.api.routes.discovery as discovery_routes
+
+    session.add(Profile(user_id=user.id, headline="Data Platform Engineer"))
+    resume = Resume(
+        user_id=user.id,
+        title="Default Resume",
+        original_filename="resume.pdf",
+        file_key="resume.pdf",
+        content_type="application/pdf",
+        file_size=12,
+        extracted_text="Old resume text",
+        parsed_json={"skills": ["Python"]},
+        is_default=True,
+    )
+    session.add(resume)
+    session.commit()
+    session.refresh(resume)
+    session.add(
+        ResumeVersion(
+            resume_id=resume.id,
+            title="Current",
+            extracted_text="Current resume version with Kubernetes",
+            parsed_json={"skills": ["Kubernetes"]},
+            is_current=True,
+        )
+    )
+    session.add(
+        Job(
+            user_id=user.id,
+            company_name="Saved Co",
+            title="Saved Platform Role",
+            description="Existing target role.",
+        )
+    )
+    session.commit()
+    monkeypatch.setattr(discovery_routes, "rank_result_with_ai", _asserting_ranker)
+
+    run = client.post("/api/discovery/runs", json={"country": "us", "query": "platform"})
+    assert run.status_code == 201, run.text
+    result = client.get("/api/discovery/results").json()[0]
+    assert result["fit_score"] == 91
+    assert result["fit_reason"] == "AI used resume, profile, and saved-job context."
