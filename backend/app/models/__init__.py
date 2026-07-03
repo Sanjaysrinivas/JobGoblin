@@ -9,6 +9,7 @@ from app.models.core import (
     OutreachMessage,
     Profile,
     Resume,
+    ResumeVersion,
     User,
 )
 from app.models.enums import (
@@ -40,6 +41,7 @@ __all__ = [
     "Profile",
     "Priority",
     "Resume",
+    "ResumeVersion",
     "User",
     "WorkMode",
 ]

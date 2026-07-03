@@ -159,10 +159,13 @@ export function ResumeDetailView({ resumeId }: { resumeId: string }) {
     return (
       <div className="text-muted-foreground flex items-center gap-2 text-sm">
         <Loader2 className="size-4 animate-spin" />
-        Loading resume…
+        Loading resume...
       </div>
     );
   }
+
+  const versionCount = resume.version_count ?? 1;
+  const currentVersionTitle = resume.current_version?.title ?? resume.title;
 
   return (
     <div className="space-y-6">
@@ -179,6 +182,9 @@ export function ResumeDetailView({ resumeId }: { resumeId: string }) {
           </Button>
           <h1 className="font-display flex items-center gap-2 text-2xl font-semibold tracking-tight">
             {resume.title}
+            {versionCount > 1 && (
+              <Badge variant="secondary">{versionCount} versions</Badge>
+            )}
             {resume.is_default && (
               <Badge variant="success">
                 <Star className="size-3" />
@@ -268,7 +274,9 @@ export function ResumeDetailView({ resumeId }: { resumeId: string }) {
           <CardHeader>
             <CardTitle className="text-base">Source</CardTitle>
             <CardDescription>
-              Edit the title or extracted text, then re-parse to refresh sections.
+              {versionCount > 1
+                ? `Editing current version: ${currentVersionTitle}.`
+                : "Edit the title or extracted text, then re-parse to refresh sections."}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

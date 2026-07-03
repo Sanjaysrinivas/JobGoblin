@@ -4,12 +4,15 @@ This roadmap describes where JobGoblin is now, what the final application should
 
 ## Product Direction
 
-JobGoblin is a private, self-hosted job-search workspace for one owner and a small set of invited users. It should help users organize job opportunities, understand resume fit, draft application materials, plan follow-ups, and prepare for interviews while keeping every external action under human control.
+JobGoblin is a private, self-hosted job-search workspace for one owner and a small set of invited users. It should help users discover relevant job opportunities, organize saved roles, understand resume fit, draft application materials, plan follow-ups, and prepare for interviews while keeping every external action under human control.
+
+The next main product direction is Job Discovery: users should be able to define job preferences, target countries and locations, search through configurable web/search providers, review deduped discovered roles, rank them with local Ollama, and explicitly save good matches into the normal jobs workflow.
 
 The product boundaries are fixed:
 
 - JobGoblin is not an auto-apply tool.
 - JobGoblin does not silently send email, contact recruiters, submit forms, scrape LinkedIn, or perform external outreach.
+- Job discovery stops at finding, ranking, and saving candidate roles; applying and outreach remain manual user actions.
 - AI output must stay grounded in user-provided facts: resumes, profiles, job descriptions, notes, contacts, and application history.
 - User data must remain scoped by `user_id`.
 - The default deployment remains private and self-hosted.
@@ -23,6 +26,7 @@ Implemented:
 - Local Docker Compose stack with PostgreSQL, FastAPI backend, Next.js frontend, Caddy, optional Ollama, and optional Cloudflare Tunnel.
 - Invite-only authentication with email/password, admin invite tokens, allowlist support, Google OAuth plumbing, TOTP MFA, and environment-aware cookies.
 - Resume upload, text extraction, AI parsing, editing, listing, detail view, deletion, and PDF export.
+- Resume versions from PR #25, including duplicate/version flows, current-version handling, source-fact preservation, version detail UI, and version export behavior. The work is implemented and merge-ready.
 - Job CRUD with list, create, detail, edit, delete, and source metadata.
 - Contacts CRUD for recruiters, referrals, and job-linked relationships.
 - Applications workflow with status tracking, notes, activity events, and follow-up reminders.
@@ -33,11 +37,11 @@ Implemented:
 - Profile builder seeded from parsed resume sections and editable by the user.
 - Playwright E2E harness through Docker Compose and Caddy.
 - Runtime operator tooling for Ollama checks, runtime smoke tests, and Cloudflare Tunnel checks.
+- Real local Ollama runtime with `llama3.2:3b` proven through Caddy smoke coverage for resume parsing, resume-to-job analysis, and cover-letter generation.
 
-Still not proven enough:
+Still needs verification:
 
 - Full integrated verification after the latest merged feature set.
-- Real Ollama runtime behavior from the browser with `AI_PROVIDER=ollama`.
 - Google OAuth with real credentials and allowlisted users.
 - Cloudflare Tunnel HTTPS access and secure-cookie behavior.
 - End-to-end manual UX pass across the full job-search loop.
@@ -51,6 +55,9 @@ A user should be able to:
 - Sign in securely through local or tunnel access.
 - Maintain a trusted master profile of their own facts.
 - Upload multiple resumes and manage resume versions.
+- Define job preferences, countries, and locations for discovery.
+- Review discovered jobs from web/search providers.
+- See local-AI ranking and fit reasoning before saving a discovered role.
 - Save jobs and keep the original posting text.
 - Compare any resume or tailored draft against any saved job.
 - See clear estimated match scores, matched keywords, gaps, and recommendations.
@@ -67,13 +74,14 @@ The app should not need any hosted SaaS backend to function. The normal operatin
 
 ## Remaining Roadmap
 
-### 1. Stabilize The Merged MVP
+### 1. Stabilize The Merge-Ready MVP
 
-Goal: make the merged feature set reliable enough to use daily.
+Goal: make the merged and merge-ready feature set reliable enough to use daily.
 
 Remaining work:
 
 - Keep local `dev` aligned with the latest merged state.
+- Merge PR #25 resume versions when review is complete.
 - Run backend ruff and pytest.
 - Run frontend lint and build.
 - Run Playwright E2E through Docker Compose and Caddy.
@@ -89,6 +97,7 @@ Remaining work:
   - cover letters
   - outreach drafts
   - profile builder
+  - resume versions
 - Fix regressions found during the integrated pass.
 - Keep README, architecture, design, frontend notes, and handover docs aligned with the merged code.
 
@@ -98,16 +107,13 @@ Done when:
 - CI and local verification agree.
 - Docs do not describe merged features as planned or placeholders.
 
-### 2. Prove The Real Local AI Runtime
+### 2. Harden The Real Local AI Runtime
 
-Goal: move from mock AI to real local model behavior.
+Goal: keep proven local model behavior useful and reliable.
 
 Remaining work:
 
-- Pull required Ollama models.
-- Set `AI_PROVIDER=ollama`.
-- Verify the backend can reach Ollama through Compose.
-- Run runtime smoke tests for resume parsing, analysis, and cover-letter generation.
+- Keep `llama3.2:3b` documented as the proven local baseline.
 - Manually inspect AI output quality for grounding and usefulness.
 - Tune prompts or parsing behavior where outputs are weak.
 - Document the working local AI setup.
@@ -138,23 +144,27 @@ Done when:
 - The app remains private and allowlist-gated.
 - Local-only operation still works without tunnel credentials.
 
-### 4. Add Resume Versions
+### 4. Add Job Discovery
 
-Goal: make resumes first-class evolving artifacts, not just uploaded files.
+Goal: help users find relevant roles before they become saved jobs.
 
 Remaining work:
 
-- Add resume version records or version metadata.
-- Let users duplicate a resume into a new version.
-- Preserve original uploaded resume facts separately from edited/tailored versions.
-- Show version history and current/default version.
-- Support comparing versions against the same job.
-- Keep export behavior clear.
+- Add user job preferences for role titles, seniority, work mode, industries, keywords, and exclusions.
+- Add country and location targeting for discovery.
+- Add a web/search provider layer so discovery can start with one provider and swap or add providers later.
+- Store discovered job results separately from saved jobs.
+- Deduplicate discovered jobs by source, URL, company, title, and location signals.
+- Rank discovered jobs with local Ollama using the user's preferences, profile, resumes, and saved job history.
+- Let users save selected discovered results into the existing jobs workflow.
+- Keep discovery read-only toward the outside world: no auto-apply, no silent outreach, and no background contact.
 
 Done when:
 
-- Users can maintain a base resume and multiple role-specific versions.
-- Tailoring work does not overwrite source facts by accident.
+- A user can run discovery for chosen countries and locations.
+- Discovered results are stored, deduped, ranked, and reviewable.
+- A user can save a discovered role as a normal job.
+- Discovery never performs external application or outreach actions.
 
 ### 5. Add Tailored Resume Drafts
 
@@ -247,7 +257,7 @@ Done when:
 
 JobGoblin reaches its final intended state when:
 
-- The core job-search loop is complete from resume/profile to job analysis, tailored drafts, application tracking, follow-up, outreach prep, and interview prep.
+- The core job-search loop is complete from resume/profile to preference-based job discovery, saved matches, analysis, tailored drafts, application tracking, follow-up, outreach prep, and interview prep.
 - Real local AI works reliably through Ollama.
 - The app is usable through local Caddy and optional HTTPS tunnel access.
 - User isolation and invite-only access are enforced.

@@ -18,6 +18,11 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function versionLabel(resume: ResumeDetail): string | null {
+  if (!resume.version_count || resume.version_count < 2) return null;
+  return `${resume.version_count} versions`;
+}
+
 function sectionCount(resume: ResumeDetail): number {
   const p = resume.parsed_json;
   if (!p) return 0;
@@ -81,7 +86,7 @@ export function ResumeListView() {
       {resumes === null ? (
         <div className="text-muted-foreground flex items-center gap-2 text-sm">
           <Loader2 className="size-4 animate-spin" />
-          Loading resumes…
+          Loading resumes...
         </div>
       ) : resumes.length === 0 ? (
         <EmptyState
@@ -92,35 +97,41 @@ export function ResumeListView() {
         />
       ) : (
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {resumes.map((resume) => (
-            <li key={resume.id}>
-              <Link href={`/resumes/${resume.id}`} className="block">
-                <Card className="hover:border-primary/40 gap-0 py-5 transition-colors">
-                  <CardContent className="space-y-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="flex items-center gap-2 font-medium">
-                        <FileText className="text-primary size-4 shrink-0" />
-                        <span className="truncate">{resume.title}</span>
-                      </span>
-                      {resume.is_default && (
-                        <Badge variant="success" className="shrink-0">
-                          <CheckCircle2 className="size-3" />
-                          Default
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-                      <span className="truncate">{resume.original_filename}</span>
-                      <span aria-hidden>·</span>
-                      <span>{formatBytes(resume.file_size)}</span>
-                      <span aria-hidden>·</span>
-                      <span>{sectionCount(resume)} sections parsed</span>
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
-            </li>
-          ))}
+          {resumes.map((resume) => {
+            const versions = versionLabel(resume);
+            return (
+              <li key={resume.id}>
+                <Link href={`/resumes/${resume.id}`} className="block">
+                  <Card className="hover:border-primary/40 gap-0 py-5 transition-colors">
+                    <CardContent className="space-y-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="flex min-w-0 items-center gap-2 font-medium">
+                          <FileText className="text-primary size-4 shrink-0" />
+                          <span className="truncate">{resume.title}</span>
+                        </span>
+                        <span className="flex shrink-0 flex-wrap justify-end gap-1">
+                          {versions && <Badge variant="secondary">{versions}</Badge>}
+                          {resume.is_default && (
+                            <Badge variant="success">
+                              <CheckCircle2 className="size-3" />
+                              Default
+                            </Badge>
+                          )}
+                        </span>
+                      </div>
+                      <div className="text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                        <span className="truncate">{resume.original_filename}</span>
+                        <span aria-hidden>{"\u00b7"}</span>
+                        <span>{formatBytes(resume.file_size)}</span>
+                        <span aria-hidden>{"\u00b7"}</span>
+                        <span>{sectionCount(resume)} sections parsed</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

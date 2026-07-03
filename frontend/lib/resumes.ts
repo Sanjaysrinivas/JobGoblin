@@ -8,7 +8,7 @@
  */
 
 import { api, ApiError } from "@/lib/api";
-import type { ParsedResume } from "@/lib/types";
+import type { ParsedResume, ResumeVersion } from "@/lib/types";
 
 // Base URL resolution mirrors lib/api.ts: same-origin in the browser (behind
 // Caddy), configurable for dev. The PDF export returns a binary body, which the
@@ -33,14 +33,28 @@ export interface ResumeDetail {
   extracted_text: string | null;
   parsed_json: ParsedResume | null;
   is_default: boolean;
+  current_version_id?: string | null;
+  current_version?: ResumeVersion | null;
+  version_count?: number;
   created_at: string;
   updated_at: string;
 }
+
 
 export interface ResumeUpdatePayload {
   title?: string;
   extracted_text?: string;
   is_default?: boolean;
+}
+
+export interface ResumeVersionUpdatePayload {
+  title?: string;
+  extracted_text?: string;
+}
+
+export interface ResumeVersionDuplicatePayload {
+  title?: string;
+  source_version_id?: string;
 }
 
 /** GET /api/resumes — list the current user's resumes (newest first). */
@@ -73,9 +87,62 @@ export function deleteResume(id: string): Promise<void> {
   return api.delete<void>(`/resumes/${id}`);
 }
 
-/** POST /api/resumes/{id}/parse — re-run the AI section parse. */
+/** POST /api/resumes/{id}/parse - re-run the AI section parse. */
 export function reparseResume(id: string): Promise<ResumeDetail> {
   return api.post<ResumeDetail>(`/resumes/${id}/parse`);
+}
+
+/** GET /api/resumes/{id}/versions - list versions in one resume family. */
+export function listResumeVersions(resumeId: string): Promise<ResumeVersion[]> {
+  return api.get<ResumeVersion[]>(`/resumes/${resumeId}/versions`);
+}
+
+/** POST /api/resumes/{id}/versions - duplicate a resume version. */
+export function duplicateResumeVersion(
+  resumeId: string,
+  payload: ResumeVersionDuplicatePayload = {}
+): Promise<ResumeVersion> {
+  return api.post<ResumeVersion>(`/resumes/${resumeId}/versions`, payload);
+}
+
+/** PATCH /api/resumes/{id}/versions/{versionId} - edit version source text. */
+export function updateResumeVersion(
+  resumeId: string,
+  versionId: string,
+  payload: ResumeVersionUpdatePayload
+): Promise<ResumeVersion> {
+  return api.patch<ResumeVersion>(
+    `/resumes/${resumeId}/versions/${versionId}`,
+    payload
+  );
+}
+
+/** POST /api/resumes/{id}/versions/{versionId}/make-current - make a version current. */
+export function makeResumeVersionCurrent(
+  resumeId: string,
+  versionId: string
+): Promise<ResumeVersion> {
+  return api.post<ResumeVersion>(
+    `/resumes/${resumeId}/versions/${versionId}/make-current`
+  );
+}
+
+/** DELETE /api/resumes/{id}/versions/{versionId} - remove a non-current version. */
+export function deleteResumeVersion(
+  resumeId: string,
+  versionId: string
+): Promise<void> {
+  return api.delete<void>(`/resumes/${resumeId}/versions/${versionId}`);
+}
+
+/** POST /api/resumes/{id}/versions/{versionId}/parse - re-parse one version. */
+export function reparseResumeVersion(
+  resumeId: string,
+  versionId: string
+): Promise<ResumeVersion> {
+  return api.post<ResumeVersion>(
+    `/resumes/${resumeId}/versions/${versionId}/parse`
+  );
 }
 
 /**
@@ -88,6 +155,21 @@ export async function fetchResumePdf(id: string): Promise<Blob> {
     method: "GET",
     credentials: "include",
   });
+  if (!res.ok) {
+    throw new ApiError(res.status, res.statusText || "Export failed");
+  }
+  return res.blob();
+}
+
+/** GET /api/resumes/{id}/versions/{versionId}/export.pdf - export one version. */
+export async function fetchResumeVersionPdf(
+  resumeId: string,
+  versionId: string
+): Promise<Blob> {
+  const res = await fetch(
+    `${API_BASE_URL}/api/resumes/${resumeId}/versions/${versionId}/export.pdf`,
+    { method: "GET", credentials: "include" }
+  );
   if (!res.ok) {
     throw new ApiError(res.status, res.statusText || "Export failed");
   }

@@ -90,6 +90,17 @@ class Resume(_UUIDMixin, _TimeMixin, table=True):
     parsed_json: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
     is_default: bool = Field(default=False)
 
+
+class ResumeVersion(_UUIDMixin, _TimeMixin, table=True):
+    __tablename__ = "resume_versions"
+
+    resume_id: uuid.UUID = Field(foreign_key="resumes.id", ondelete="CASCADE", index=True)
+    title: str
+    extracted_text: str | None = None
+    parsed_json: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
+    is_current: bool = Field(default=False)
+
+
 class Profile(_UUIDMixin, _TimeMixin, table=True):
     __tablename__ = "profiles"
     __table_args__ = (UniqueConstraint("user_id", name="uq_profiles_user_id"),)

@@ -84,8 +84,26 @@ export interface Resume {
   content_type: string;
   file_size: number;
   is_default: boolean;
+  current_version_id?: string | null;
+  current_version?: ResumeVersion | null;
+  version_count?: number;
   extracted_text: string | null;
   parsed_json: ParsedResume | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ResumeVersion {
+  id: string;
+  resume_id: string;
+  title: string;
+  original_filename: string | null;
+  content_type: string | null;
+  file_size: number | null;
+  extracted_text: string | null;
+  parsed_json: ParsedResume | null;
+  is_current: boolean;
+  source_version_id: string | null;
   created_at: string;
   updated_at: string;
 }
