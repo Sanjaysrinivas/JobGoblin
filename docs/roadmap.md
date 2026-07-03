@@ -148,15 +148,19 @@ Done when:
 
 Goal: help users find relevant roles before they become saved jobs.
 
-Remaining work:
+In progress in `feature/job-discovery-mvp`:
 
-- Add user job preferences for role titles, seniority, work mode, industries, keywords, and exclusions.
-- Add country and location targeting for discovery.
-- Add a web/search provider layer so discovery can start with one provider and swap or add providers later.
-- Store discovered job results separately from saved jobs.
-- Deduplicate discovered jobs by source, URL, company, title, and location signals.
-- Rank discovered jobs with local Ollama using the user's preferences, profile, resumes, and saved job history.
-- Let users save selected discovered results into the existing jobs workflow.
+- User job preferences for role titles, work mode, countries, locations, keywords, exclusions, visa sponsorship, and blocked companies.
+- Mock provider for local/dev and Adzuna provider plumbing behind configuration.
+- Separate discovered result storage, run records, dedupe, review/dismiss/save states, and save-to-job behavior.
+- `/discover` UI for running searches and saving selected results.
+- Profile-term query/ranking fallback from the seeded profile/resume facts.
+
+Remaining work after the MVP slice:
+
+- Add richer provider coverage beyond the first provider.
+- Rank discovered jobs with local Ollama using preferences, profile, resumes, and saved job history.
+- Improve ranking explanations for location/visa/work-mode compatibility.
 - Keep discovery read-only toward the outside world: no auto-apply, no silent outreach, and no background contact.
 
 Done when:

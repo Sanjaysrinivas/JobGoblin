@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     file_storage_path: str = "/data/uploads"
     max_upload_mb: int = 10
 
+    # Job discovery. Default mock keeps local/dev usable without API keys.
+    job_discovery_provider: str = "mock"
+    adzuna_base_url: str = "https://api.adzuna.com/v1/api"
+    adzuna_app_id: str = ""
+    adzuna_app_key: str = ""
+
     # Seed admin (single-user/invite-only bootstrap)
     admin_email: str = ""
     admin_password: str = ""

@@ -52,6 +52,10 @@ export type OutreachChannel = "email" | "linkedin" | "other";
 
 export type OutreachStatus = "draft" | "copied" | "sent" | "replied" | "closed";
 
+export type DiscoveryRunStatus = "pending" | "completed" | "failed";
+
+export type DiscoveryResultStatus = "new" | "saved" | "dismissed" | "blocked";
+
 // ---------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------
@@ -163,6 +167,70 @@ export interface JobCreatePayload {
 }
 
 export type JobUpdatePayload = Partial<JobCreatePayload>;
+
+export interface JobSearchPreferences {
+  id?: string;
+  target_countries: string[];
+  target_locations: string[];
+  desired_titles: string[];
+  seniority?: string | null;
+  industries: string[];
+  required_keywords: string[];
+  optional_keywords: string[];
+  excluded_keywords: string[];
+  visa_sponsorship_required: boolean;
+  blocked_companies: string[];
+  work_mode: WorkMode;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export type JobSearchPreferencesPayload = Omit<
+  JobSearchPreferences,
+  "id" | "created_at" | "updated_at"
+>;
+
+export interface JobSearchRunCreate {
+  country?: string | null;
+  location?: string | null;
+  query?: string | null;
+  provider?: string | null;
+  results_per_page?: number;
+}
+
+export interface JobSearchRun {
+  id: string;
+  provider: string;
+  status: DiscoveryRunStatus;
+  country: string;
+  location: string | null;
+  query: string;
+  preferences_snapshot: Record<string, unknown>;
+  result_count: number;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface JobSearchResult {
+  id: string;
+  run_id: string;
+  provider: string;
+  source: JobSource;
+  source_url: string | null;
+  title: string;
+  company_name: string;
+  location: string | null;
+  work_mode: WorkMode;
+  description: string;
+  posted_at: string | null;
+  fit_score: number;
+  fit_reason: string | null;
+  status: DiscoveryResultStatus;
+  saved_job_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
 
 export interface JobAnalysis {
   id: string;

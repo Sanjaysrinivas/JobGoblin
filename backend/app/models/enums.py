@@ -23,6 +23,19 @@ class Priority(enum.StrEnum):
     high = "high"
 
 
+class DiscoveryRunStatus(enum.StrEnum):
+    pending = "pending"
+    completed = "completed"
+    failed = "failed"
+
+
+class DiscoveryResultStatus(enum.StrEnum):
+    new = "new"
+    saved = "saved"
+    dismissed = "dismissed"
+    blocked = "blocked"
+
+
 class ApplicationStatus(enum.StrEnum):
     saved = "saved"
     interested = "interested"

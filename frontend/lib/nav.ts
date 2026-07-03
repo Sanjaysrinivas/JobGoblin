@@ -2,6 +2,7 @@ import {
   LayoutDashboard,
   FileText,
   Briefcase,
+  Search,
   ClipboardList,
   MessageSquareText,
   UserRound,
@@ -42,6 +43,12 @@ export const navItems: NavItem[] = [
     href: "/jobs",
     icon: Briefcase,
     description: "Saved roles and resume-to-job analysis",
+  },
+  {
+    title: "Discover",
+    href: "/discover",
+    icon: Search,
+    description: "Find ranked roles from saved preferences",
   },
   {
     title: "Applications",

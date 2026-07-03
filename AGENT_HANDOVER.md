@@ -1,7 +1,7 @@
 # Agent Handover - JobGoblin
 
 Last updated: 2026-07-03
-Branch context: `dev` after PR #25 merge
+Branch context: `feature/job-discovery-mvp` off `dev` after PR #27 merge
 
 This document is the working handover for future agents. It captures the product target, current implementation state, architectural decisions, open risks, and the next build plan. Treat `docs/roadmap.md`, `docs/design.md`, and `docs/architecture.md` as the durable product docs; this file is the short operational memory for continuing work without rediscovery.
 
@@ -21,7 +21,7 @@ Hard product boundaries:
 
 ## Current State
 
-The MVP workflow is mostly implemented. PR #25 has been merged into `dev`, adding resume versions and updating the roadmap to make Job Discovery the next main product direction.
+The MVP workflow is mostly implemented. PRs #25-#27 have been merged into `dev`; the current feature branch adds the first Job Discovery MVP slice.
 
 Implemented:
 
@@ -38,6 +38,7 @@ Implemented:
 - Profile builder seeded from parsed resume sections.
 - Runtime operator scripts for Ollama checks and app smoke tests.
 - CI for backend ruff/pytest, frontend lint/build, and Playwright E2E through Docker Compose/Caddy.
+- Current branch: Job Discovery MVP with preferences, mock/Adzuna provider plumbing, separate discovered results, profile-term query fallback, dedupe, save-to-job, and `/discover` UI.
 
 Recently proven:
 
@@ -250,17 +251,17 @@ Partial:
 - Private external access: tooling exists; tunnel/OAuth/secure-cookie proof remains.
 - Application workflow links: modules exist, but resume version and draft links need deeper integration.
 - Email drafts/export: outreach draft flow exists, but richer audit/export workflow remains.
+- Job Discovery: MVP branch covers preference-based discovery, mock/Adzuna plumbing, review/dismiss/save flow, and profile-term query fallback; full Ollama ranking quality and more providers remain.
 - Operations: diagnostics exist, but backup/restore and release ops remain.
 
 Pending:
 
-- Job Discovery.
 - Tailored resume drafts.
 - Interview prep.
 
-## Next Implementation Plan: Job Discovery MVP
+## Current Implementation Plan: Job Discovery MVP
 
-Build this from a fresh branch off `dev`.
+This branch implements the first discovery slice from dev.
 
 ### Slice 1: Preferences
 
