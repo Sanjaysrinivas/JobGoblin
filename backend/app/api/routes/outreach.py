@@ -1,11 +1,13 @@
-﻿"""Review-only outreach draft endpoints.
+"""Review-only outreach draft endpoints.
 
 These routes store local draft text and review state only. They do not send
 email, open mail clients, post to LinkedIn, or perform any external outreach.
 """
 
+import re
 import uuid
 from typing import Annotated
+from urllib.parse import quote, urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import Response
@@ -14,8 +16,13 @@ from sqlmodel import Session, select
 from app.api.deps import get_current_user
 from app.core.database import get_session
 from app.models import ActivityEvent, Contact, Job, OutreachMessage, User
-from app.models.enums import OutreachStatus
-from app.schemas.outreach import OutreachCreate, OutreachOut, OutreachUpdate
+from app.models.enums import OutreachChannel, OutreachStatus
+from app.schemas.outreach import (
+    OutreachCreate,
+    OutreachEmailExportOut,
+    OutreachOut,
+    OutreachUpdate,
+)
 
 router = APIRouter(prefix="/outreach", tags=["outreach"])
 
@@ -67,6 +74,11 @@ def _get_owned_outreach(
     if contact is not None and contact.user_id != user.id:
         raise _not_found()
     return outreach, job, contact
+
+
+def _export_filename(outreach: OutreachMessage) -> str:
+    stem = re.sub(r"[^a-zA-Z0-9_-]+", "-", outreach.message_type).strip("-").lower()
+    return f"outreach-{stem or 'draft'}-{outreach.id}.txt"
 
 
 def _serialize(
@@ -171,6 +183,44 @@ def create_outreach(
     session.commit()
     session.refresh(outreach)
     return _serialize(outreach, job, contact)
+
+
+@router.post("/{outreach_id}/email-export", response_model=OutreachEmailExportOut)
+def export_outreach_email(
+    outreach_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> OutreachEmailExportOut:
+    outreach, job, contact = _get_owned_outreach(session, current_user, outreach_id)
+    if outreach.channel != OutreachChannel.email:
+        raise _error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "Only email outreach drafts can be exported.",
+            "not_email_outreach",
+        )
+    subject = f"{job.title} at {job.company_name}" if job else outreach.message_type
+    to = contact.email if contact else None
+    body = outreach.content
+    query = urlencode({"subject": subject, "body": body}, quote_via=quote)
+    mailto_url = f"mailto:{quote(to or '')}?{query}"
+    text = f"To: {to or ''}\nSubject: {subject}\n\n{body}"
+    _add_activity(
+        session,
+        current_user,
+        outreach,
+        "outreach_email_exported",
+        "Exported email outreach draft",
+        {"channel": outreach.channel.value},
+    )
+    session.commit()
+    return OutreachEmailExportOut(
+        to=to,
+        subject=subject,
+        body=body,
+        mailto_url=mailto_url,
+        text=text,
+        filename=_export_filename(outreach),
+    )
 
 
 @router.get("/{outreach_id}", response_model=OutreachOut)

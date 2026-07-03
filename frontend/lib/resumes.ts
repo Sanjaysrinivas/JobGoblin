@@ -56,6 +56,11 @@ export interface ResumeVersionDuplicatePayload {
   title?: string;
   source_version_id?: string;
 }
+export interface TailoredResumeDraftCreatePayload {
+  resume_id: string;
+  source_version_id?: string | null;
+  title?: string | null;
+}
 
 /** GET /api/resumes — list the current user's resumes (newest first). */
 export function listResumes(): Promise<ResumeDetail[]> {
@@ -95,6 +100,19 @@ export function reparseResume(id: string): Promise<ResumeDetail> {
 /** GET /api/resumes/{id}/versions - list versions in one resume family. */
 export function listResumeVersions(resumeId: string): Promise<ResumeVersion[]> {
   return api.get<ResumeVersion[]>(`/resumes/${resumeId}/versions`);
+}
+
+/** GET /api/jobs/{jobId}/resume-drafts - list tailored resume-version drafts. */
+export function listTailoredResumeDrafts(jobId: string): Promise<ResumeVersion[]> {
+  return api.get<ResumeVersion[]>(`/jobs/${jobId}/resume-drafts`);
+}
+
+/** POST /api/jobs/{jobId}/resume-drafts - create a job-specific resume version draft. */
+export function createTailoredResumeDraft(
+  jobId: string,
+  payload: TailoredResumeDraftCreatePayload
+): Promise<ResumeVersion> {
+  return api.post<ResumeVersion>(`/jobs/${jobId}/resume-drafts`, payload);
 }
 
 /** POST /api/resumes/{id}/versions - duplicate a resume version. */

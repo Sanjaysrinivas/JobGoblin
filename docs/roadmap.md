@@ -38,7 +38,7 @@ Implemented:
 - Job Discovery MVP from PR #28, including preferences, mock/Adzuna provider plumbing, run/result storage, dedupe, review/dismiss/save states, `/discover` UI, and save-to-job behavior.
 - AI-assisted discovery ranking from PR #29 using preferences, profile, resumes, and saved job context with deterministic fallback behavior.
 - Playwright E2E harness through Docker Compose and Caddy.
-- Runtime operator tooling for Ollama checks, runtime smoke tests, and Cloudflare Tunnel checks.
+- Runtime operator tooling for Ollama checks, DB readiness, runtime smoke tests, Cloudflare Tunnel checks, and operator guidance for Adzuna, OAuth, backups, restores, migrations, rollback, secrets, and release promotion.
 - Real local Ollama runtime with `llama3.2:3b` proven through Caddy smoke coverage for resume parsing, resume-to-job analysis, and cover-letter generation.
 
 Still needs verification:

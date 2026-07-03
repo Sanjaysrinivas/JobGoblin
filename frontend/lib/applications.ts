@@ -4,7 +4,7 @@
  */
 
 import { api } from "@/lib/api";
-import type { Application, ApplicationStatus } from "@/lib/types";
+import type { Application, ApplicationStatus, ApplicationWorkflow } from "@/lib/types";
 
 export interface ApplicationJobSummary {
   id: string;
@@ -57,6 +57,10 @@ export function listApplicationFollowUps(
   return api.get<ApplicationFollowUp[]>(`/applications/follow-ups?${params}`);
 }
 
+/** GET /api/applications/{id}/workflow - fetch linked workflow context. */
+export function getApplicationWorkflow(id: string): Promise<ApplicationWorkflow> {
+  return api.get<ApplicationWorkflow>(`/applications/${id}/workflow`);
+}
 /** POST /api/applications - start tracking one saved job. */
 export function createApplication(
   payload: ApplicationCreatePayload

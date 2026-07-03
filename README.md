@@ -27,14 +27,14 @@ Implemented:
 
 - Docker Compose stack with Caddy as the same-origin entry point.
 - Optional Cloudflare Tunnel compose profile, disabled by default.
-- FastAPI backend, PostgreSQL, Alembic migrations, SQLModel models, and health endpoint.
+- FastAPI backend, PostgreSQL, Alembic migrations, SQLModel models, liveness health, and DB readiness endpoint.
 - Email/password auth, admin-created invite tokens, invite-only signup, Google OAuth plumbing, email allowlist, TOTP MFA, and environment-aware auth cookies.
 - Resume upload, text extraction, AI parse, edit/list/detail/delete, version management, and PDF export.
 - Jobs CRUD API and jobs list/create/detail/edit/delete UI.
 - Job discovery preferences, mock/Adzuna provider plumbing, run/result storage, dedupe, dismiss/save states, `/discover` UI, save-to-job behavior, and AI-assisted ranking with profile/resume/saved-job context.
 - Contacts, applications, dashboard data, resume-to-job analysis, cover-letter draft, profile builder, follow-up reminder, and review-only outreach APIs.
 - Next.js app shell, auth guard, login/MFA/signup flow, resume, jobs, discovery, contacts, applications, dashboard, job-detail analysis/cover-letter, outreach, and profile screens.
-- Runtime operator checks for Ollama, local smoke testing, and Cloudflare Tunnel setup.
+- Runtime operator checks for Ollama, DB readiness, local smoke testing, Adzuna smoke guidance, Cloudflare Tunnel/OAuth setup, backups, migrations, rollback, secrets, and release promotion.
 - CI for backend ruff/pytest, frontend lint/build, and the merged E2E harness.
 
 Remaining validation and future work:
@@ -89,7 +89,7 @@ docker compose exec ollama ollama pull qwen2.5:7b-instruct
 
 Use `AI_PROVIDER=mock` in `.env` for fast local iteration without a model. Use `AI_PROVIDER=ollama` plus the default `OLLAMA_BASE_URL=http://ollama:11434` when smoke-testing real local parsing/generation.
 
-Cloudflare Tunnel is optional and disabled by default. Create a tunnel in Cloudflare Zero Trust, point its public hostname at `http://caddy:80`, set `CLOUDFLARED_TUNNEL_TOKEN` in `.env`, then start only the tunnel profile:
+Use `curl http://localhost:8080/api/health` for liveness and `curl http://localhost:8080/api/health/ready` for database readiness. Cloudflare Tunnel is optional and disabled by default. Create a tunnel in Cloudflare Zero Trust, point its public hostname at `http://caddy:80`, set `CLOUDFLARED_TUNNEL_TOKEN` in `.env`, then start only the tunnel profile:
 
 ```bash
 docker compose --profile tunnel up -d cloudflared
@@ -136,4 +136,4 @@ GitHub Actions runs the same backend and frontend checks for pull requests.
 - [Roadmap](docs/roadmap.md)
 - [Frontend notes](frontend/README.md)
 
-Branch flow: `main -> dev -> feature/*`. Keep `main` release-ready, integrate through `dev`, and use focused PRs for feature work.
+Branch flow: `main -> dev -> feature/*`. Keep `main` release-ready, integrate through `dev`, and use focused PRs for feature work. See [Runtime operator runbook](docs/runtime-operator.md) for operator-run Ollama, Cloudflare/OAuth, Adzuna, backup/restore, migration/rollback, secrets, and dev-to-main release checks.

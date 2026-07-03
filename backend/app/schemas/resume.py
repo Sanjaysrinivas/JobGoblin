@@ -67,6 +67,8 @@ class ResumeUpdate(_OptionalTitle):
 class ResumeVersionOut(BaseModel):
     id: uuid.UUID
     resume_id: uuid.UUID
+    job_id: uuid.UUID | None = None
+    source_version_id: uuid.UUID | None = None
     title: str
     extracted_text: str | None = None
     parsed_json: dict | None = None
@@ -86,3 +88,8 @@ class ResumeVersionCreate(_OptionalTitle):
 class ResumeVersionUpdate(_OptionalTitle):
     extracted_text: str | None = Field(default=None, max_length=200_000)
     parsed_json: dict | None = None
+
+
+class TailoredResumeDraftCreate(_OptionalTitle):
+    resume_id: uuid.UUID
+    source_version_id: uuid.UUID | None = None

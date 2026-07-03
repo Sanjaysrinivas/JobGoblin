@@ -66,6 +66,11 @@ def _version_not_found() -> HTTPException:
     )
 
 
+def _pdf_filename(title: str | None) -> str:
+    safe_title = (title or "resume").replace('"', "").replace("\n", "").replace("\r", "")
+    return f"{safe_title or 'resume'}.pdf"
+
+
 def _get_owned_resume(session: Session, user: User, resume_id: uuid.UUID) -> Resume:
     resume = session.get(Resume, resume_id)
     if resume is None or resume.user_id != user.id:
@@ -462,6 +467,24 @@ async def reparse_resume(
     return _resume_payload(session, resume, version)
 
 
+
+@router.get("/{resume_id}/versions/{version_id}/export.pdf")
+def export_resume_version_pdf(
+    resume_id: uuid.UUID,
+    version_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    resume = _get_owned_resume(session, current_user, resume_id)
+    version = _get_owned_version(session, resume, version_id)
+    pdf_bytes = render_resume_pdf(version.title, version.parsed_json)
+    filename = _pdf_filename(version.title)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
 @router.get("/{resume_id}/export.pdf")
 def export_resume_pdf(
     resume_id: uuid.UUID,
@@ -473,7 +496,7 @@ def export_resume_pdf(
     title = version.title if version else resume.title
     parsed_json = version.parsed_json if version else resume.parsed_json
     pdf_bytes = render_resume_pdf(title, parsed_json)
-    filename = f"{title or 'resume'}.pdf"
+    filename = _pdf_filename(title)
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",

@@ -4,6 +4,10 @@ from datetime import datetime
 from pydantic import BaseModel, Field, field_validator
 
 from app.models.enums import ApplicationStatus
+from app.schemas.contact import ContactOut
+from app.schemas.cover_letter import CoverLetterOut
+from app.schemas.job import JobOut
+from app.schemas.outreach import OutreachOut
 
 
 class ApplicationBase(BaseModel):
@@ -83,3 +87,28 @@ class ApplicationFollowUpOut(BaseModel):
     due: bool
     job: ApplicationJobOut
     latest_activity: ApplicationFollowUpActivityOut | None = None
+
+
+class ApplicationWorkflowResumeOut(BaseModel):
+    id: uuid.UUID
+    title: str
+    current_version_id: uuid.UUID | None = None
+
+
+class ApplicationWorkflowActivityOut(BaseModel):
+    entity_type: str
+    entity_id: uuid.UUID
+    event_type: str
+    description: str | None = None
+    created_at: datetime
+
+
+class ApplicationWorkflowOut(BaseModel):
+    application: ApplicationOut
+    job: JobOut
+    linked_resume: ApplicationWorkflowResumeOut | None = None
+    linked_cover_letter: CoverLetterOut | None = None
+    cover_letters: list[CoverLetterOut]
+    contacts: list[ContactOut]
+    outreach_drafts: list[OutreachOut]
+    recent_activity: list[ApplicationWorkflowActivityOut]

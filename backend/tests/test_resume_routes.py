@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 from app.api.deps import get_current_user
 from app.core.config import get_settings
 from app.core.database import get_session
-from app.models import Resume, User
+from app.models import Resume, ResumeVersion, User
 from tests.sample_docs import (
     DOCX_CONTENT_TYPE,
     PDF_CONTENT_TYPE,
@@ -335,6 +335,28 @@ def test_export_pdf_returns_pdf_bytes(client):
     assert resp.headers["content-type"] == "application/pdf"
     assert resp.content[:4] == b"%PDF"
     assert len(resp.content) > 500
+
+
+def test_export_resume_version_pdf_returns_pdf_bytes(client, session):
+    body = _upload(
+        client,
+        data=make_pdf_bytes("Version Export\nPython"),
+        filename="version-export.pdf",
+        content_type=PDF_CONTENT_TYPE,
+    ).json()
+    version = session.get(ResumeVersion, uuid.UUID(body["current_version_id"]))
+    version.title = 'Version "Export"\r\nCopy'
+    session.add(version)
+    session.commit()
+
+    resp = client.get(
+        f"/api/resumes/{body['id']}/versions/{body['current_version_id']}/export.pdf"
+    )
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/pdf"
+    assert 'filename="Version ExportCopy.pdf"' in resp.headers["content-disposition"]
+    assert resp.content[:4] == b"%PDF"
 
 
 def test_export_other_users_resume_is_404(client, session):

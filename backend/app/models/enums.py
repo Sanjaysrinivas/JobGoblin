@@ -80,3 +80,10 @@ class OutreachStatus(enum.StrEnum):
     sent = "sent"
     replied = "replied"
     closed = "closed"
+
+
+class InterviewPrepStatus(enum.StrEnum):
+    draft = "draft"
+    reviewed = "reviewed"
+    ready = "ready"
+    archived = "archived"

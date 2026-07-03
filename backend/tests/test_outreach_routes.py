@@ -1,4 +1,4 @@
-﻿import uuid
+import uuid
 
 import pytest
 from fastapi.testclient import TestClient
@@ -178,9 +178,7 @@ def test_create_enforces_owned_references(client, session, other_user):
     assert missing_job.status_code == 404
     assert missing_job.json()["code"] == "job_not_found"
 
-    missing_contact = client.post(
-        "/api/outreach", json=_payload(contact_id=str(other_contact.id))
-    )
+    missing_contact = client.post("/api/outreach", json=_payload(contact_id=str(other_contact.id)))
     assert missing_contact.status_code == 404
     assert missing_contact.json()["code"] == "contact_not_found"
 
@@ -190,9 +188,7 @@ def test_patch_rejects_cross_user_references(client, session, other_user):
     other_job = _job(session, other_user)
     other_contact = _contact(session, other_user)
 
-    job_resp = client.patch(
-        f"/api/outreach/{created['id']}", json={"job_id": str(other_job.id)}
-    )
+    job_resp = client.patch(f"/api/outreach/{created['id']}", json={"job_id": str(other_job.id)})
     assert job_resp.status_code == 404
     assert job_resp.json()["code"] == "job_not_found"
 
@@ -242,3 +238,39 @@ def test_requires_authentication(session):
         assert resp.json()["code"] == "not_authenticated"
     finally:
         app.dependency_overrides.clear()
+
+
+def test_email_export_returns_mailto_text_and_records_activity(client, session, user):
+    job = _job(session, user)
+    contact = _contact(session, user, job_id=job.id, email="taylor@example.com")
+    created = client.post(
+        "/api/outreach",
+        json=_payload(job_id=str(job.id), contact_id=str(contact.id), content="Hello Taylor"),
+    )
+    assert created.status_code == 201, created.text
+
+    exported = client.post(f"/api/outreach/{created.json()['id']}/email-export")
+    assert exported.status_code == 200, exported.text
+    body = exported.json()
+    assert body["to"] == "taylor@example.com"
+    assert body["subject"] == "Backend Engineer at Acme"
+    assert body["body"] == "Hello Taylor"
+    assert body["mailto_url"].startswith("mailto:taylor%40example.com?")
+    assert "subject=Backend%20Engineer%20at%20Acme" in body["mailto_url"]
+    assert (
+        body["text"] == "To: taylor@example.com\nSubject: Backend Engineer at Acme\n\nHello Taylor"
+    )
+    assert body["filename"].startswith("outreach-recruiter_intro-")
+
+    events = session.exec(select(ActivityEvent).order_by(ActivityEvent.created_at)).all()
+    assert events[-1].event_type == "outreach_email_exported"
+    assert events[-1].entity_id == uuid.UUID(created.json()["id"])
+
+
+def test_email_export_rejects_non_email_outreach(client):
+    created = client.post("/api/outreach", json=_payload(channel="linkedin"))
+    assert created.status_code == 201, created.text
+
+    exported = client.post(f"/api/outreach/{created.json()['id']}/email-export")
+    assert exported.status_code == 422
+    assert exported.json()["code"] == "not_email_outreach"

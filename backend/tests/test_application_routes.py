@@ -7,8 +7,18 @@ from sqlmodel import select
 
 from app.api.deps import get_current_user
 from app.core.database import get_session
-from app.models import ActivityEvent, Application, CoverLetter, Job, Resume, User
-from app.models.enums import CoverLetterTone
+from app.models import (
+    ActivityEvent,
+    Application,
+    Contact,
+    CoverLetter,
+    Job,
+    OutreachMessage,
+    Resume,
+    ResumeVersion,
+    User,
+)
+from app.models.enums import CoverLetterTone, OutreachChannel
 
 
 @pytest.fixture
@@ -249,3 +259,59 @@ def test_requires_authentication(session):
 
     assert resp.status_code == 401
     assert resp.json()["code"] == "not_authenticated"
+
+
+def test_application_workflow_includes_owned_job_artifacts(client, session, user, other_user):
+    job = _job(session, user)
+    resume = _resume(session, user)
+    version = ResumeVersion(
+        resume_id=resume.id,
+        title="Workflow Resume",
+        extracted_text="Python APIs",
+        parsed_json={},
+        is_current=True,
+    )
+    cover_letter = _cover_letter(session, user, job, resume)
+    contact = Contact(
+        user_id=user.id,
+        job_id=job.id,
+        name="Taylor Recruiter",
+        email="taylor@example.com",
+    )
+    outreach = OutreachMessage(
+        user_id=user.id,
+        job_id=job.id,
+        contact_id=contact.id,
+        channel=OutreachChannel.email,
+        message_type="intro",
+        content="Hello",
+    )
+    other_job = _job(session, other_user, company_name="OtherCo")
+    other_contact = Contact(user_id=other_user.id, job_id=other_job.id, name="Private")
+    session.add(version)
+    session.add(contact)
+    session.add(outreach)
+    session.add(other_contact)
+    session.commit()
+
+    created = client.post(
+        "/api/applications",
+        json={
+            "job_id": str(job.id),
+            "resume_id": str(resume.id),
+            "cover_letter_id": str(cover_letter.id),
+        },
+    )
+    assert created.status_code == 201, created.text
+
+    workflow = client.get(f"/api/applications/{created.json()['id']}/workflow")
+    assert workflow.status_code == 200, workflow.text
+    body = workflow.json()
+    assert body["job"]["id"] == str(job.id)
+    assert body["linked_resume"]["current_version_id"] == str(version.id)
+    assert body["linked_cover_letter"]["id"] == str(cover_letter.id)
+    assert [item["id"] for item in body["cover_letters"]] == [str(cover_letter.id)]
+    assert [item["id"] for item in body["contacts"]] == [str(contact.id)]
+    assert [item["id"] for item in body["outreach_drafts"]] == [str(outreach.id)]
+    assert "Private" not in str(body)
+    assert body["recent_activity"][0]["event_type"] == "application_created"
