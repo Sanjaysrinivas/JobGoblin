@@ -10,6 +10,8 @@ from app.models.enums import (
     ApplicationStatus,
     CoverLetterStatus,
     CoverLetterTone,
+    DiscoveryResultStatus,
+    DiscoveryRunStatus,
     JobSource,
     OutreachChannel,
     OutreachStatus,
@@ -120,6 +122,79 @@ class Profile(_UUIDMixin, _TimeMixin, table=True):
     education: list[dict] = Field(default_factory=list, sa_column=Column(JSONB, nullable=False))
     projects: list[str] = Field(default_factory=list, sa_column=Column(JSONB, nullable=False))
     certifications: list[str] = Field(default_factory=list, sa_column=Column(JSONB, nullable=False))
+
+
+class JobSearchPreferences(_UUIDMixin, _TimeMixin, table=True):
+    __tablename__ = "job_search_preferences"
+    __table_args__ = (UniqueConstraint("user_id", name="uq_job_search_preferences_user_id"),)
+
+    user_id: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE")
+    target_countries: list[str] = Field(
+        default_factory=list, sa_column=Column(JSONB, nullable=False)
+    )
+    target_locations: list[str] = Field(
+        default_factory=list, sa_column=Column(JSONB, nullable=False)
+    )
+    desired_titles: list[str] = Field(default_factory=list, sa_column=Column(JSONB, nullable=False))
+    seniority: str | None = None
+    industries: list[str] = Field(default_factory=list, sa_column=Column(JSONB, nullable=False))
+    required_keywords: list[str] = Field(
+        default_factory=list, sa_column=Column(JSONB, nullable=False)
+    )
+    optional_keywords: list[str] = Field(
+        default_factory=list, sa_column=Column(JSONB, nullable=False)
+    )
+    excluded_keywords: list[str] = Field(
+        default_factory=list, sa_column=Column(JSONB, nullable=False)
+    )
+    visa_sponsorship_required: bool = Field(default=False)
+    blocked_companies: list[str] = Field(
+        default_factory=list, sa_column=Column(JSONB, nullable=False)
+    )
+    work_mode: WorkMode = Field(default=WorkMode.unknown, sa_type=_enum(WorkMode))
+
+
+class JobSearchRun(_UUIDMixin, _TimeMixin, table=True):
+    __tablename__ = "job_search_runs"
+
+    user_id: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE", index=True)
+    provider: str
+    status: DiscoveryRunStatus = Field(
+        default=DiscoveryRunStatus.pending, sa_type=_enum(DiscoveryRunStatus)
+    )
+    country: str
+    location: str | None = None
+    query: str
+    preferences_snapshot: dict = Field(
+        default_factory=dict, sa_column=Column(JSONB, nullable=False)
+    )
+    result_count: int = Field(default=0)
+    error: str | None = None
+
+
+class JobSearchResult(_UUIDMixin, _TimeMixin, table=True):
+    __tablename__ = "job_search_results"
+
+    user_id: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE", index=True)
+    run_id: uuid.UUID = Field(foreign_key="job_search_runs.id", ondelete="CASCADE", index=True)
+    provider: str
+    source: JobSource = Field(default=JobSource.other, sa_type=_enum(JobSource))
+    source_url: str | None = None
+    canonical_url: str | None = None
+    title: str
+    company_name: str
+    location: str | None = None
+    work_mode: WorkMode = Field(default=WorkMode.unknown, sa_type=_enum(WorkMode))
+    description: str
+    posted_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))
+    dedupe_key: str
+    fit_score: int = Field(default=0)
+    fit_reason: str | None = None
+    status: DiscoveryResultStatus = Field(
+        default=DiscoveryResultStatus.new, sa_type=_enum(DiscoveryResultStatus)
+    )
+    saved_job_id: uuid.UUID | None = Field(default=None, foreign_key="jobs.id", ondelete="SET NULL")
+
 
 class Job(_UUIDMixin, _TimeMixin, table=True):
     __tablename__ = "jobs"
