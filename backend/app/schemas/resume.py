@@ -7,7 +7,7 @@ The ``ParsedResume`` shape mirrors ``frontend/lib/types.ts`` and the schema in
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ParsedExperience(BaseModel):
@@ -52,12 +52,9 @@ class ResumeOut(BaseModel):
 
 
 class _OptionalTitle(BaseModel):
-    title: str | None = Field(default=None, min_length=1, max_length=255)
+    model_config = ConfigDict(str_strip_whitespace=True)
 
-    @field_validator("title", mode="before")
-    @classmethod
-    def _strip_title(cls, value):
-        return value.strip() if isinstance(value, str) else value
+    title: str | None = Field(default=None, min_length=1, max_length=255)
 
 
 class ResumeUpdate(_OptionalTitle):

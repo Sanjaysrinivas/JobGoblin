@@ -6,8 +6,8 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
 
-ShortText = Annotated[str, Field(max_length=255)]
-LongText = Annotated[str, Field(max_length=1000)]
+ShortText = Annotated[str, Field(min_length=1, max_length=255)]
+LongText = Annotated[str, Field(min_length=1, max_length=1000)]
 
 
 class ProfileExperience(BaseModel):
