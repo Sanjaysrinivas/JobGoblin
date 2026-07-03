@@ -192,3 +192,16 @@ def test_delete_profile(client):
     assert deleted.status_code == 204
 
     assert client.get("/api/profile").status_code == 404
+
+def test_profile_update_rejects_unbounded_fields(client):
+    summary_resp = client.put("/api/profile", json={"summary": "x" * 5001})
+    assert summary_resp.status_code == 422
+
+    skills_resp = client.put("/api/profile", json={"skills": ["x"] * 101})
+    assert skills_resp.status_code == 422
+
+    highlight_resp = client.put(
+        "/api/profile",
+        json={"experience": [{"highlights": ["x" * 1001]}]},
+    )
+    assert highlight_resp.status_code == 422

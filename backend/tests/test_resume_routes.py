@@ -354,3 +354,16 @@ def test_export_other_users_resume_is_404(client, session):
     session.refresh(r)
     resp = client.get(f"/api/resumes/{r.id}/export.pdf")
     assert resp.status_code == 404
+
+
+def test_patch_rejects_blank_resume_title(client):
+    body = _upload(
+        client,
+        data=make_pdf_bytes("blank title"),
+        filename="blank.pdf",
+        content_type=PDF_CONTENT_TYPE,
+    ).json()
+
+    resp = client.patch(f"/api/resumes/{body['id']}", json={"title": "   "})
+
+    assert resp.status_code == 422
