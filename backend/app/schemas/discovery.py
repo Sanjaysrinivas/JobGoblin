@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
 from app.models.enums import DiscoveryResultStatus, DiscoveryRunStatus, JobSource, WorkMode
 
@@ -35,7 +35,7 @@ class JobSearchPreferencesPayload(BaseModel):
         mode="before",
     )
     @classmethod
-    def _clean_list(cls, value):
+    def _clean_list(cls, value, info: ValidationInfo):
         if value is None:
             return []
         if not isinstance(value, list):
@@ -47,6 +47,10 @@ class JobSearchPreferencesPayload(BaseModel):
                 cleaned.append(item)
                 continue
             text = item.strip()
+            if info.field_name == "target_countries":
+                text = text.lower()
+                if len(text) != 2:
+                    continue
             key = text.lower()
             if text and key not in seen:
                 cleaned.append(text)

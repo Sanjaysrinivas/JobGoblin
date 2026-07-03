@@ -441,7 +441,7 @@ export function DiscoveryView() {
                       <Button
                         type="button"
                         size="sm"
-                        disabled={busy}
+                        disabled={busyResultId !== null}
                         onClick={() => saveResult(result.id)}
                       >
                         {busy ? (
@@ -455,7 +455,7 @@ export function DiscoveryView() {
                         type="button"
                         size="sm"
                         variant="outline"
-                        disabled={busy}
+                        disabled={busyResultId !== null}
                         onClick={() => dismissResult(result.id)}
                       >
                         <XCircle className="size-4" />

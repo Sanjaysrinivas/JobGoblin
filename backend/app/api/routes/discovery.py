@@ -44,7 +44,19 @@ def _error(status_code: int, message: str, code: str) -> HTTPException:
 def _preferences_payload(model: JobSearchPreferences | None) -> JobSearchPreferencesPayload:
     if model is None:
         return JobSearchPreferencesPayload()
-    return JobSearchPreferencesPayload.model_validate(model, from_attributes=True)
+    return JobSearchPreferencesPayload(
+        target_countries=model.target_countries or [],
+        target_locations=model.target_locations or [],
+        desired_titles=model.desired_titles or [],
+        seniority=model.seniority,
+        industries=model.industries or [],
+        required_keywords=model.required_keywords or [],
+        optional_keywords=model.optional_keywords or [],
+        excluded_keywords=model.excluded_keywords or [],
+        visa_sponsorship_required=model.visa_sponsorship_required,
+        blocked_companies=model.blocked_companies or [],
+        work_mode=model.work_mode,
+    )
 
 
 def _get_preferences(session: Session, user_id: uuid.UUID) -> JobSearchPreferences | None:
@@ -59,10 +71,10 @@ def _profile_terms(profile: Profile | None) -> list[str]:
     terms: list[str] = []
     if profile.headline:
         terms.append(profile.headline)
-    for item in profile.experience[:2]:
+    for item in (profile.experience or [])[:2]:
         if isinstance(item, dict) and item.get("role"):
             terms.append(str(item["role"]))
-    terms.extend(profile.skills[:8])
+    terms.extend((profile.skills or [])[:8])
 
     cleaned: list[str] = []
     seen = set()
@@ -184,10 +196,14 @@ async def create_run(
         return run
 
     created = 0
+    seen_dedupes: set[str] = set()
     for item in raw_results:
         dedupe = _dedupe_key(
             item.provider, item.source_url, item.company_name, item.title, item.location
         )
+        if dedupe in seen_dedupes:
+            continue
+        seen_dedupes.add(dedupe)
         existing = session.exec(
             select(JobSearchResult).where(
                 JobSearchResult.user_id == current_user.id,
@@ -250,6 +266,15 @@ def update_result(
 ) -> JobSearchResult:
     result = _get_result(session, current_user, result_id)
     if (
+        payload.status == DiscoveryResultStatus.saved
+        and result.status != DiscoveryResultStatus.saved
+    ):
+        raise _error(
+            status.HTTP_409_CONFLICT,
+            "Use the save endpoint to mark discovery results as saved.",
+            "use_save_endpoint",
+        )
+    if (
         result.status == DiscoveryResultStatus.saved
         and payload.status != DiscoveryResultStatus.saved
     ):
@@ -288,11 +313,9 @@ def save_result_as_job(
         description=result.description,
     )
     session.add(job)
-    session.commit()
-    session.refresh(job)
-
     result.status = DiscoveryResultStatus.saved
     result.saved_job_id = job.id
     session.add(result)
     session.commit()
+    session.refresh(job)
     return job

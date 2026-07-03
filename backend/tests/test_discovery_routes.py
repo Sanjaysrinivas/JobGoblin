@@ -6,7 +6,15 @@ from fastapi.testclient import TestClient
 from app.api.deps import get_current_user
 from app.core.config import get_settings
 from app.core.database import get_session
-from app.models import DiscoveryResultStatus, Job, JobSearchResult, Profile, User
+from app.models import (
+    DiscoveryResultStatus,
+    Job,
+    JobSearchResult,
+    JobSource,
+    Profile,
+    User,
+    WorkMode,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -59,7 +67,7 @@ def test_preferences_round_trip(client):
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["target_countries"] == ["GB"]
+    assert body["target_countries"] == ["gb"]
     assert body["target_locations"] == ["London"]
     assert body["work_mode"] == "remote"
 
@@ -145,3 +153,48 @@ def test_run_uses_profile_terms_when_preferences_are_sparse(client, session, use
 
     result = client.get("/api/discovery/results").json()[0]
     assert result["fit_score"] > 35
+
+
+def test_patch_cannot_mark_result_saved_directly(client):
+    run = client.post("/api/discovery/runs", json={"country": "us", "query": "python"})
+    assert run.status_code == 201
+    result = client.get("/api/discovery/results").json()[0]
+
+    patched = client.patch(f"/api/discovery/results/{result['id']}", json={"status": "saved"})
+    assert patched.status_code == 409
+    assert patched.json()["code"] == "use_save_endpoint"
+
+
+def test_preferences_drop_invalid_country_codes(client):
+    resp = client.put(
+        "/api/discovery/preferences",
+        json={"target_countries": ["USA", "d", "DE", "de"]},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["target_countries"] == ["de"]
+
+
+async def _duplicate_results(**_kwargs):
+    from app.services.job_discovery import DiscoveredJob
+
+    result = DiscoveredJob(
+        provider="mock",
+        source=JobSource.other,
+        source_url="https://example.com/jobs/duplicate",
+        title="Python Engineer",
+        company_name="Duplicate Co",
+        location="Remote",
+        work_mode=WorkMode.remote,
+        description="Python API work.",
+    )
+    return [result, result]
+
+
+def test_run_dedupes_results_within_same_provider_response(client, monkeypatch):
+    import app.api.routes.discovery as discovery_routes
+
+    monkeypatch.setattr(discovery_routes, "search_jobs", _duplicate_results)
+    run = client.post("/api/discovery/runs", json={"country": "us", "query": "python"})
+    assert run.status_code == 201
+    assert run.json()["result_count"] == 1
+    assert len(client.get("/api/discovery/results").json()) == 1
