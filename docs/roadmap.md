@@ -6,7 +6,7 @@ This roadmap describes where JobGoblin is now, what the final application should
 
 JobGoblin is a private, self-hosted job-search workspace for one owner and a small set of invited users. It should help users discover relevant job opportunities, organize saved roles, understand resume fit, draft application materials, plan follow-ups, and prepare for interviews while keeping every external action under human control.
 
-The first Job Discovery slice is implemented: users can define preferences, search through the configured provider, review deduped discovered roles, get AI-assisted ranking, and explicitly save good matches into the normal jobs workflow. The next discovery work is hardening provider coverage, ranking explanations, and operations around real local LLM behavior.
+Job Discovery is implemented: users can define preferences, search through the configured provider, review deduped discovered roles, get AI-assisted ranking with deterministic fallback, and explicitly save good matches into the normal jobs workflow. Discovery remains read-only toward the outside world.
 
 The product boundaries are fixed:
 
@@ -33,8 +33,11 @@ Implemented:
 - Dashboard with pipeline counts, follow-up counts, average analysis score, and recent activity.
 - Resume-to-job analysis with deterministic scoring, AI explanation, persisted results, and estimate language in the UI.
 - Cover-letter draft generation, editing, statuses, and job-detail UI.
-- Review-only outreach draft workflow with local copy/export behavior.
+- Review-only outreach draft workflow with local copy/export behavior and explicit email export/copy/mail-client handoff.
 - Profile builder seeded from parsed resume sections and editable by the user.
+- Tailored resume-version drafts for saved jobs, with source version provenance and PDF export through the resume-version export path.
+- Interview prep packets for saved jobs/applications using job, resume, and resume-version context, with editable notes/status.
+- Sanitized LLM observability hooks for provider/model/operation, prompt/schema hashes, latency, success/failure, and deterministic fallback visibility.
 - Job Discovery MVP from PR #28, including preferences, mock/Adzuna provider plumbing, run/result storage, dedupe, review/dismiss/save states, `/discover` UI, and save-to-job behavior.
 - AI-assisted discovery ranking from PR #29 using preferences, profile, resumes, and saved job context with deterministic fallback behavior.
 - Playwright E2E harness through Docker Compose and Caddy.
@@ -44,6 +47,8 @@ Implemented:
 Still needs verification:
 
 - Full integrated verification after the latest merged feature set.
+- Adzuna discovery with real credentials and supported country/location choices.
+- Real local Ollama behavior through the browser for ranking and generated drafts/prep.
 - Google OAuth with real credentials and allowlisted users.
 - Cloudflare Tunnel HTTPS access and secure-cookie behavior.
 - End-to-end manual UX pass across the full job-search loop.
@@ -76,34 +81,17 @@ The app should not need any hosted SaaS backend to function. The normal operatin
 
 ## Remaining Roadmap
 
-### 1. Stabilize The Merged MVP
+### 1. Integrated Release Validation
 
-Goal: make the merged feature set reliable enough to use daily.
+Goal: prove the merged MVP works as one private workflow, not just as isolated slices.
 
-Remaining work:
+Validation gates:
 
-- Keep local `dev` aligned with the latest merged state.
-- Validate merged resume-version workflows.
-- Validate merged job discovery and AI ranking workflows.
-- Run backend ruff and pytest.
+- Run backend ruff and pytest with the test PostgreSQL database available on `localhost:5433`.
 - Run frontend lint and build.
 - Run Playwright E2E through Docker Compose and Caddy.
-- Start the full local stack and manually smoke the main flows:
-  - login and MFA
-  - resumes
-  - jobs
-  - analysis
-  - contacts
-  - applications
-  - follow-up reminders
-  - dashboard
-  - cover letters
-  - outreach drafts
-  - profile builder
-  - resume versions
-  - job discovery and AI ranking
-- Fix regressions found during the integrated pass.
-- Keep README, architecture, design, frontend notes, and handover docs aligned with the merged code.
+- Start the full local stack and manually smoke the main flows: login/MFA, resumes and resume versions, jobs, discovery and AI ranking, analysis, tailored drafts, cover letters, outreach export, interview prep, contacts, applications, follow-ups, dashboard, and profile builder.
+- Fix regressions found during that integrated pass.
 
 Done when:
 
@@ -111,77 +99,56 @@ Done when:
 - CI and local verification agree.
 - Docs do not describe merged features as planned or placeholders.
 
-### 2. Harden The Real Local AI Runtime
+### 2. Real Runtime Validation
 
-Goal: keep proven local model behavior useful and reliable.
+Goal: keep local model behavior useful and diagnosable without external AI APIs.
 
-Remaining work:
+Validation gates:
 
 - Keep `llama3.2:3b` documented as the proven local baseline.
-- Manually inspect AI output quality for grounding and usefulness.
-- Tune prompts or parsing behavior where outputs are weak.
-- Document the working local AI setup.
+- Manually inspect real Ollama output quality for grounding and usefulness across parsing, analysis, cover letters, tailored drafts, discovery ranking, and interview prep.
+- Verify sanitized observability spans/events when `OBSERVABILITY_ENABLED=true`: provider, model, operation, latency, success/failure, and fallback reason without prompt, resume, profile, job text, tokens, or secrets.
+- Tune prompts or parsing behavior only where the real browser workflow shows weak output.
 
 Done when:
 
 - Browser workflows produce useful real AI output.
 - The app still works without external AI APIs.
-- AI output remains grounded in user-provided facts.
+- AI diagnostics identify slow runtime, malformed output, unavailable models, and fallback paths without exposing sensitive user text.
 
-### 3. Add LLM Observability
+### 3. Operator-Run External Validation
 
-Goal: make local LLM behavior diagnosable without leaking resume, profile, prompt, or credential data.
+Goal: validate integrations that require private credentials without pretending tests can prove them.
 
-Remaining work:
+Validation gates:
 
-- Capture provider, model, operation name, latency, success/failure, timeout, and fallback use for parsing, analysis, cover letters, and discovery ranking.
-- Redact prompts, resume text, profile facts, secrets, tokens, and raw job descriptions from logs.
-- Surface operator diagnostics for unavailable models, malformed JSON, slow responses, and deterministic fallback paths.
-- Document retention and privacy boundaries for any LLM telemetry.
-
-Done when:
-
-- The owner can tell whether an AI issue is model availability, slow runtime, malformed output, prompt quality, or fallback behavior.
-- Observability does not expose sensitive user-provided facts.
-
-### 4. Prove Private External Access
-
-Goal: make the app usable from a private HTTPS URL without weakening security.
-
-Remaining work:
-
-- Configure Cloudflare Tunnel for the local Caddy origin.
-- Configure Google OAuth redirect settings for the tunnel hostname.
-- Verify owner login through the tunnel.
-- Verify allowlisted friend login through the tunnel.
-- Verify unallowlisted users are rejected.
-- Confirm production-mode cookies are `Secure`, `HttpOnly`, and `SameSite=Lax`.
-- Document operator steps and failure modes.
+- Adzuna: set `JOB_DISCOVERY_PROVIDER=adzuna`, `ADZUNA_APP_ID`, and `ADZUNA_APP_KEY`; run discovery for supported countries/locations; confirm failed runs never log API keys or provider URLs with secrets.
+- Google OAuth: set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `OAUTH_REDIRECT_BASE_URL`, and `ALLOWED_EMAILS`; verify owner login, allowlisted friend login, and unallowlisted rejection.
+- Cloudflare Tunnel: set `CLOUDFLARED_TUNNEL_TOKEN`; verify HTTPS access to Caddy, Google redirect URI alignment, and production cookies as `Secure`, `HttpOnly`, and `SameSite=Lax`.
 
 Done when:
 
-- The owner and invited users can access the app through HTTPS.
+- The owner and invited users can access the app through HTTPS when the tunnel profile is enabled.
 - The app remains private and allowlist-gated.
-- Local-only operation still works without tunnel credentials.
+- Local-only operation still works without tunnel, OAuth, or Adzuna credentials.
 
-### 5. Harden Job Discovery
+### 4. Discovery Operations Hardening
 
-Goal: make the merged discovery and ranking flow reliable enough for daily use.
+Goal: make discovery reliable enough for daily use while keeping it read-only externally.
 
 Implemented:
 
-- User job preferences for role titles, work mode, countries, locations, keywords, exclusions, visa sponsorship, and blocked companies.
+- User preferences for role titles, work mode, countries, locations, keywords, exclusions, visa sponsorship, and blocked companies.
 - Mock provider for local/dev and Adzuna provider plumbing behind configuration.
-- Separate discovered result storage, run records, dedupe, review/dismiss/save states, and save-to-job behavior.
-- `/discover` UI for running searches and saving selected results.
-- AI-assisted ranking using preferences, profile, resumes, and saved job history, with deterministic fallback behavior.
+- Country/provider validation, sanitized provider failure messages, run/result storage, dedupe, review/dismiss/save states, and save-to-job behavior.
+- AI-assisted ranking using preferences, profile, resumes, and saved job history, with deterministic fallback telemetry.
+- Ranking explanations for keyword/profile matches, title, location, work mode, and visa-sponsorship visibility.
 
 Remaining work:
 
-- Add richer provider coverage beyond the first provider.
-- Smoke test Adzuna credentials and real local Ollama ranking through the browser flow.
-- Improve ranking explanations for location, visa, and work-mode compatibility.
-- Keep discovery read-only toward the outside world: no auto-apply, no silent outreach, and no background contact.
+- Do not add another discovery provider until there is real code/config that makes it cheap to operate.
+- Use Adzuna credential smoke results to decide whether provider coverage is actually insufficient.
+- Keep discovery read-only: no auto-apply, no silent outreach, and no background contact.
 
 Done when:
 
@@ -190,94 +157,21 @@ Done when:
 - A user can save a discovered role as a normal job.
 - Discovery never performs external application or outreach actions.
 
-### 6. Add Tailored Resume Drafts
-
-Goal: generate reviewable resume drafts for a specific job using only verified user facts.
-
-Remaining work:
-
-- Use profile, selected resume/version, job description, and analysis gaps as inputs.
-- Generate tailored bullet suggestions and section edits.
-- Show what changed and why.
-- Block invented companies, credentials, dates, or skills.
-- Let the user accept, edit, reject, or export draft changes.
-- Persist tailored drafts with status and provenance.
-
-Done when:
-
-- A user can create a tailored resume draft for a job.
-- Every generated change is editable and grounded.
-- The app clearly distinguishes source facts from AI-suggested wording.
-
-### 7. Improve Application Workflow Links
-
-Goal: connect jobs, resumes, cover letters, outreach, contacts, and follow-ups into one coherent workflow.
-
-Remaining work:
-
-- Link applications to selected resume versions and cover-letter drafts.
-- Show related contacts and outreach drafts from the application view.
-- Make next action and follow-up state more visible.
-- Add richer activity events for meaningful workflow changes.
-- Add filters for active, due, interviewing, archived, and outcome states.
-
-Done when:
-
-- The application detail view explains the full state of a job pursuit.
-- Users can quickly answer what happened, what was sent manually, and what comes next.
-
-### 8. Add Email Draft And Export Integration
-
-Goal: make outbound communication easier while preserving explicit human review.
-
-Remaining work:
-
-- Generate email-style drafts for recruiter follow-ups, referrals, thank-yous, and status checks.
-- Support copy/export actions and record them locally.
-- Optionally open a mail client with a draft only after explicit user action.
-- Avoid background sending.
-- Keep a clear audit trail of copied/exported drafts.
-
-Done when:
-
-- JobGoblin helps prepare messages but never sends them silently.
-- Users can track what they manually used outside the app.
-
-### 9. Add Interview Prep
-
-Goal: turn saved jobs and user facts into practical interview preparation.
-
-Remaining work:
-
-- Generate likely interview questions from the job description.
-- Generate user-grounded answer outlines from resume/profile facts.
-- Add STAR/story bank support.
-- Add company/job-specific preparation notes.
-- Track interview rounds and prep status on applications.
-
-Done when:
-
-- Users can prepare for interviews from the same trusted data already in JobGoblin.
-- AI answers remain suggestions, not fabricated claims.
-
-### 10. Harden Operations And Maintenance
+### 5. Operations And Maintenance
 
 Goal: make the private deployment boring to run.
 
 Remaining work:
 
-- Add backup and restore guidance for Postgres volumes and uploaded files.
-- Add migration and rollback guidance.
-- Add health checks and operator diagnostics.
-- Include LLM observability in routine operator checks once the telemetry track lands.
-- Improve startup failure messages.
-- Document secrets handling.
+- Keep backup and restore guidance current for Postgres volumes and uploaded files.
+- Keep migration, rollback, secrets, and release-promotion guidance current.
+- Include LLM observability and provider diagnostics in routine operator checks.
+- Improve startup failure messages when real operator runs expose unclear failures.
 - Decide whether `main` should receive stable releases from `dev`.
 
 Done when:
 
 - The owner can recover data, update the app, and diagnose common failures without digging through code.
-
 ## Definition Of Done For The Final Product
 
 JobGoblin reaches its final intended state when:

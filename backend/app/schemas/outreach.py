@@ -1,9 +1,14 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
 from app.models.enums import OutreachChannel, OutreachStatus
+
+OutreachGeneratedType = Literal[
+    "recruiter_follow_up", "referral", "thank_you", "status_check"
+]
 
 
 class OutreachBase(BaseModel):
@@ -28,9 +33,39 @@ class OutreachBase(BaseModel):
             raise ValueError("Value cannot be blank")
         return value
 
+    @field_validator("status")
+    @classmethod
+    def reject_sent_status(cls, value: OutreachStatus) -> OutreachStatus:
+        if value == OutreachStatus.sent:
+            raise ValueError("Outreach drafts cannot be marked sent")
+        return value
+
 
 class OutreachCreate(OutreachBase):
     pass
+
+
+class OutreachGenerate(BaseModel):
+    job_id: uuid.UUID | None = None
+    contact_id: uuid.UUID | None = None
+    channel: OutreachChannel = OutreachChannel.email
+    message_type: OutreachGeneratedType
+    notes: str | None = Field(default=None, max_length=4000)
+
+    @field_validator("notes", mode="before")
+    @classmethod
+    def strip_notes(cls, value: object) -> object:
+        if isinstance(value, str):
+            stripped = value.strip()
+            return stripped or None
+        return value
+
+    @field_validator("channel")
+    @classmethod
+    def reject_null_channel(cls, value: OutreachChannel | None) -> OutreachChannel:
+        if value is None:
+            raise ValueError("Channel cannot be null")
+        return value
 
 
 class OutreachUpdate(BaseModel):
@@ -69,6 +104,8 @@ class OutreachUpdate(BaseModel):
     def reject_null_status(cls, value: OutreachStatus | None) -> OutreachStatus | None:
         if value is None:
             raise ValueError("Status cannot be null")
+        if value == OutreachStatus.sent:
+            raise ValueError("Outreach drafts cannot be marked sent")
         return value
 
 

@@ -5,7 +5,16 @@ from sqlmodel import select
 
 from app.api.deps import get_current_user
 from app.core.database import get_session
-from app.models import ActivityEvent, Application, InterviewPrep, Job, Resume, ResumeVersion, User
+from app.models import (
+    ActivityEvent,
+    Application,
+    InterviewPrep,
+    Job,
+    Profile,
+    Resume,
+    ResumeVersion,
+    User,
+)
 
 
 @pytest.fixture
@@ -80,7 +89,20 @@ def _resume_version(session, user: User) -> tuple[Resume, ResumeVersion]:
 def test_create_list_get_and_patch_interview_prep(client, session, user):
     job = _job(session, user)
     resume, version = _resume_version(session, user)
-    application = Application(user_id=user.id, job_id=job.id, resume_id=resume.id)
+    application = Application(
+        user_id=user.id,
+        job_id=job.id,
+        resume_id=resume.id,
+        notes="Ask about platform ownership.",
+    )
+    session.add(
+        Profile(
+            user_id=user.id,
+            headline="Backend platform engineer",
+            skills=["Python", "FastAPI"],
+            projects=["Reduced API latency by 30%"],
+        )
+    )
     session.add(application)
     session.commit()
     session.refresh(application)
@@ -105,6 +127,12 @@ def test_create_list_get_and_patch_interview_prep(client, session, user):
     assert {"question", "category", "why", "answer_outline", "evidence"} <= set(
         body["questions"][0]
     )
+    assert "story_bank" in {question["category"] for question in body["questions"]}
+    evidence = {item for question in body["questions"] for item in question["evidence"]}
+    assert "Current Python APIs" in evidence
+    assert "Backend platform engineer" in evidence
+    assert "Ask about platform ownership." in evidence
+    assert "Prep notes" in evidence
 
     listed = client.get(f"/api/interview-prep?job_id={job.id}")
     assert listed.status_code == 200
@@ -118,6 +146,12 @@ def test_create_list_get_and_patch_interview_prep(client, session, user):
     assert patched.status_code == 200, patched.text
     assert patched.json()["status"] == "ready"
 
+    notes_patch = client.patch(
+        f"/api/interview-prep/{body['id']}", json={"notes": "Round 1 with hiring manager"}
+    )
+    assert notes_patch.status_code == 200
+    assert notes_patch.json()["notes"] == "Round 1 with hiring manager"
+
     null_questions = client.patch(f"/api/interview-prep/{body['id']}", json={"questions": None})
     assert null_questions.status_code == 422
 
@@ -125,8 +159,10 @@ def test_create_list_get_and_patch_interview_prep(client, session, user):
     assert [event.event_type for event in events] == [
         "interview_prep_created",
         "interview_prep_status_changed",
+        "interview_prep_notes_updated",
     ]
-    assert events[-1].event_metadata == {"from": "draft", "to": "ready"}
+    assert events[-2].event_metadata == {"from": "draft", "to": "ready"}
+    assert events[-1].event_metadata is None
 
 
 def test_interview_prep_validates_owned_references(client, session, user, other_user):

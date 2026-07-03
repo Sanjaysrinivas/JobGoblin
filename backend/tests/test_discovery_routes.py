@@ -167,13 +167,18 @@ def test_patch_cannot_mark_result_saved_directly(client):
     assert patched.json()["code"] == "use_save_endpoint"
 
 
-def test_preferences_drop_invalid_country_codes(client):
+def test_preferences_reject_invalid_country_codes(client):
     resp = client.put(
         "/api/discovery/preferences",
-        json={"target_countries": ["USA", "d", "DE", "de"]},
+        json={"target_countries": ["USA", "DE"]},
     )
-    assert resp.status_code == 200, resp.text
-    assert resp.json()["target_countries"] == ["de"]
+    assert resp.status_code == 422, resp.text
+
+
+def test_run_rejects_invalid_country_code(client):
+    resp = client.post("/api/discovery/runs", json={"country": "u1", "query": "python"})
+    assert resp.status_code == 422
+    assert resp.json()["code"] == "invalid_country"
 
 
 async def _duplicate_results(**_kwargs):

@@ -10,8 +10,9 @@ from typing import Any
 import httpx
 
 from app.core.config import get_settings
+from app.core.observability import record_llm_fallback
 from app.models.enums import JobSource, WorkMode
-from app.schemas.discovery import JobSearchPreferencesPayload
+from app.schemas.discovery import JobSearchPreferencesPayload, normalize_country_code
 from app.services.ai_provider import AIProvider
 
 
@@ -26,6 +27,46 @@ class DiscoveredJob:
     work_mode: WorkMode
     description: str
     posted_at: datetime | None = None
+
+
+SUPPORTED_DISCOVERY_PROVIDERS = {"mock", "adzuna"}
+ADZUNA_COUNTRIES = {
+    "at",
+    "au",
+    "be",
+    "br",
+    "ca",
+    "ch",
+    "de",
+    "es",
+    "fr",
+    "gb",
+    "in",
+    "it",
+    "mx",
+    "nl",
+    "nz",
+    "pl",
+    "sg",
+    "us",
+    "za",
+}
+
+
+def normalize_discovery_provider(provider: str) -> str:
+    text = provider.strip().lower()
+    if text not in SUPPORTED_DISCOVERY_PROVIDERS:
+        raise ValueError(f"Unsupported discovery provider: {provider}")
+    return text
+
+
+def validate_discovery_country(provider: str, country: str) -> str:
+    code = normalize_country_code(country)
+    if code is None:
+        raise ValueError("Country is required")
+    if provider == "adzuna" and code not in ADZUNA_COUNTRIES:
+        raise ValueError(f"Country '{code}' is not supported by Adzuna discovery")
+    return code
 
 
 def build_query(
@@ -62,6 +103,7 @@ def rank_result(
 
     score = 35
     matched: list[str] = []
+    details: list[str] = []
     for word in [*preferences.required_keywords, *preferences.optional_keywords]:
         if word.lower() in haystack:
             matched.append(word)
@@ -71,16 +113,46 @@ def rank_result(
     score += min(15, len(set(term.lower() for term in profile_matches)) * 3)
     matched.extend(profile_matches[:3])
 
-    if preferences.work_mode != WorkMode.unknown and result.work_mode == preferences.work_mode:
+    if preferences.work_mode != WorkMode.unknown:
+        if result.work_mode == preferences.work_mode:
+            score += 10
+            details.append(f"work mode matches {preferences.work_mode.value}")
+        elif result.work_mode == WorkMode.unknown:
+            details.append("work mode is not specified by the provider")
+        else:
+            details.append(
+                f"work mode is {result.work_mode.value}, preferred {preferences.work_mode.value}"
+            )
+
+    location = (result.location or "").lower()
+    location_matches = [loc for loc in preferences.target_locations if loc.lower() in location]
+    if location_matches:
         score += 10
-    if any(loc.lower() in (result.location or "").lower() for loc in preferences.target_locations):
+        details.append(f"location matches {location_matches[0]}")
+    elif preferences.target_locations:
+        details.append("location does not match preferred locations")
+
+    title_matches = [
+        title for title in preferences.desired_titles if title.lower() in result.title.lower()
+    ]
+    if title_matches:
         score += 10
-    if any(title.lower() in result.title.lower() for title in preferences.desired_titles):
-        score += 10
+        details.append(f"title matches {title_matches[0]}")
+
+    if preferences.visa_sponsorship_required:
+        if "visa" in haystack or "sponsor" in haystack:
+            score += 5
+            details.append("visa sponsorship is mentioned")
+        else:
+            details.append("visa sponsorship is not verified by the provider")
 
     score = max(0, min(100, score))
-    reason = "Matched " + ", ".join(matched[:5]) if matched else "Matched saved search preferences."
-    return score, reason
+    parts = []
+    if matched:
+        parts.append("matched " + ", ".join(matched[:5]))
+    parts.extend(details[:4])
+    reason = "; ".join(parts) if parts else "Matched saved search preferences."
+    return score, reason[:1].upper() + reason[1:]
 
 
 _AI_RANKING_SYSTEM = (
@@ -140,6 +212,20 @@ def _build_ai_ranking_prompt(
     )
 
 
+def _ai_provider_name(provider: AIProvider) -> str:
+    return provider.__class__.__name__.replace("Provider", "").lower()
+
+
+def _record_ranking_fallback(provider: AIProvider, reason: str) -> None:
+    provider_name = _ai_provider_name(provider)
+    record_llm_fallback(
+        provider=provider_name,
+        model=str(getattr(provider, "_model", provider_name)),
+        operation="discovery.rank_json",
+        reason=reason,
+    )
+
+
 async def rank_result_with_ai(
     result: DiscoveredJob,
     preferences: JobSearchPreferencesPayload,
@@ -172,12 +258,18 @@ async def rank_result_with_ai(
             timeout=timeout_seconds,
         )
         if not isinstance(payload, dict):
+            _record_ranking_fallback(provider, "invalid_payload")
             return base_score, base_reason
         reason = str(payload.get("fit_reason") or "").strip()
         if not reason or reason == "sample":
+            _record_ranking_fallback(provider, "empty_reason")
             return base_score, base_reason
         return _clean_ai_score(payload.get("fit_score"), base_score), reason
-    except Exception:
+    except TimeoutError:
+        _record_ranking_fallback(provider, "timeout")
+        return base_score, base_reason
+    except Exception as exc:
+        _record_ranking_fallback(provider, type(exc).__name__)
         return base_score, base_reason
 
 
@@ -189,6 +281,8 @@ async def search_jobs(
     query: str,
     results_per_page: int,
 ) -> list[DiscoveredJob]:
+    provider = normalize_discovery_provider(provider)
+    country = validate_discovery_country(provider, country)
     if provider == "mock":
         return _mock_results(country=country, location=location, query=query)
     if provider == "adzuna":

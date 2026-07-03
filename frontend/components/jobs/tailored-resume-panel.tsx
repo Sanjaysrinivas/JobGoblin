@@ -2,16 +2,18 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Download, ExternalLink, FileText, Loader2, Plus } from "lucide-react";
+import { Check, Download, ExternalLink, FileText, Loader2, Plus, Trash2 } from "lucide-react";
 
 import { ApiError } from "@/lib/api";
 import {
   createTailoredResumeDraft,
+  deleteResumeVersion,
   fetchResumePdf,
   fetchResumeVersionPdf,
   listResumes,
   listResumeVersions,
   listTailoredResumeDrafts,
+  makeResumeVersionCurrent,
   type ResumeDetail,
 } from "@/lib/resumes";
 import type { ResumeVersion } from "@/lib/types";
@@ -29,7 +31,7 @@ import { Label } from "@/components/ui/label";
 const selectClass =
   "border-input bg-card focus-visible:border-ring focus-visible:ring-ring/40 h-9 w-full rounded-md border px-3 text-sm shadow-xs outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50";
 
-type Busy = "create" | `export:${string}` | null;
+type Busy = "create" | `accept:${string}` | `reject:${string}` | `export:${string}` | null;
 
 
 function formatDate(value: string): string {
@@ -50,6 +52,19 @@ function versionLabel(versions: ResumeVersion[], versionId: string | null): stri
   return versions.find((version) => version.id === versionId)?.title ?? "Version";
 }
 
+function formatValue(value: unknown): string {
+  if (Array.isArray(value)) return value.join(", ");
+  if (typeof value === "string") return value;
+  if (value == null) return "None";
+  return JSON.stringify(value);
+}
+
+function actionLabel(value: string): string {
+  return value
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -170,6 +185,26 @@ export function TailoredResumePanel({ jobId }: { jobId: string }) {
     });
   }
 
+  function onAccept(draft: ResumeVersion) {
+    return run(`accept:${draft.id}`, async () => {
+      const updated = await makeResumeVersionCurrent(draft.resume_id, draft.id);
+      setDrafts((current) =>
+        (current ?? []).map((item) =>
+          item.resume_id === updated.resume_id
+            ? { ...item, is_current: item.id === updated.id }
+            : item
+        )
+      );
+    });
+  }
+
+  function onReject(draft: ResumeVersion) {
+    return run(`reject:${draft.id}`, async () => {
+      await deleteResumeVersion(draft.resume_id, draft.id);
+      setDrafts((current) => (current ?? []).filter((item) => item.id !== draft.id));
+    });
+  }
+
   function onExport(draft: ResumeVersion) {
     return run(`export:${draft.id}`, async () => {
       const blob = draft.id
@@ -260,16 +295,29 @@ export function TailoredResumePanel({ jobId }: { jobId: string }) {
           <ul className="space-y-3">
             {drafts.map((draft) => {
               const exporting = busy === `export:${draft.id}`;
+              const accepting = busy === `accept:${draft.id}`;
+              const rejecting = busy === `reject:${draft.id}`;
+              const tailoring = draft.parsed_json?.tailoring;
+              const changes = tailoring?.suggested_changes ?? [];
+              const diffs = tailoring?.diff ?? [];
+              const matched = tailoring?.grounding?.matched_existing_terms ?? [];
+              const missing = tailoring?.grounding?.job_terms_not_added ?? [];
+              const sourceTitle =
+                tailoring?.source?.source_version_title ??
+                versionLabel(versions, draft.source_version_id);
               return (
                 <li key={draft.id} className="border-border/70 rounded-lg border p-4">
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div className="min-w-0 space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-medium">{draft.title || resumeLabel(resumes, draft.resume_id)}</span>
-                        <Badge variant="info">Draft</Badge>
-                        <Badge variant="outline">{versionLabel(versions, draft.source_version_id)}</Badge>
+                        <Badge variant={draft.is_current ? "success" : "info"}>{draft.is_current ? "Accepted" : "Draft"}</Badge>
+                        <Badge variant="outline">Source: {sourceTitle}</Badge>
                       </div>
                       <p className="text-muted-foreground text-sm">Updated {formatDate(draft.updated_at)}</p>
+                      {tailoring?.grounding?.rule && (
+                        <p className="text-muted-foreground text-sm">{tailoring.grounding.rule}</p>
+                      )}
                     </div>
                     <div className="flex shrink-0 flex-wrap items-center gap-2">
                       <Button variant="outline" size="sm" asChild>
@@ -278,12 +326,63 @@ export function TailoredResumePanel({ jobId }: { jobId: string }) {
                           Open editor
                         </Link>
                       </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => onAccept(draft)} disabled={busy !== null || draft.is_current}>
+                        {accepting ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
+                        Accept
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => onReject(draft)} disabled={busy !== null || draft.is_current}>
+                        {rejecting ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+                        Reject
+                      </Button>
                       <Button type="button" variant="outline" size="sm" onClick={() => onExport(draft)} disabled={busy !== null}>
                         {exporting ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
                         Export PDF
                       </Button>
                     </div>
                   </div>
+
+                  {(changes.length > 0 || matched.length > 0 || missing.length > 0) && (
+                    <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                      <section className="space-y-2">
+                        <h4 className="text-sm font-medium">What changed</h4>
+                        {changes.length > 0 ? (
+                          <ul className="space-y-2 text-sm">
+                            {changes.map((change, index) => (
+                              <li key={`${change.section}-${change.action}-${index}`} className="text-muted-foreground">
+                                <span className="text-foreground font-medium">{change.section}:</span>{" "}
+                                {actionLabel(change.action)}. {change.why}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="text-muted-foreground text-sm">No structured changes recorded.</p>
+                        )}
+                      </section>
+
+                      <section className="space-y-2">
+                        <h4 className="text-sm font-medium">Grounding</h4>
+                        {matched.length > 0 && (
+                          <p className="text-muted-foreground text-sm">Existing terms: {matched.join(", ")}</p>
+                        )}
+                        {missing.length > 0 && (
+                          <p className="text-muted-foreground text-sm">Verify before adding: {missing.join(", ")}</p>
+                        )}
+                      </section>
+                    </div>
+                  )}
+
+                  {diffs.length > 0 && (
+                    <div className="mt-3 space-y-2 text-sm">
+                      <h4 className="font-medium">Diff</h4>
+                      {diffs.slice(0, 2).map((item, index) => (
+                        <div key={`${item.section}-${index}`} className="bg-secondary/30 rounded-md p-3">
+                          <p className="font-medium">{item.section}</p>
+                          <p className="text-muted-foreground">Before: {formatValue(item.before)}</p>
+                          <p className="text-muted-foreground">After: {formatValue(item.after)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </li>
               );
             })}

@@ -42,18 +42,17 @@ Implemented now:
 - SQLModel tables for the V1 domain model.
 - Resume upload, storage, text extraction, AI parse, edit/list/detail/delete, and PDF export.
 - Jobs CRUD API and jobs list/create/detail/edit/delete UI.
-- Contacts, applications, dashboard, resume-to-job analysis, cover-letter draft, profile builder, follow-up reminder, and review-only outreach APIs.
-- Contacts, applications, dashboard, jobs, resumes, job-detail analysis/cover-letter, outreach, and profile frontend screens.
+- Contacts, applications, dashboard, resume-to-job analysis, cover-letter draft, profile builder, follow-up reminder, tailored resume drafts, review-only outreach, email export, discovery, and interview prep APIs.
+- Contacts, applications, dashboard, jobs, resumes, discovery, job-detail analysis/cover-letter/tailored-draft/interview-prep panels, outreach, and profile frontend screens.
 - Optional Cloudflare Tunnel compose profile, disabled by default.
 - Runtime operator tooling for Ollama checks, DB readiness, smoke tests, Adzuna operator smoke, Cloudflare Tunnel/OAuth checks, backup/restore, migration/rollback, secrets, and release promotion.
 - CI for backend ruff/pytest, frontend lint/build, and the merged E2E harness.
 
-Remaining validation and V2 work:
+Remaining validation work:
 
-- Integrated post-merge browser workflow validation.
-- Real local AI verification with `AI_PROVIDER=ollama`.
+- Integrated browser workflow validation against the production Compose stack.
+- Real local AI verification with `AI_PROVIDER=ollama` and the installed local model.
 - Google OAuth, allowlist, HTTPS tunnel, and secure-cookie validation with real credentials.
-- Tailored resume drafts, email draft/export integration, and interview prep.
 
 Review posture:
 
@@ -135,12 +134,7 @@ PostgreSQL via SQLModel and Alembic. Primary keys are UUIDs. User-owned tables i
 - `outreach_channel`: `email`, `linkedin`, `other`
 - `outreach_status`: `draft`, `copied`, `sent`, `replied`, `closed`
 
-### Deferred V2 Tables
-
-- `tailored_resume_drafts`
-- `email_drafts`
-
-Introduce these only when the workflow needs them.
+Tailored resume drafts reuse `resume_versions` with `job_id`, `source_version_id`, and grounded tailoring metadata in `parsed_json`. Email drafts reuse `outreach_messages`; generated content remains local and export-only.
 
 ## 5. API Contract
 
@@ -174,6 +168,7 @@ Resumes:
 - `DELETE /api/resumes/{id}`
 - `POST /api/resumes/{id}/parse`
 - `GET /api/resumes/{id}/export.pdf`
+- `GET /api/resumes/{id}/versions/{version_id}/export.pdf`
 
 Jobs:
 
@@ -183,6 +178,8 @@ Jobs:
 - `PATCH /api/jobs/{id}`
 - `DELETE /api/jobs/{id}`
 - `GET /api/jobs/{job_id}/analysis`
+- `GET /api/jobs/{job_id}/resume-drafts`
+- `POST /api/jobs/{job_id}/resume-drafts`
 
 Admin invites:
 
@@ -232,15 +229,32 @@ Outreach:
 - `GET /api/outreach/{id}`
 - `PATCH /api/outreach/{id}`
 - `DELETE /api/outreach/{id}`
+- `POST /api/outreach/{id}/email-export`
 
 Dashboard:
 
 - `GET /api/dashboard/summary`
 - `GET /api/dashboard/activity`
 
-### Pending V2 Work
+Implemented workflow endpoints also include:
 
-- Tailored resume drafts, email draft/export integration, and interview prep.
+- `POST /api/jobs/{job_id}/resume-drafts`
+- `GET /api/jobs/{job_id}/resume-drafts`
+- `GET /api/resumes/{resume_id}/versions/{version_id}/export.pdf`
+- `GET /api/applications/{application_id}/workflow`
+- `POST /api/outreach/generate`
+- `POST /api/outreach/{outreach_id}/email-export`
+- `GET /api/interview-prep`
+- `POST /api/interview-prep`
+- `GET /api/interview-prep/{prep_id}`
+- `PATCH /api/interview-prep/{prep_id}`
+- `GET /api/discovery/preferences`
+- `PUT /api/discovery/preferences`
+- `GET /api/discovery/runs`
+- `POST /api/discovery/runs`
+- `GET /api/discovery/results`
+- `PATCH /api/discovery/results/{result_id}`
+- `POST /api/discovery/results/{result_id}/save`
 
 ## 6. Authentication And Isolation
 

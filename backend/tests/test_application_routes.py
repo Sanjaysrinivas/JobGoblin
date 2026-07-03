@@ -271,6 +271,15 @@ def test_application_workflow_includes_owned_job_artifacts(client, session, user
         parsed_json={},
         is_current=True,
     )
+    tailored_draft = ResumeVersion(
+        resume_id=resume.id,
+        job_id=job.id,
+        source_version_id=version.id,
+        title="Acme Tailored Draft",
+        extracted_text="Python APIs\n\nTailoring notes",
+        parsed_json={"tailoring": {"suggested_changes": []}},
+        is_current=False,
+    )
     cover_letter = _cover_letter(session, user, job, resume)
     contact = Contact(
         user_id=user.id,
@@ -289,6 +298,7 @@ def test_application_workflow_includes_owned_job_artifacts(client, session, user
     other_job = _job(session, other_user, company_name="OtherCo")
     other_contact = Contact(user_id=other_user.id, job_id=other_job.id, name="Private")
     session.add(version)
+    session.add(tailored_draft)
     session.add(contact)
     session.add(outreach)
     session.add(other_contact)
@@ -309,6 +319,10 @@ def test_application_workflow_includes_owned_job_artifacts(client, session, user
     body = workflow.json()
     assert body["job"]["id"] == str(job.id)
     assert body["linked_resume"]["current_version_id"] == str(version.id)
+    assert body["linked_resume"]["current_version_title"] == "Workflow Resume"
+    assert body["linked_resume"]["tailored_draft"]["id"] == str(tailored_draft.id)
+    assert body["linked_resume"]["tailored_draft"]["source_version_id"] == str(version.id)
+    assert body["next_action"] == {"label": "Review saved job", "due_at": None, "due": False}
     assert body["linked_cover_letter"]["id"] == str(cover_letter.id)
     assert [item["id"] for item in body["cover_letters"]] == [str(cover_letter.id)]
     assert [item["id"] for item in body["contacts"]] == [str(contact.id)]

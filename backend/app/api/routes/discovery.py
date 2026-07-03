@@ -8,6 +8,7 @@ import asyncio
 import uuid
 from typing import Annotated
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlmodel import Session, select
 
@@ -36,7 +37,13 @@ from app.schemas.discovery import (
 )
 from app.schemas.job import JobOut
 from app.services.ai_provider import get_ai_provider
-from app.services.job_discovery import build_query, rank_result_with_ai, search_jobs
+from app.services.job_discovery import (
+    build_query,
+    normalize_discovery_provider,
+    rank_result_with_ai,
+    search_jobs,
+    validate_discovery_country,
+)
 
 router = APIRouter(prefix="/discovery", tags=["discovery"])
 
@@ -177,6 +184,14 @@ def _dedupe_key(
     return raw.strip().lower()
 
 
+def _discovery_error_message(provider: str, exc: Exception) -> str:
+    if isinstance(exc, httpx.HTTPStatusError):
+        return f"{provider} discovery failed with HTTP {exc.response.status_code}."
+    if isinstance(exc, httpx.RequestError):
+        return f"{provider} discovery request failed: {type(exc).__name__}."
+    return str(exc)
+
+
 @router.get("/preferences", response_model=JobSearchPreferencesOut | None)
 def get_preferences(
     current_user: Annotated[User, Depends(get_current_user)],
@@ -226,13 +241,19 @@ async def create_run(
     preferences = _preferences_payload(_get_preferences(session, current_user.id))
     profile = session.exec(select(Profile).where(Profile.user_id == current_user.id)).first()
     profile_terms = _profile_terms(profile)
+    provider = payload.provider or settings.job_discovery_provider
     country = payload.country or (
-        preferences.target_countries[0].lower() if preferences.target_countries else "us"
+        preferences.target_countries[0] if preferences.target_countries else "us"
     )
+    try:
+        provider = normalize_discovery_provider(provider)
+        country = validate_discovery_country(provider, country)
+    except ValueError as exc:
+        code = "unsupported_provider" if "provider" in str(exc).lower() else "invalid_country"
+        raise _error(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc), code) from exc
     location = payload.location or (
         preferences.target_locations[0] if preferences.target_locations else None
     )
-    provider = payload.provider or settings.job_discovery_provider
     resume_context = _resume_context(session, current_user.id)
     saved_job_terms = _saved_job_terms(session, current_user.id)
     ai_provider = get_ai_provider()
@@ -264,7 +285,7 @@ async def create_run(
         )
     except Exception as exc:
         run.status = DiscoveryRunStatus.failed
-        run.error = str(exc)
+        run.error = _discovery_error_message(provider, exc)
         session.add(run)
         session.commit()
         session.refresh(run)

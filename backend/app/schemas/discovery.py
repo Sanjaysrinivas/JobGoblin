@@ -8,6 +8,17 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validat
 from app.models.enums import DiscoveryResultStatus, DiscoveryRunStatus, JobSource, WorkMode
 
 
+def normalize_country_code(value: str | None) -> str | None:
+    if value is None:
+        return None
+    text = value.strip().lower()
+    if not text:
+        return None
+    if len(text) != 2 or not text.isalpha():
+        raise ValueError("Country must be a 2-letter ISO alpha-2 code")
+    return text
+
+
 class JobSearchPreferencesPayload(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
@@ -48,9 +59,7 @@ class JobSearchPreferencesPayload(BaseModel):
                 continue
             text = item.strip()
             if info.field_name == "target_countries":
-                text = text.lower()
-                if len(text) != 2:
-                    continue
+                text = normalize_country_code(text) or ""
             key = text.lower()
             if text and key not in seen:
                 cleaned.append(text)

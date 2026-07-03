@@ -18,13 +18,14 @@ import { listContactJobs, listContacts } from "@/lib/contacts";
 import type { ContactJobOption } from "@/lib/contacts";
 import {
   createOutreach,
+  generateOutreach,
   deleteOutreach,
   getOutreachEmailExport,
   listOutreach,
   updateOutreach,
   type OutreachDraft,
 } from "@/lib/outreach";
-import type { Contact, OutreachChannel, OutreachStatus } from "@/lib/types";
+import type { Contact, OutreachChannel, OutreachGeneratedType, OutreachStatus } from "@/lib/types";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +42,12 @@ import { Label } from "@/components/ui/label";
 
 const channels: OutreachChannel[] = ["email", "linkedin", "other"];
 const statuses: OutreachStatus[] = ["draft", "copied", "replied", "closed"];
+const generatedMessageTypes: OutreachGeneratedType[] = [
+  "recruiter_follow_up",
+  "referral",
+  "thank_you",
+  "status_check",
+];
 const selectClass =
   "border-input bg-card focus-visible:border-ring focus-visible:ring-ring/40 h-9 w-full rounded-md border px-3 text-sm shadow-xs outline-none focus-visible:ring-[3px]";
 const textareaClass =
@@ -57,6 +64,7 @@ type DraftState = {
 
 type Busy =
   | "create"
+  | "generate"
   | `save:${string}`
   | `copy:${string}`
   | `email-copy:${string}`
@@ -128,7 +136,7 @@ export function OutreachListView() {
     jobId: "",
     contactId: "",
     channel: "email",
-    messageType: "recruiter_intro",
+    messageType: "recruiter_follow_up",
     content: "",
     status: "draft",
   });
@@ -201,7 +209,7 @@ export function OutreachListView() {
         jobId: "",
         contactId: "",
         channel: "email",
-        messageType: "recruiter_intro",
+        messageType: "recruiter_follow_up",
         content: "",
         status: "draft",
       });
@@ -209,6 +217,34 @@ export function OutreachListView() {
     });
   }
 
+  function onGenerateDraft() {
+    return run("generate", async () => {
+      if (!generatedMessageTypes.includes(newDraft.messageType as OutreachGeneratedType)) {
+        throw new Error("Choose recruiter_follow_up, referral, thank_you, or status_check to generate.");
+      }
+      const created = await generateOutreach({
+        job_id: newDraft.jobId || null,
+        contact_id: newDraft.contactId || null,
+        channel: newDraft.channel,
+        message_type: newDraft.messageType as OutreachGeneratedType,
+        notes: newDraft.content || null,
+      });
+      setOutreach((current) => [created, ...(current ?? [])]);
+      setDrafts((current) => ({
+        ...current,
+        [created.id]: draftFromOutreach(created),
+      }));
+      setNewDraft({
+        jobId: "",
+        contactId: "",
+        channel: "email",
+        messageType: "recruiter_follow_up",
+        content: "",
+        status: "draft",
+      });
+      setShowCreate(false);
+    });
+  }
   function onSave(item: OutreachDraft) {
     return run(`save:${item.id}`, async () => {
       const updated = await updateOutreach(item.id, toPayload(drafts[item.id]));
@@ -260,21 +296,21 @@ export function OutreachListView() {
       if (!navigator.clipboard?.writeText) {
         throw new Error("Clipboard API is not supported in this browser or context.");
       }
-      const email = await getOutreachEmailExport(item.id);
+      const email = await getOutreachEmailExport(item.id, "copy");
       await navigator.clipboard.writeText(email.text || `${email.subject}\n\n${email.body}`);
     });
   }
 
   function onOpenEmailClient(item: OutreachDraft) {
     return run(`email-open:${item.id}`, async () => {
-      const email = await getOutreachEmailExport(item.id);
+      const email = await getOutreachEmailExport(item.id, "open");
       window.location.href = email.mailto_url;
     });
   }
 
   function onDownloadEmailExport(item: OutreachDraft) {
     return run(`email-download:${item.id}`, async () => {
-      const email = await getOutreachEmailExport(item.id);
+      const email = await getOutreachEmailExport(item.id, "download");
       const blob = new Blob([email.text || `${email.subject}\n\n${email.body}`], {
         type: "text/plain;charset=utf-8",
       });
@@ -384,7 +420,7 @@ export function OutreachListView() {
             value={draft.content}
             disabled={disabled}
             onChange={(event) => onChange({ content: event.target.value })}
-            placeholder="Write the message you want to review and copy manually."
+            placeholder="Write a manual message, or add notes before generating a supported draft."
           />
         </div>
       </div>
@@ -445,6 +481,15 @@ export function OutreachListView() {
                   disabled={busy !== null}
                 >
                   Cancel
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={onGenerateDraft}
+                  disabled={busy !== null}
+                >
+                  {busy === "generate" && <Loader2 className="size-4 animate-spin" />}
+                  Generate draft
                 </Button>
                 <Button type="submit" disabled={busy !== null}>
                   {busy === "create" && <Loader2 className="size-4 animate-spin" />}

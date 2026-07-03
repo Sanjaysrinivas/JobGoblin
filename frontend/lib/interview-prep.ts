@@ -8,7 +8,9 @@ import type { InterviewPrep, InterviewPrepStatus } from "@/lib/types";
 
 export interface InterviewPrepCreatePayload {
   job_id: string;
+  application_id?: string | null;
   resume_id?: string | null;
+  notes?: string | null;
 }
 
 export interface InterviewPrepUpdatePayload {
@@ -16,10 +18,17 @@ export interface InterviewPrepUpdatePayload {
   status?: InterviewPrepStatus;
 }
 
-/** GET /api/interview-prep - list prep packets, optionally by job. */
-export function listInterviewPrep(jobId?: string): Promise<InterviewPrep[]> {
-  const query = jobId ? `?${new URLSearchParams({ job_id: jobId })}` : "";
-  return api.get<InterviewPrep[]>(`/interview-prep${query}`);
+/** GET /api/interview-prep - list prep packets, optionally by job/application. */
+export function listInterviewPrep(
+  jobId?: string,
+  applicationId?: string | null
+): Promise<InterviewPrep[]> {
+  const query = new URLSearchParams();
+  if (jobId) query.set("job_id", jobId);
+  if (applicationId) query.set("application_id", applicationId);
+  const queryString = query.toString();
+  const suffix = queryString ? `?${queryString}` : "";
+  return api.get<InterviewPrep[]>(`/interview-prep${suffix}`);
 }
 
 /** POST /api/interview-prep - create a local prep packet for review. */
