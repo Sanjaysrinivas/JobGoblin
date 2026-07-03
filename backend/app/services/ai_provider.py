@@ -1,4 +1,4 @@
-"""AI provider abstraction (design.md §6).
+"""AI provider abstraction (design.md Ãƒâ€šÃ‚Â§6).
 
 A thin, swappable layer over a text/JSON generation engine. ``OllamaProvider``
 talks to a local Ollama server; ``MockProvider`` returns deterministic, schema-
@@ -10,9 +10,9 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from app.core.config import get_settings
-from app.core.observability import llm_span_attributes, observe_llm_call
+from app.core.observability import observe_llm_call
 
-# System prompt guardrails applied to every call (design.md §6): no fabrication,
+# System prompt guardrails applied to every call (design.md Ãƒâ€šÃ‚Â§6): no fabrication,
 # explain reasoning, keep any resume output ATS-plain.
 DEFAULT_SYSTEM = (
     "You are a careful resume and job-search assistant. Never fabricate facts. "
@@ -57,13 +57,11 @@ class OllamaProvider(AIProvider):
             {"role": "user", "content": prompt},
         ]
         with observe_llm_call(
-            **llm_span_attributes(
-                provider="ollama",
+            provider="ollama",
                 model=self._model,
                 operation="generate_text",
                 prompt=prompt,
                 system=system_text,
-            )
         ):
             response = await self._client.chat(
                 model=self._model,
@@ -81,14 +79,12 @@ class OllamaProvider(AIProvider):
             {"role": "user", "content": prompt},
         ]
         with observe_llm_call(
-            **llm_span_attributes(
-                provider="ollama",
+            provider="ollama",
                 model=self._model,
                 operation="generate_json",
                 prompt=prompt,
                 system=system_text,
                 schema=schema,
-            )
         ):
             response = await self._client.chat(
                 model=self._model,
@@ -134,13 +130,11 @@ class MockProvider(AIProvider):
     async def generate_text(self, prompt: str, *, system: str | None = None) -> str:
         system_text = system or DEFAULT_SYSTEM
         with observe_llm_call(
-            **llm_span_attributes(
-                provider="mock",
+            provider="mock",
                 model="mock",
                 operation="generate_text",
                 prompt=prompt,
                 system=system_text,
-            )
         ):
             return "This is a mock AI response."
 
@@ -149,14 +143,12 @@ class MockProvider(AIProvider):
     ) -> dict:
         system_text = system or DEFAULT_SYSTEM
         with observe_llm_call(
-            **llm_span_attributes(
-                provider="mock",
+            provider="mock",
                 model="mock",
                 operation="generate_json",
                 prompt=prompt,
                 system=system_text,
                 schema=schema,
-            )
         ):
             result = _sample_for_schema(schema)
             return result if isinstance(result, dict) else {}

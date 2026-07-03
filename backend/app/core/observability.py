@@ -7,6 +7,8 @@ do not install it keep working.
 import hashlib
 import importlib
 import json
+import logging
+import threading
 from collections.abc import Iterator
 from contextlib import contextmanager, nullcontext
 from time import perf_counter
@@ -14,7 +16,9 @@ from typing import Any
 
 from app.core.config import get_settings
 
+_lock = threading.Lock()
 _configured = False
+logger = logging.getLogger(__name__)
 
 
 def _logfire() -> Any | None:
@@ -27,11 +31,15 @@ def _logfire() -> Any | None:
 
     global _configured
     if not _configured:
-        try:
-            logfire.configure()
-        except Exception:
-            return None
-        _configured = True
+        with _lock:
+            if not _configured:
+                try:
+                    logfire.configure()
+                except Exception as exc:
+                    logger.warning("Failed to configure logfire: %s", exc)
+                    _configured = True
+                    return None
+                _configured = True
     return logfire
 
 
@@ -78,7 +86,15 @@ def _set_attribute(span: Any, name: str, value: Any) -> None:
 
 
 @contextmanager
-def observe_llm_call(**attrs: Any) -> Iterator[None]:
+def observe_llm_call(
+    *,
+    provider: str,
+    model: str,
+    operation: str,
+    prompt: str,
+    system: str,
+    schema: dict[str, Any] | None = None,
+) -> Iterator[None]:
     """Create a sanitized span around an LLM call when observability is enabled."""
     logfire = _logfire()
     if logfire is None:
@@ -86,15 +102,21 @@ def observe_llm_call(**attrs: Any) -> Iterator[None]:
             yield
         return
 
+    attrs = llm_span_attributes(
+        provider=provider,
+        model=model,
+        operation=operation,
+        prompt=prompt,
+        system=system,
+        schema=schema,
+    )
     started = perf_counter()
     with logfire.span("llm.generate", **attrs) as span:
         try:
             yield
         except Exception as exc:
-            latency_ms = round((perf_counter() - started) * 1000, 2)
-            _set_attribute(span, "llm.latency_ms", latency_ms)
             _set_attribute(span, "llm.error", type(exc).__name__)
             raise
-        else:
+        finally:
             latency_ms = round((perf_counter() - started) * 1000, 2)
             _set_attribute(span, "llm.latency_ms", latency_ms)
