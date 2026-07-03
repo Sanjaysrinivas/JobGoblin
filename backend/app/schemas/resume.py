@@ -1,4 +1,4 @@
-"""Request/response models for the resume endpoints (design.md §4.2).
+"""Request/response models for the resume endpoints (design.md section 4.2).
 
 The ``ParsedResume`` shape mirrors ``frontend/lib/types.ts`` and the schema in
 ``app.services.resume_parser``.
@@ -7,7 +7,7 @@ The ``ParsedResume`` shape mirrors ``frontend/lib/types.ts`` and the schema in
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ParsedExperience(BaseModel):
@@ -51,11 +51,16 @@ class ResumeOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class ResumeUpdate(BaseModel):
-    """All fields optional — only provided ones are applied (PATCH semantics)."""
+class _OptionalTitle(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
 
-    title: str | None = None
-    extracted_text: str | None = None
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+
+
+class ResumeUpdate(_OptionalTitle):
+    """All fields optional; only provided ones are applied (PATCH semantics)."""
+
+    extracted_text: str | None = Field(default=None, max_length=200_000)
     is_default: bool | None = None
 
 
@@ -72,14 +77,12 @@ class ResumeVersionOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class ResumeVersionCreate(BaseModel):
+class ResumeVersionCreate(_OptionalTitle):
     source_version_id: uuid.UUID | None = None
-    title: str | None = None
-    extracted_text: str | None = None
+    extracted_text: str | None = Field(default=None, max_length=200_000)
     parsed_json: dict | None = None
 
 
-class ResumeVersionUpdate(BaseModel):
-    title: str | None = None
-    extracted_text: str | None = None
+class ResumeVersionUpdate(_OptionalTitle):
+    extracted_text: str | None = Field(default=None, max_length=200_000)
     parsed_json: dict | None = None

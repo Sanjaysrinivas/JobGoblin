@@ -176,3 +176,25 @@ def test_cross_user_version_access_returns_404(client, session):
     assert patch_resp.status_code == 404
     assert make_current_resp.status_code == 404
     assert delete_resp.status_code == 404
+
+
+def test_version_title_validation_rejects_blank_values(client):
+    uploaded = _upload(client).json()
+
+    create_resp = client.post(
+        f"/api/resumes/{uploaded['id']}/versions",
+        json={"title": "   "},
+    )
+    assert create_resp.status_code == 422
+
+    version_resp = client.post(
+        f"/api/resumes/{uploaded['id']}/versions",
+        json={"title": "Edited"},
+    )
+    assert version_resp.status_code == 201
+
+    patch_resp = client.patch(
+        f"/api/resumes/{uploaded['id']}/versions/{version_resp.json()['id']}",
+        json={"title": "   "},
+    )
+    assert patch_resp.status_code == 422
