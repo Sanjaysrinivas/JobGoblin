@@ -7,7 +7,7 @@ from sqlmodel import select
 from app.api.deps import get_current_user
 from app.core.config import get_settings
 from app.core.database import get_session
-from app.models import ActivityEvent, CoverLetter, Job, Resume, User
+from app.models import ActivityEvent, CoverLetter, Job, Resume, ResumeVersion, User
 
 
 @pytest.fixture(autouse=True)
@@ -254,3 +254,41 @@ def test_requires_authentication(session):
 
     assert resp.status_code == 401
     assert resp.json()["code"] == "not_authenticated"
+
+
+def test_create_cover_letter_uses_current_resume_version(client, session, user, monkeypatch):
+    prompts: list[str] = []
+
+    class CaptureProvider:
+        async def generate_text(self, prompt, *, system=None):
+            prompts.append(prompt)
+            return "Draft from captured provider"
+
+        async def generate_json(self, prompt, schema, *, system=None):
+            return {}
+
+    import app.api.routes.cover_letters as cover_letter_routes
+
+    monkeypatch.setattr(cover_letter_routes, "get_ai_provider", lambda: CaptureProvider())
+    job = _job(session, user)
+    resume = _resume(session, user, extracted_text="Base resume text")
+    session.add(
+        ResumeVersion(
+            resume_id=resume.id,
+            title="Current",
+            extracted_text="Current resume version text",
+            parsed_json={"skills": ["Python"]},
+            is_current=True,
+        )
+    )
+    session.commit()
+
+    resp = client.post(
+        "/api/cover-letters",
+        json={"job_id": str(job.id), "resume_id": str(resume.id), "tone": "concise"},
+    )
+
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["content"] == "Draft from captured provider"
+    assert "Current resume version text" in prompts[0]
+    assert "Base resume text" not in prompts[0]

@@ -404,7 +404,7 @@ def _clean_recommendations(value: Any) -> list[str]:
 
 
 def _build_prompt(
-    resume: Resume,
+    resume_text: str,
     job: Job,
     scores: DeterministicScores,
 ) -> str:
@@ -423,7 +423,7 @@ def _build_prompt(
         f"formatting {scores.formatting_score}/{FORMATTING_WEIGHT}.\n"
         f"Matched keywords: {', '.join(scores.matched_keywords) or 'none'}\n"
         f"Missing keywords: {', '.join(scores.missing_keywords) or 'none'}\n\n"
-        f"Resume text:\n{resume.extracted_text or ''}\n\n"
+        f"Resume text:\n{resume_text}\n\n"
         f"Job description:\n{job.description}"
     )
 
@@ -432,17 +432,22 @@ async def analyze_resume_for_job(
     resume: Resume,
     job: Job,
     provider: AIProvider,
+    *,
+    resume_text: str | None = None,
+    parsed_resume: dict | None = None,
 ) -> JobAnalysisResult:
     """Run deterministic scoring, then request AI explanation/recommendations."""
+    text = resume.extracted_text or "" if resume_text is None else resume_text
+    parsed = resume.parsed_json if parsed_resume is None else parsed_resume
     scores = score_resume_for_job(
-        resume.extracted_text or "",
-        resume.parsed_json,
+        text,
+        parsed,
         job.title,
         job.description,
     )
     try:
         narrative = await provider.generate_json(
-            _build_prompt(resume, job, scores),
+            _build_prompt(text, job, scores),
             ANALYSIS_NARRATIVE_SCHEMA,
             system=_SYSTEM,
         )

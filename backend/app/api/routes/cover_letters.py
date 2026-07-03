@@ -17,6 +17,7 @@ from app.models.enums import CoverLetterStatus
 from app.schemas.cover_letter import CoverLetterCreate, CoverLetterOut, CoverLetterUpdate
 from app.services.ai_provider import get_ai_provider
 from app.services.cover_letters import generate_cover_letter
+from app.services.resume_context import current_resume_content
 
 router = APIRouter(prefix="/cover-letters", tags=["cover-letters"])
 
@@ -102,14 +103,22 @@ async def create_cover_letter(
 ) -> CoverLetter:
     job = _get_owned_job(session, current_user, payload.job_id)
     resume = _get_owned_resume(session, current_user, payload.resume_id)
-    if not (resume.extracted_text or "").strip() and not resume.parsed_json:
+    resume_text, parsed_resume = current_resume_content(session, resume)
+    if not resume_text.strip() and not parsed_resume:
         raise _error(
             status.HTTP_400_BAD_REQUEST,
             "Resume has no extracted text to draft from.",
             "no_resume_content",
         )
 
-    content = await generate_cover_letter(resume, job, payload.tone, get_ai_provider())
+    content = await generate_cover_letter(
+        resume,
+        job,
+        payload.tone,
+        get_ai_provider(),
+        resume_text=resume_text,
+        parsed_resume=parsed_resume,
+    )
     if not content:
         raise _error(
             status.HTTP_502_BAD_GATEWAY,

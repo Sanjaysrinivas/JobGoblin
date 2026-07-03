@@ -38,8 +38,20 @@ async def generate_cover_letter(
     job: Job,
     tone: CoverLetterTone,
     provider: AIProvider,
+    *,
+    resume_text: str | None = None,
+    parsed_resume: dict | None = None,
 ) -> str:
     """Generate a grounded, editable draft for the owned resume/job pair."""
+    context = (
+        _resume_context(resume)
+        if resume_text is None and parsed_resume is None
+        else "\n\n".join(
+            part
+            for part in (resume_text or "", str(parsed_resume) if parsed_resume else "")
+            if part.strip()
+        ).strip()
+    )
     prompt = (
         "Create a cover-letter draft grounded only in the supplied resume and "
         "job posting. If a qualification is not supported by the resume, omit "
@@ -48,6 +60,6 @@ async def generate_cover_letter(
         f"Company: {job.company_name}\n"
         f"Job title: {job.title}\n"
         f"Job description:\n{job.description}\n\n"
-        f"Resume text and parsed context:\n{_resume_context(resume)}"
+        f"Resume text and parsed context:\n{context}"
     )
     return (await provider.generate_text(prompt, system=_SYSTEM)).strip()
