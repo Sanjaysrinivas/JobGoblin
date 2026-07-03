@@ -10,6 +10,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
+from sqlalchemy import text
 from sqlmodel import Session, select
 
 from app.api.deps import get_current_user
@@ -284,7 +285,7 @@ def _latest_activity_by_application(
             ActivityEvent.entity_type == "application",
             ActivityEvent.entity_id.in_(application_ids),
         )
-        .order_by(ActivityEvent.created_at.desc(), ActivityEvent.id.desc())
+        .order_by(ActivityEvent.created_at.desc(), text("ctid DESC"))
     ).all()
     latest: dict[uuid.UUID, ApplicationFollowUpActivityOut] = {}
     for event in events:
