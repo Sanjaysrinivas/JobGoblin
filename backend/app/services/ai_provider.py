@@ -10,6 +10,7 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from app.core.config import get_settings
+from app.core.observability import llm_span_attributes, observe_llm_call
 
 # System prompt guardrails applied to every call (design.md §6): no fabrication,
 # explain reasoning, keep any resume output ATS-plain.
@@ -50,30 +51,51 @@ class OllamaProvider(AIProvider):
         self._model = settings.ollama_model
 
     async def generate_text(self, prompt: str, *, system: str | None = None) -> str:
+        system_text = system or DEFAULT_SYSTEM
         messages = [
-            {"role": "system", "content": system or DEFAULT_SYSTEM},
+            {"role": "system", "content": system_text},
             {"role": "user", "content": prompt},
         ]
-        response = await self._client.chat(
-            model=self._model,
-            messages=messages,
-            options={"temperature": 0},
-        )
+        with observe_llm_call(
+            **llm_span_attributes(
+                provider="ollama",
+                model=self._model,
+                operation="generate_text",
+                prompt=prompt,
+                system=system_text,
+            )
+        ):
+            response = await self._client.chat(
+                model=self._model,
+                messages=messages,
+                options={"temperature": 0},
+            )
         return response.message.content or ""
 
     async def generate_json(
         self, prompt: str, schema: dict, *, system: str | None = None
     ) -> dict:
+        system_text = system or DEFAULT_SYSTEM
         messages = [
-            {"role": "system", "content": system or DEFAULT_SYSTEM},
+            {"role": "system", "content": system_text},
             {"role": "user", "content": prompt},
         ]
-        response = await self._client.chat(
-            model=self._model,
-            messages=messages,
-            format=schema,
-            options={"temperature": 0},
-        )
+        with observe_llm_call(
+            **llm_span_attributes(
+                provider="ollama",
+                model=self._model,
+                operation="generate_json",
+                prompt=prompt,
+                system=system_text,
+                schema=schema,
+            )
+        ):
+            response = await self._client.chat(
+                model=self._model,
+                messages=messages,
+                format=schema,
+                options={"temperature": 0},
+            )
         content = response.message.content or "{}"
         return json.loads(content)
 
@@ -110,13 +132,34 @@ class MockProvider(AIProvider):
     """Deterministic, dependency-free provider for tests and offline dev."""
 
     async def generate_text(self, prompt: str, *, system: str | None = None) -> str:
-        return "This is a mock AI response."
+        system_text = system or DEFAULT_SYSTEM
+        with observe_llm_call(
+            **llm_span_attributes(
+                provider="mock",
+                model="mock",
+                operation="generate_text",
+                prompt=prompt,
+                system=system_text,
+            )
+        ):
+            return "This is a mock AI response."
 
     async def generate_json(
         self, prompt: str, schema: dict, *, system: str | None = None
     ) -> dict:
-        result = _sample_for_schema(schema)
-        return result if isinstance(result, dict) else {}
+        system_text = system or DEFAULT_SYSTEM
+        with observe_llm_call(
+            **llm_span_attributes(
+                provider="mock",
+                model="mock",
+                operation="generate_json",
+                prompt=prompt,
+                system=system_text,
+                schema=schema,
+            )
+        ):
+            result = _sample_for_schema(schema)
+            return result if isinstance(result, dict) else {}
 
 
 def get_ai_provider() -> AIProvider:

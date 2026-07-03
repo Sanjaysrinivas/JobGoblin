@@ -75,6 +75,10 @@ class Settings(BaseSettings):
     auth_rate_limit: str = "20/minute"
     mfa_rate_limit: str = "10/minute"
 
+    # Optional observability. Disabled by default; if enabled without logfire
+    # installed, the app still boots and spans become no-ops.
+    observability_enabled: bool = False
+
     @property
     def allowed_email_set(self) -> set[str]:
         """The allowlist as a set of lowercased, stripped emails (may be empty)."""
