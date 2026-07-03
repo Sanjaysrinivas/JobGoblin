@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import Column, DateTime, Index, UniqueConstraint
+from sqlalchemy import BigInteger, Column, DateTime, Index, Sequence, UniqueConstraint
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
@@ -330,6 +330,15 @@ class ActivityEvent(_UUIDMixin, table=True):
     __tablename__ = "activity_events"
     __table_args__ = (Index("ix_activity_events_entity", "entity_type", "entity_id"),)
 
+    activity_sequence: int | None = Field(
+        default=None,
+        sa_column=Column(
+            BigInteger,
+            Sequence("activity_events_activity_sequence_seq"),
+            nullable=False,
+            unique=True,
+        ),
+    )
     user_id: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE", index=True)
     entity_type: str
     entity_id: uuid.UUID

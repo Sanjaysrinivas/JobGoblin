@@ -574,41 +574,6 @@ export default function ApplicationsPage() {
         </Card>
       )}
 
-      {applications !== null && applications.length > 0 && (
-        <Card>
-          <CardContent className="grid grid-cols-1 gap-4 pt-6 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="application-status-filter">Status</Label>
-              <select
-                id="application-status-filter"
-                className={selectClass}
-                value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
-              >
-                <option value="all">All</option>
-                <option value="active">Active</option>
-                <option value="interviewing">Interviewing</option>
-                <option value="outcome">Outcome</option>
-                <option value="archived">Archived</option>
-              </select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="application-follow-up-filter">Follow-up</Label>
-              <select
-                id="application-follow-up-filter"
-                className={selectClass}
-                value={followUpFilter}
-                onChange={(event) => setFollowUpFilter(event.target.value as FollowUpFilter)}
-              >
-                <option value="all">All</option>
-                <option value="due">Due</option>
-                <option value="scheduled">Scheduled</option>
-              </select>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {loading || applications === null ? (
         <div className="text-muted-foreground flex items-center gap-2 text-sm">
           <Loader2 className="size-4 animate-spin" />

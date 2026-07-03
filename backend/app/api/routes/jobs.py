@@ -138,7 +138,10 @@ def _tailored_resume_json(
     analysis = _latest_analysis(session, user, job, resume)
 
     resume_skills = _strings(source_json.get("skills"))
-    profile_skills = profile.skills if profile else []
+    profile_skills = _strings(profile.skills if profile else None)
+    profile_projects = _strings(profile.projects if profile else None)
+    profile_certifications = _strings(profile.certifications if profile else None)
+    profile_experience = _dicts(profile.experience if profile else None)
     all_skills = _unique([*resume_skills, *profile_skills])
     job_text = f"{job.title}\n{job.company_name}\n{job.description}"
     analysis_matches = _strings(analysis.matched_keywords if analysis else None)
@@ -147,8 +150,8 @@ def _tailored_resume_json(
             source_text,
             str(source_json.get("summary") or ""),
             "\n".join(all_skills),
-            "\n".join(profile.projects if profile else []),
-            "\n".join(profile.certifications if profile else []),
+            "\n".join(profile_projects),
+            "\n".join(profile_certifications),
         ]
     )
     matched = _unique(
@@ -201,7 +204,7 @@ def _tailored_resume_json(
             diff.append({"section": "skills", "before": resume_skills, "after": reordered})
 
     highlight_matches: list[dict] = []
-    for item in [*_dicts(source_json.get("experience")), *(profile.experience if profile else [])]:
+    for item in [*_dicts(source_json.get("experience")), *profile_experience]:
         highlights = _strings(item.get("highlights"))
         matched_highlights = [
             highlight
