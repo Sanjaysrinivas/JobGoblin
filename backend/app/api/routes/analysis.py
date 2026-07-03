@@ -12,6 +12,7 @@ from app.models import Job, JobAnalysis, Resume, User
 from app.schemas.analysis import JobAnalysisOut, ResumeJobAnalysisCreate
 from app.services.ai_provider import get_ai_provider
 from app.services.job_analysis import analyze_resume_for_job, provider_metadata
+from app.services.resume_context import current_resume_content
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
 
@@ -68,15 +69,22 @@ async def create_resume_job_analysis(
     session: Annotated[Session, Depends(get_session)],
 ) -> JobAnalysis:
     resume, job = _get_owned_resume_and_job(session, current_user, payload)
-    if not (resume.extracted_text or "").strip():
+    resume_text, parsed_resume = current_resume_content(session, resume)
+    if not resume_text.strip() and not parsed_resume:
         raise _error(
             status.HTTP_400_BAD_REQUEST,
-            "Resume has no extracted text to analyze.",
+            "Resume has no extracted text or parsed content to analyze.",
             "no_extracted_text",
         )
 
     provider = get_ai_provider()
-    result = await analyze_resume_for_job(resume, job, provider)
+    result = await analyze_resume_for_job(
+        resume,
+        job,
+        provider,
+        resume_text=resume_text,
+        parsed_resume=parsed_resume,
+    )
     provider_name, model_used = provider_metadata(provider)
 
     analysis = JobAnalysis(

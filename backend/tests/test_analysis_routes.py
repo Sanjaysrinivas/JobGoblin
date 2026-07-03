@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from app.api.deps import get_current_user
 from app.core.config import get_settings
 from app.core.database import get_session
-from app.models import Job, JobAnalysis, Resume, User
+from app.models import Job, JobAnalysis, Resume, ResumeVersion, User
 
 
 @pytest.fixture(autouse=True)
@@ -271,3 +271,37 @@ def test_list_job_analyses_is_owned_and_newest_first(client, session, user, othe
     assert cross_user_job.status_code == 404
     assert cross_user_job.json()["code"] == "job_not_found"
 
+
+
+def test_create_analysis_uses_current_resume_version(client, session, user):
+    resume = _create_resume(
+        session,
+        user,
+        extracted_text="Base resume with Python only.",
+        parsed_json={"skills": ["Python"]},
+    )
+    session.add(
+        ResumeVersion(
+            resume_id=resume.id,
+            title="Kubernetes version",
+            extracted_text="Current version with Python and Kubernetes platform work.",
+            parsed_json={"skills": ["Python", "Kubernetes"]},
+            is_current=True,
+        )
+    )
+    session.commit()
+    job = _create_job(
+        session,
+        user,
+        description="Build Kubernetes platform services with Python.",
+    )
+
+    resp = client.post(
+        "/api/analysis/resume-job",
+        json={"resume_id": str(resume.id), "job_id": str(job.id)},
+    )
+
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert "kubernetes" in body["matched_keywords"]
+    assert "kubernetes" not in body["missing_keywords"]
