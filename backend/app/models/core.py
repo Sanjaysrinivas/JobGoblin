@@ -12,6 +12,7 @@ from app.models.enums import (
     CoverLetterTone,
     DiscoveryResultStatus,
     DiscoveryRunStatus,
+    InterviewPrepStatus,
     JobSource,
     OutreachChannel,
     OutreachStatus,
@@ -97,6 +98,12 @@ class ResumeVersion(_UUIDMixin, _TimeMixin, table=True):
     __tablename__ = "resume_versions"
 
     resume_id: uuid.UUID = Field(foreign_key="resumes.id", ondelete="CASCADE", index=True)
+    job_id: uuid.UUID | None = Field(
+        default=None, foreign_key="jobs.id", ondelete="SET NULL", index=True
+    )
+    source_version_id: uuid.UUID | None = Field(
+        default=None, foreign_key="resume_versions.id", ondelete="SET NULL"
+    )
     title: str
     extracted_text: str | None = None
     parsed_json: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
@@ -296,6 +303,27 @@ class OutreachMessage(_UUIDMixin, _TimeMixin, table=True):
     message_type: str
     content: str
     status: OutreachStatus = Field(default=OutreachStatus.draft, sa_type=_enum(OutreachStatus))
+
+
+class InterviewPrep(_UUIDMixin, _TimeMixin, table=True):
+    __tablename__ = "interview_preps"
+
+    user_id: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE", index=True)
+    job_id: uuid.UUID = Field(foreign_key="jobs.id", ondelete="CASCADE", index=True)
+    application_id: uuid.UUID | None = Field(
+        default=None, foreign_key="applications.id", ondelete="SET NULL"
+    )
+    resume_id: uuid.UUID | None = Field(default=None, foreign_key="resumes.id", ondelete="SET NULL")
+    resume_version_id: uuid.UUID | None = Field(
+        default=None, foreign_key="resume_versions.id", ondelete="SET NULL"
+    )
+    status: InterviewPrepStatus = Field(
+        default=InterviewPrepStatus.draft, sa_type=_enum(InterviewPrepStatus)
+    )
+    questions: list[dict] = Field(default_factory=list, sa_column=Column(JSONB, nullable=False))
+    notes: str | None = None
+    provider: str = "mock"
+    model_used: str = "deterministic"
 
 
 class ActivityEvent(_UUIDMixin, table=True):

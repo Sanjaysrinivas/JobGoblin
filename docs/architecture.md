@@ -60,6 +60,11 @@ scoped to `user_id`:
 
 Deferred V2 tables: `tailored_resume_drafts`, `email_drafts`.
 
+Operational probes:
+
+- `GET /api/health`: liveness only; does not touch PostgreSQL.
+- `GET /api/health/ready`: readiness; returns `503` when PostgreSQL cannot answer `SELECT 1`.
+
 Application pipeline statuses: `saved`, `interested`, `resume_tailored`,
 `cover_letter_created`, `applied`, `contacted_recruiter`, `referred`,
 `phone_screen`, `technical_interview`, `final_interview`, `offer`, `rejected`,
@@ -84,5 +89,5 @@ This is implemented and pending integrated validation. The resume upload, storag
 `main -> dev -> feature/*`
 
 - `main`: release-ready branch.
-- `dev`: integration branch.
+- `dev`: integration branch, promoted to `main` only after the runbook release checks pass or are explicitly marked pending when they require real external credentials.
 - `feature/*`: one branch per unit of work, branched off `dev`, merged via PR.

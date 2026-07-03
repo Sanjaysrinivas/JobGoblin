@@ -17,6 +17,8 @@ import type { Job, JobCreatePayload, Priority, WorkMode } from "@/lib/types";
 import { JobForm } from "@/components/jobs/job-form";
 import { JobAnalysisPanel } from "@/components/jobs/job-analysis-panel";
 import { CoverLetterPanel } from "@/components/jobs/cover-letter-panel";
+import { TailoredResumePanel } from "@/components/jobs/tailored-resume-panel";
+import { InterviewPrepPanel } from "@/components/jobs/interview-prep-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -307,7 +309,9 @@ export function JobDetailView({ jobId }: { jobId: string }) {
       </div>
 
       <JobAnalysisPanel jobId={job.id} />
+      <TailoredResumePanel jobId={job.id} />
       <CoverLetterPanel jobId={job.id} />
+      <InterviewPrepPanel jobId={job.id} />
     </div>
   );
 }

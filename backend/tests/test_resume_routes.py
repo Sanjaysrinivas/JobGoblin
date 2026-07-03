@@ -337,6 +337,22 @@ def test_export_pdf_returns_pdf_bytes(client):
     assert len(resp.content) > 500
 
 
+def test_export_resume_version_pdf_returns_pdf_bytes(client):
+    body = _upload(
+        client,
+        data=make_pdf_bytes("Version Export\nPython"),
+        filename="version-export.pdf",
+        content_type=PDF_CONTENT_TYPE,
+    ).json()
+
+    resp = client.get(
+        f"/api/resumes/{body['id']}/versions/{body['current_version_id']}/export.pdf"
+    )
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/pdf"
+    assert resp.content[:4] == b"%PDF"
+
 def test_export_other_users_resume_is_404(client, session):
     other = User(email="o4@example.com", password_hash="x", display_name="O4")
     session.add(other)

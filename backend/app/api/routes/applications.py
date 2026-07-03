@@ -14,7 +14,17 @@ from sqlmodel import Session, select
 
 from app.api.deps import get_current_user
 from app.core.database import get_session
-from app.models import ActivityEvent, Application, CoverLetter, Job, Resume, User
+from app.models import (
+    ActivityEvent,
+    Application,
+    Contact,
+    CoverLetter,
+    Job,
+    OutreachMessage,
+    Resume,
+    ResumeVersion,
+    User,
+)
 from app.models.enums import ApplicationStatus
 from app.schemas.application import (
     ApplicationCreate,
@@ -22,6 +32,9 @@ from app.schemas.application import (
     ApplicationFollowUpOut,
     ApplicationOut,
     ApplicationUpdate,
+    ApplicationWorkflowActivityOut,
+    ApplicationWorkflowOut,
+    ApplicationWorkflowResumeOut,
 )
 
 router = APIRouter(prefix="/applications", tags=["applications"])
@@ -127,6 +140,41 @@ def _validate_cover_letter_reference(
             "Cover letter must belong to the application's job",
             "cover_letter_job_mismatch",
         )
+
+
+def _workflow_resume(
+    session: Session, user: User, resume_id: uuid.UUID | None
+) -> ApplicationWorkflowResumeOut | None:
+    if resume_id is None:
+        return None
+    resume = session.exec(
+        select(Resume).where(Resume.id == resume_id, Resume.user_id == user.id)
+    ).first()
+    if resume is None:
+        return None
+    current = session.exec(
+        select(ResumeVersion)
+        .where(
+            ResumeVersion.resume_id == resume.id,
+            ResumeVersion.is_current == True,  # noqa: E712 - SQLAlchemy expression
+        )
+        .order_by(ResumeVersion.updated_at.desc())
+    ).first()
+    return ApplicationWorkflowResumeOut(
+        id=resume.id,
+        title=current.title if current else resume.title,
+        current_version_id=current.id if current else None,
+    )
+
+
+def _workflow_activity(event: ActivityEvent) -> ApplicationWorkflowActivityOut:
+    return ApplicationWorkflowActivityOut(
+        entity_type=event.entity_type,
+        entity_id=event.entity_id,
+        event_type=event.event_type,
+        description=event.description,
+        created_at=_as_utc(event.created_at),
+    )
 
 
 def _serialize(application: Application, job: Job) -> ApplicationOut:
@@ -325,6 +373,69 @@ def get_application(
 ) -> ApplicationOut:
     application, job = _get_owned_application(session, current_user, application_id)
     return _serialize(application, job)
+
+
+@router.get("/{application_id}/workflow", response_model=ApplicationWorkflowOut)
+def get_application_workflow(
+    application_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> ApplicationWorkflowOut:
+    application, job = _get_owned_application(session, current_user, application_id)
+    cover_letters = list(
+        session.exec(
+            select(CoverLetter)
+            .where(CoverLetter.user_id == current_user.id, CoverLetter.job_id == job.id)
+            .order_by(CoverLetter.updated_at.desc())
+        ).all()
+    )
+    contacts = list(
+        session.exec(
+            select(Contact)
+            .where(Contact.user_id == current_user.id, Contact.job_id == job.id)
+            .order_by(Contact.updated_at.desc())
+        ).all()
+    )
+    contact_ids = [contact.id for contact in contacts]
+    outreach_filter = OutreachMessage.job_id == job.id
+    if contact_ids:
+        outreach_filter = outreach_filter | OutreachMessage.contact_id.in_(contact_ids)
+    outreach_drafts = list(
+        session.exec(
+            select(OutreachMessage)
+            .where(OutreachMessage.user_id == current_user.id, outreach_filter)
+            .order_by(OutreachMessage.updated_at.desc())
+        ).all()
+    )
+    entity_ids = [application.id, job.id]
+    entity_ids.extend(letter.id for letter in cover_letters)
+    entity_ids.extend(contact.id for contact in contacts)
+    entity_ids.extend(outreach.id for outreach in outreach_drafts)
+    events = session.exec(
+        select(ActivityEvent)
+        .where(ActivityEvent.user_id == current_user.id, ActivityEvent.entity_id.in_(entity_ids))
+        .order_by(ActivityEvent.created_at.desc())
+        .limit(20)
+    ).all()
+    linked_cover_letter = None
+    if application.cover_letter_id is not None:
+        linked_cover_letter = session.exec(
+            select(CoverLetter).where(
+                CoverLetter.id == application.cover_letter_id,
+                CoverLetter.user_id == current_user.id,
+                CoverLetter.job_id == job.id,
+            )
+        ).first()
+    return ApplicationWorkflowOut(
+        application=_serialize(application, job),
+        job=job,
+        linked_resume=_workflow_resume(session, current_user, application.resume_id),
+        linked_cover_letter=linked_cover_letter,
+        cover_letters=cover_letters,
+        contacts=contacts,
+        outreach_drafts=outreach_drafts,
+        recent_activity=[_workflow_activity(event) for event in events],
+    )
 
 
 @router.patch("/{application_id}", response_model=ApplicationOut)

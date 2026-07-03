@@ -101,6 +101,7 @@ The frontend currently talks to implemented backend endpoints for:
 - Resume-to-job analysis: run an estimated match and fetch saved results.
 - Cover letters: create grounded job/resume drafts from job detail, edit content, and update local review status.
 - Outreach: local review-only draft list/create/edit/delete flows; no email or external send action is performed.
+- Discovery: reviewable results only; saving a discovered role creates a normal job and does not apply, contact employers, or send silent outreach.
 - Profile: view, save, delete, and seed a private profile from parsed resume facts.
 
 Tailored drafts, email draft/export integration, and interview prep are still future work.
@@ -118,4 +119,4 @@ The same commands run in GitHub Actions for pull requests.
 
 ## Production / Docker
 
-`next.config.ts` sets `output: "standalone"`, and the Dockerfile produces the frontend image used by the root compose stack. Caddy is the public local entry point on http://localhost:8080 and routes `/api/*` to FastAPI while serving everything else from Next.js.
+`next.config.ts` sets `output: "standalone"`, and the Dockerfile produces the frontend image used by the root compose stack. Caddy is the public local entry point on http://localhost:8080 and routes `/api/*` to FastAPI while serving everything else from Next.js. Runtime operator checks, Cloudflare/OAuth setup, Adzuna smoke, and release gates live in `../docs/runtime-operator.md`.

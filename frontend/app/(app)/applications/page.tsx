@@ -2,9 +2,14 @@
 
 import * as React from "react";
 import {
+  Activity,
   Bell,
   CalendarClock,
+  ChevronDown,
   ClipboardList,
+  FileText,
+  Mail,
+  Users,
   Loader2,
   Plus,
   Save,
@@ -14,6 +19,7 @@ import {
 import { ApiError } from "@/lib/api";
 import {
   createApplication,
+  getApplicationWorkflow,
   deleteApplication,
   listApplicationFollowUps,
   listApplications,
@@ -22,7 +28,7 @@ import {
   type TrackedApplication,
 } from "@/lib/applications";
 import { listJobs } from "@/lib/jobs";
-import type { ApplicationStatus, Job } from "@/lib/types";
+import type { ApplicationStatus, ApplicationWorkflow, Job } from "@/lib/types";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/empty-state";
 import { Badge } from "@/components/ui/badge";
@@ -157,6 +163,10 @@ export default function ApplicationsPage() {
   const [newFollowUpDate, setNewFollowUpDate] = React.useState("");
   const [newNotes, setNewNotes] = React.useState("");
   const [savingId, setSavingId] = React.useState<string | null>(null);
+  const [expandedId, setExpandedId] = React.useState<string | null>(null);
+  const [workflowLoadingId, setWorkflowLoadingId] = React.useState<string | null>(null);
+  const [workflows, setWorkflows] = React.useState<Record<string, ApplicationWorkflow>>({});
+  const [workflowErrors, setWorkflowErrors] = React.useState<Record<string, string>>({});
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [formError, setFormError] = React.useState<string | null>(null);
@@ -196,7 +206,7 @@ export default function ApplicationsPage() {
         if (active) setLoading(false);
       }
     })();
-    return () => {
+  return () => {
       active = false;
     };
   }, []);
@@ -306,6 +316,31 @@ export default function ApplicationsPage() {
     }
   }
 
+  async function toggleWorkflow(app: TrackedApplication) {
+    if (expandedId === app.id) {
+      setExpandedId(null);
+      return;
+    }
+    setExpandedId(app.id);
+    if (workflows[app.id]) return;
+    setWorkflowLoadingId(app.id);
+    setWorkflowErrors((current) => {
+      const next = { ...current };
+      delete next[app.id];
+      return next;
+    });
+    try {
+      const workflow = await getApplicationWorkflow(app.id);
+      setWorkflows((current) => ({ ...current, [app.id]: workflow }));
+    } catch (err) {
+      setWorkflowErrors((current) => ({
+        ...current,
+        [app.id]: err instanceof ApiError ? err.message || "Could not load workflow." : "Could not load workflow.",
+      }));
+    } finally {
+      setWorkflowLoadingId(null);
+    }
+  }
   return (
     <div className="space-y-6">
       <PageHeader
@@ -506,6 +541,10 @@ export default function ApplicationsPage() {
           {applications.map((app) => {
             const draft = drafts[app.id] ?? draftFromApplication(app);
             const saving = savingId === app.id;
+            const expanded = expandedId === app.id;
+            const workflow = workflows[app.id];
+            const workflowError = workflowErrors[app.id];
+            const workflowLoading = workflowLoadingId === app.id;
             return (
               <li key={app.id}>
                 <Card className="gap-0 py-5">
@@ -547,6 +586,22 @@ export default function ApplicationsPage() {
                       </Button>
                     </div>
 
+                    <div className="flex justify-end">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void toggleWorkflow(app)}
+                        disabled={workflowLoading}
+                      >
+                        {workflowLoading ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <ChevronDown className={`size-4 transition-transform ${expanded ? "rotate-180" : ""}`} />
+                        )}
+                        Workflow
+                      </Button>
+                    </div>
                     <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_12rem_minmax(0,2fr)_auto] md:items-end">
                       <div className="space-y-1.5">
                         <Label htmlFor={`status-${app.id}`}>Status</Label>
@@ -607,6 +662,91 @@ export default function ApplicationsPage() {
                         Save
                       </Button>
                     </div>
+
+                    {expanded && (
+                      <div className="border-border/70 bg-secondary/25 space-y-4 rounded-lg border p-4 text-sm">
+                        {workflowLoading ? (
+                          <div className="text-muted-foreground flex items-center gap-2">
+                            <Loader2 className="size-4 animate-spin" />
+                            Loading workflow...
+                          </div>
+                        ) : workflowError ? (
+                          <p role="alert" className="text-destructive">{workflowError}</p>
+                        ) : workflow ? (
+                          <div className="grid gap-4 lg:grid-cols-2">
+                            <section className="space-y-2">
+                              <h3 className="flex items-center gap-2 font-medium">
+                                <FileText className="text-primary size-4" />
+                                Materials
+                              </h3>
+                              <p className="text-muted-foreground">
+                                Linked resume: {workflow.linked_resume?.title ?? (app.resume_id ? "Linked resume" : "None")}
+                              </p>
+                              <p className="text-muted-foreground">
+                                Cover letter: {workflow.linked_cover_letter ? label(workflow.linked_cover_letter.status) : app.cover_letter_id ? "Linked" : "None"}
+                              </p>
+                              <p className="text-muted-foreground">
+                                Next action: {app.follow_up_at ? `Follow up ${formatDate(app.follow_up_at)}` : "None"}
+                              </p>
+                            </section>
+
+                            <section className="space-y-2">
+                              <h3 className="flex items-center gap-2 font-medium">
+                                <Users className="text-primary size-4" />
+                                Contacts
+                              </h3>
+                              {workflow.contacts.length > 0 ? (
+                                <ul className="space-y-1">
+                                  {workflow.contacts.map((contact) => (
+                                    <li key={contact.id} className="text-muted-foreground">
+                                      {contact.name}{contact.role ? `, ${contact.role}` : ""}{contact.email ? ` - ${contact.email}` : ""}
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="text-muted-foreground">No contacts linked.</p>
+                              )}
+                            </section>
+
+                            <section className="space-y-2">
+                              <h3 className="flex items-center gap-2 font-medium">
+                                <Mail className="text-primary size-4" />
+                                Outreach
+                              </h3>
+                              {workflow.outreach_drafts.length > 0 ? (
+                                <ul className="flex flex-wrap gap-2">
+                                  {workflow.outreach_drafts.map((item) => (
+                                    <li key={item.id}>
+                                      <Badge variant="outline">{label(item.message_type)} - {label(item.status)}</Badge>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="text-muted-foreground">No outreach drafts linked.</p>
+                              )}
+                            </section>
+
+                            <section className="space-y-2">
+                              <h3 className="flex items-center gap-2 font-medium">
+                                <Activity className="text-primary size-4" />
+                                Activity
+                              </h3>
+                              {workflow.recent_activity.length > 0 ? (
+                                <ul className="space-y-1">
+                                  {workflow.recent_activity.slice(0, 5).map((event) => (
+                                    <li key={`${event.entity_type}-${event.entity_id}-${event.created_at}`} className="text-muted-foreground">
+                                      {event.description ?? label(event.event_type)} - {formatDate(event.created_at)}
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="text-muted-foreground">No activity yet.</p>
+                              )}
+                            </section>
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </li>

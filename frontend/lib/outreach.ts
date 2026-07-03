@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import type {
   Outreach,
   OutreachCreatePayload,
+  OutreachEmailExport,
   OutreachUpdatePayload,
 } from "@/lib/types";
 
@@ -37,6 +38,10 @@ export function listOutreach(): Promise<OutreachDraft[]> {
   return api.get<OutreachDraft[]>("/outreach");
 }
 
+/** POST /api/outreach/{id}/email-export - build a manual email export and record it locally. */
+export function getOutreachEmailExport(id: string): Promise<OutreachEmailExport> {
+  return api.post<OutreachEmailExport>(`/outreach/${id}/email-export`);
+}
 /** POST /api/outreach - create a review-only local draft. */
 export function createOutreach(
   payload: OutreachCreatePayload

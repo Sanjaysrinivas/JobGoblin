@@ -4,7 +4,9 @@ import * as React from "react";
 import {
   Check,
   Clipboard,
+  Download,
   Loader2,
+  Mail,
   MessageSquareText,
   Plus,
   Save,
@@ -17,6 +19,7 @@ import type { ContactJobOption } from "@/lib/contacts";
 import {
   createOutreach,
   deleteOutreach,
+  getOutreachEmailExport,
   listOutreach,
   updateOutreach,
   type OutreachDraft,
@@ -56,6 +59,9 @@ type Busy =
   | "create"
   | `save:${string}`
   | `copy:${string}`
+  | `email-copy:${string}`
+  | `email-open:${string}`
+  | `email-download:${string}`
   | `delete:${string}`
   | null;
 
@@ -249,6 +255,39 @@ export function OutreachListView() {
     });
   }
 
+  function onCopyEmailExport(item: OutreachDraft) {
+    return run(`email-copy:${item.id}`, async () => {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("Clipboard API is not supported in this browser or context.");
+      }
+      const email = await getOutreachEmailExport(item.id);
+      await navigator.clipboard.writeText(email.text || `${email.subject}\n\n${email.body}`);
+    });
+  }
+
+  function onOpenEmailClient(item: OutreachDraft) {
+    return run(`email-open:${item.id}`, async () => {
+      const email = await getOutreachEmailExport(item.id);
+      window.location.href = email.mailto_url;
+    });
+  }
+
+  function onDownloadEmailExport(item: OutreachDraft) {
+    return run(`email-download:${item.id}`, async () => {
+      const email = await getOutreachEmailExport(item.id);
+      const blob = new Blob([email.text || `${email.subject}\n\n${email.body}`], {
+        type: "text/plain;charset=utf-8",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = email.filename || "email-draft.txt";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    });
+  }
   function renderDraftFields(
     draft: DraftState,
     onChange: (changes: Partial<DraftState>) => void,
@@ -440,8 +479,12 @@ export function OutreachListView() {
             const draft = drafts[item.id] ?? draftFromOutreach(item);
             const saving = busy === `save:${item.id}`;
             const copying = busy === `copy:${item.id}`;
+            const copyingEmail = busy === `email-copy:${item.id}`;
+            const openingEmail = busy === `email-open:${item.id}`;
+            const downloadingEmail = busy === `email-download:${item.id}`;
             const deleting = busy === `delete:${item.id}`;
             const disabled = busy !== null;
+            const isEmail = draft.channel === "email";
             return (
               <li key={item.id}>
                 <Card className="gap-0 py-5">
@@ -478,6 +521,52 @@ export function OutreachListView() {
                           )}
                           Copy
                         </Button>
+                        {isEmail && (
+                          <>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => onCopyEmailExport(item)}
+                              disabled={disabled}
+                            >
+                              {copyingEmail ? (
+                                <Loader2 className="size-4 animate-spin" />
+                              ) : (
+                                <Clipboard className="size-4" />
+                              )}
+                              Copy email
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => onOpenEmailClient(item)}
+                              disabled={disabled}
+                            >
+                              {openingEmail ? (
+                                <Loader2 className="size-4 animate-spin" />
+                              ) : (
+                                <Mail className="size-4" />
+                              )}
+                              Mailto
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => onDownloadEmailExport(item)}
+                              disabled={disabled}
+                            >
+                              {downloadingEmail ? (
+                                <Loader2 className="size-4 animate-spin" />
+                              ) : (
+                                <Download className="size-4" />
+                              )}
+                              .txt
+                            </Button>
+                          </>
+                        )}
                         <Button
                           type="button"
                           variant="outline"

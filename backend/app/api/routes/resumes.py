@@ -462,6 +462,24 @@ async def reparse_resume(
     return _resume_payload(session, resume, version)
 
 
+
+@router.get("/{resume_id}/versions/{version_id}/export.pdf")
+def export_resume_version_pdf(
+    resume_id: uuid.UUID,
+    version_id: uuid.UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> Response:
+    resume = _get_owned_resume(session, current_user, resume_id)
+    version = _get_owned_version(session, resume, version_id)
+    pdf_bytes = render_resume_pdf(version.title, version.parsed_json)
+    filename = f"{version.title or 'resume'}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
 @router.get("/{resume_id}/export.pdf")
 def export_resume_pdf(
     resume_id: uuid.UUID,

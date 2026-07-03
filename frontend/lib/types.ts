@@ -56,6 +56,12 @@ export type DiscoveryRunStatus = "pending" | "completed" | "failed";
 
 export type DiscoveryResultStatus = "new" | "saved" | "dismissed" | "blocked";
 
+export type InterviewPrepStatus =
+  | "draft"
+  | "reviewed"
+  | "ready"
+  | "archived";
+
 // ---------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------
@@ -100,10 +106,11 @@ export interface Resume {
 export interface ResumeVersion {
   id: string;
   resume_id: string;
+  job_id?: string | null;
   title: string;
-  original_filename: string | null;
-  content_type: string | null;
-  file_size: number | null;
+  original_filename?: string | null;
+  content_type?: string | null;
+  file_size?: number | null;
   extracted_text: string | null;
   parsed_json: ParsedResume | null;
   is_current: boolean;
@@ -276,6 +283,31 @@ export interface Application {
   updated_at: string;
 }
 
+export interface ApplicationWorkflowResume {
+  id: string;
+  title: string;
+  current_version_id: string | null;
+}
+
+export interface ApplicationWorkflowActivity {
+  entity_type: string;
+  entity_id: string;
+  event_type: string;
+  description: string | null;
+  created_at: string;
+}
+
+export interface ApplicationWorkflow {
+  application: Application;
+  job: Job;
+  linked_resume: ApplicationWorkflowResume | null;
+  linked_cover_letter: CoverLetter | null;
+  cover_letters: CoverLetter[];
+  contacts: Contact[];
+  outreach_drafts: Outreach[];
+  recent_activity: ApplicationWorkflowActivity[];
+}
+
 export interface Contact {
   id: string;
   job_id: string | null;
@@ -313,6 +345,15 @@ export interface Outreach {
   status: OutreachStatus;
   created_at: string;
   updated_at: string;
+}
+
+export interface OutreachEmailExport {
+  to: string | null;
+  subject: string;
+  body: string;
+  text: string;
+  filename: string;
+  mailto_url: string;
 }
 
 export interface OutreachCreatePayload {
@@ -359,6 +400,28 @@ export interface UserProfilePayload {
 }
 
 
+export interface InterviewPrepQuestion {
+  question: string;
+  category: string;
+  why: string;
+  answer_outline: string;
+  evidence: string[];
+}
+
+export interface InterviewPrep {
+  id: string;
+  job_id: string;
+  application_id: string | null;
+  resume_id: string | null;
+  resume_version_id: string | null;
+  status: InterviewPrepStatus;
+  notes: string | null;
+  questions: InterviewPrepQuestion[];
+  provider: string;
+  model_used: string;
+  created_at: string;
+  updated_at: string;
+}
 // ---------------------------------------------------------------------------
 // Dashboard (design.md section 4.4)
 // ---------------------------------------------------------------------------

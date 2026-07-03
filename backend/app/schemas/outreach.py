@@ -1,4 +1,4 @@
-﻿import uuid
+import uuid
 from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
@@ -102,3 +102,12 @@ class OutreachOut(BaseModel):
     contact: OutreachContactOut | None = None
 
     model_config = {"from_attributes": True}
+
+
+class OutreachEmailExportOut(BaseModel):
+    to: str | None = None
+    subject: str
+    body: str
+    mailto_url: str
+    text: str
+    filename: str

@@ -37,7 +37,7 @@ External access through Cloudflare Tunnel is scaffolded as an optional compose p
 
 Implemented now:
 
-- Backend app wiring, settings, health endpoint, error envelope, route auto-discovery, migrations, startup admin seed.
+- Backend app wiring, settings, liveness and DB readiness endpoints, error envelope, route auto-discovery, migrations, startup admin seed.
 - Email/password auth, admin-created invite tokens, invite-only signup, Google OAuth plumbing, email allowlist, TOTP MFA, rate limiting, environment-aware cookies.
 - SQLModel tables for the V1 domain model.
 - Resume upload, storage, text extraction, AI parse, edit/list/detail/delete, and PDF export.
@@ -45,7 +45,7 @@ Implemented now:
 - Contacts, applications, dashboard, resume-to-job analysis, cover-letter draft, profile builder, follow-up reminder, and review-only outreach APIs.
 - Contacts, applications, dashboard, jobs, resumes, job-detail analysis/cover-letter, outreach, and profile frontend screens.
 - Optional Cloudflare Tunnel compose profile, disabled by default.
-- Runtime operator tooling for Ollama checks, smoke tests, and Cloudflare Tunnel checks.
+- Runtime operator tooling for Ollama checks, DB readiness, smoke tests, Adzuna operator smoke, Cloudflare Tunnel/OAuth checks, backup/restore, migration/rollback, secrets, and release promotion.
 - CI for backend ruff/pytest, frontend lint/build, and the merged E2E harness.
 
 Remaining validation and V2 work:
@@ -151,6 +151,7 @@ Base path: `/api`. JSON in/out unless noted. Auth uses HTTP-only session cookies
 Health:
 
 - `GET /api/health`
+- `GET /api/health/ready`
 
 Auth:
 
@@ -338,6 +339,10 @@ GOOGLE_CLIENT_SECRET=
 OAUTH_REDIRECT_BASE_URL=http://localhost:8080
 ALLOWED_EMAILS=
 TOTP_ISSUER=JobGoblin
+JOB_DISCOVERY_PROVIDER=mock
+ADZUNA_APP_ID=
+ADZUNA_APP_KEY=
+OBSERVABILITY_ENABLED=false
 ```
 
 For fast local iteration, set `AI_PROVIDER=mock` and seed a local admin:
