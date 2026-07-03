@@ -55,10 +55,10 @@ the Secure flag is used outside local development.
 Current tables include `users`, `invite_tokens`, and these user-owned tables
 scoped to `user_id`:
 
-`profiles`, `resumes`, `jobs`, `job_analyses`, `cover_letters`,
+`profiles`, `resumes`, `resume_versions`, `jobs`, `job_analyses`, `cover_letters`,
 `applications`, `contacts`, `outreach_messages`, `activity_events`.
 
-Deferred V2 tables: `resume_versions`, `tailored_resume_drafts`, `email_drafts`.
+Deferred V2 tables: `tailored_resume_drafts`, `email_drafts`.
 
 Application pipeline statuses: `saved`, `interested`, `resume_tailored`,
 `cover_letter_created`, `applied`, `contacted_recruiter`, `referred`,

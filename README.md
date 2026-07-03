@@ -21,7 +21,7 @@ Phase status:
 - Phase 2 core resource modules are implemented: jobs, contacts, applications, dashboard, cover-letter drafts, and outreach drafts.
 - Phase 3 resume-to-job analysis is implemented and needs integrated post-merge validation.
 - Phase 4 runtime tooling and the optional Cloudflare Tunnel profile are implemented; real Ollama, OAuth, and tunnel smoke testing are still required.
-- Phase 5 has started with the profile builder and follow-up reminders merged. Resume versions, tailored resume drafts, email draft/export integration, and interview prep are still ahead.
+- Phase 5 has profile builder, follow-up reminders, and resume versions merged. Tailored resume drafts, email draft/export integration, and interview prep are still ahead.
 
 Implemented:
 
@@ -29,7 +29,7 @@ Implemented:
 - Optional Cloudflare Tunnel compose profile, disabled by default.
 - FastAPI backend, PostgreSQL, Alembic migrations, SQLModel models, and health endpoint.
 - Email/password auth, admin-created invite tokens, invite-only signup, Google OAuth plumbing, email allowlist, TOTP MFA, and environment-aware auth cookies.
-- Resume upload, text extraction, AI parse, edit/list/detail/delete, and PDF export.
+- Resume upload, text extraction, AI parse, edit/list/detail/delete, version management, and PDF export.
 - Jobs CRUD API and jobs list/create/detail/edit/delete UI.
 - Contacts, applications, dashboard data, resume-to-job analysis, cover-letter draft, profile builder, follow-up reminder, and review-only outreach APIs.
 - Next.js app shell, auth guard, login/MFA/signup flow, resume, jobs, contacts, applications, dashboard, job-detail analysis/cover-letter, outreach, and profile screens.
@@ -41,7 +41,7 @@ Remaining validation and future work:
 - Integrated post-merge smoke pass across the browser workflow.
 - Real local AI verification with `AI_PROVIDER=ollama`.
 - Google OAuth, allowlist, HTTPS tunnel, and secure-cookie validation with real credentials.
-- Resume versions, tailored resume drafts, email draft/export integration, and interview prep.
+- Tailored resume drafts, email draft/export integration, and interview prep.
 - Any external sending remains out of scope unless it is explicit, user-reviewed, and approval-gated.
 
 ## Quick Start

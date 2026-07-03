@@ -26,7 +26,7 @@ Implemented:
 - Local Docker Compose stack with PostgreSQL, FastAPI backend, Next.js frontend, Caddy, optional Ollama, and optional Cloudflare Tunnel.
 - Invite-only authentication with email/password, admin invite tokens, allowlist support, Google OAuth plumbing, TOTP MFA, and environment-aware cookies.
 - Resume upload, text extraction, AI parsing, editing, listing, detail view, deletion, and PDF export.
-- Resume versions from PR #25, including duplicate/version flows, current-version handling, source-fact preservation, version detail UI, and version export behavior. The work is implemented and merge-ready.
+- Resume versions from PR #25, including duplicate/version flows, current-version handling, source-fact preservation, version detail UI, and version export behavior. The work is implemented and merged.
 - Job CRUD with list, create, detail, edit, delete, and source metadata.
 - Contacts CRUD for recruiters, referrals, and job-linked relationships.
 - Applications workflow with status tracking, notes, activity events, and follow-up reminders.
@@ -74,14 +74,14 @@ The app should not need any hosted SaaS backend to function. The normal operatin
 
 ## Remaining Roadmap
 
-### 1. Stabilize The Merge-Ready MVP
+### 1. Stabilize The Merged MVP
 
-Goal: make the merged and merge-ready feature set reliable enough to use daily.
+Goal: make the merged feature set reliable enough to use daily.
 
 Remaining work:
 
 - Keep local `dev` aligned with the latest merged state.
-- Merge PR #25 resume versions when review is complete.
+- Validate merged resume-version workflows.
 - Run backend ruff and pytest.
 - Run frontend lint and build.
 - Run Playwright E2E through Docker Compose and Caddy.
