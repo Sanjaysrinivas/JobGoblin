@@ -1,7 +1,7 @@
 # Agent Handover - JobGoblin
 
 Last updated: 2026-07-03
-Branch context: `feature/resume-versions` for PR #25 into `dev`
+Branch context: `dev` after PR #25 merge
 
 This document is the working handover for future agents. It captures the product target, current implementation state, architectural decisions, open risks, and the next build plan. Treat `docs/roadmap.md`, `docs/design.md`, and `docs/architecture.md` as the durable product docs; this file is the short operational memory for continuing work without rediscovery.
 
@@ -21,7 +21,7 @@ Hard product boundaries:
 
 ## Current State
 
-The MVP workflow is mostly implemented. The current PR (#25) adds resume versions and updates the roadmap to make Job Discovery the next main product direction.
+The MVP workflow is mostly implemented. PR #25 has been merged into `dev`, adding resume versions and updating the roadmap to make Job Discovery the next main product direction.
 
 Implemented or merge-ready:
 
@@ -58,13 +58,14 @@ Still not proven:
 - AI output quality review beyond smoke-level proof.
 - Backup/restore and operational recovery.
 
-## Active PR State
+## Recent PR State
 
 PR #25: `feat(resumes): add resume version management`
 
-Branch: `feature/resume-versions`
+Merged branch: `feature/resume-versions`
 Base: `dev`
-Latest pushed commit before this handover: `c4cc1d2 docs: refresh roadmap for job discovery`
+PR merge commit: `ab8d968 feat(resumes): add resume version management (#25)`
+Handover commit on `dev`: `023dfda docs: add agent handover`
 
 Review comments addressed in code:
 
@@ -75,7 +76,7 @@ Review comments addressed in code:
 
 Known administrative issue:
 
-- GitHub review threads may still be marked unresolved even though the code addresses them. Do not mark threads resolved or submit GitHub review responses unless explicitly asked.
+- PR #25 is merged. If historical review threads still show as unresolved in GitHub, treat that as administrative history; do not resolve or comment unless explicitly asked.
 
 Local worktree note:
 
@@ -431,7 +432,7 @@ Do not print or commit passwords from `.env`.
 
 ## Known Follow-Up After PR #25 Merge
 
-- Pull latest `dev` after merge.
+- Pull latest `dev` before starting new work.
 - Confirm `AGENT_HANDOVER.md`, roadmap markdown, and roadmap HTML reflect the merged state.
 - Run full CI-equivalent checks from merged `dev`.
 - Run manual browser pass on `http://localhost:8080`.
