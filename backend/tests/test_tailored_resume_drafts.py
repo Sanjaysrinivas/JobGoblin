@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.api.deps import get_current_user
 from app.core.database import get_session
-from app.models import Job, Resume, ResumeVersion, User
+from app.models import Job, JobAnalysis, Profile, Resume, ResumeVersion, User
 
 
 @pytest.fixture
@@ -42,7 +42,9 @@ def _job(session, user: User, **overrides) -> Job:
         user_id=user.id,
         company_name=overrides.pop("company_name", "Acme"),
         title=overrides.pop("title", "Backend Engineer"),
-        description=overrides.pop("description", "Build reliable services."),
+        description=overrides.pop(
+            "description", "Build reliable Python APIs. Kubernetes preferred."
+        ),
         **overrides,
     )
     session.add(job)
@@ -59,14 +61,24 @@ def _resume_with_version(session, user: User) -> tuple[Resume, ResumeVersion]:
         file_key=f"{user.id}/resume.pdf",
         content_type="application/pdf",
         file_size=123,
-        extracted_text="Alice Engineer\nPython",
-        parsed_json={"summary": "Alice"},
+        extracted_text="Alice Engineer\nPython APIs",
+        parsed_json={"summary": "Alice builds APIs", "skills": ["SQL", "Python", "APIs"]},
     )
     version = ResumeVersion(
         resume_id=resume.id,
         title="Current Resume",
         extracted_text="Current text\nPython APIs",
-        parsed_json={"summary": "Current"},
+        parsed_json={
+            "summary": "Current API engineer",
+            "skills": ["SQL", "Python", "APIs"],
+            "experience": [
+                {
+                    "company": "Widgets Inc",
+                    "role": "Engineer",
+                    "highlights": ["Built Python APIs for internal users"],
+                }
+            ],
+        },
         is_current=True,
     )
     session.add(resume)
@@ -80,6 +92,27 @@ def _resume_with_version(session, user: User) -> tuple[Resume, ResumeVersion]:
 def test_create_and_list_tailored_resume_draft(client, session, user):
     job = _job(session, user)
     resume, source = _resume_with_version(session, user)
+    profile = Profile(user_id=user.id, skills=["Python", "APIs"], projects=[])
+    analysis = JobAnalysis(
+        user_id=user.id,
+        resume_id=resume.id,
+        job_id=job.id,
+        overall_score=80,
+        keyword_score=80,
+        skills_score=80,
+        experience_score=80,
+        role_score=80,
+        education_score=80,
+        formatting_score=80,
+        matched_keywords=["Python", "APIs"],
+        missing_keywords=["Kubernetes"],
+        recommendations=["Move matching API skills higher."],
+        provider="test",
+        model_used="test",
+    )
+    session.add(profile)
+    session.add(analysis)
+    session.commit()
     source_text = source.extracted_text
     source_json = dict(source.parsed_json)
 
@@ -97,8 +130,20 @@ def test_create_and_list_tailored_resume_draft(client, session, user):
     assert body["job_id"] == str(job.id)
     assert body["source_version_id"] == str(source.id)
     assert body["is_current"] is False
-    assert "Tailored focus" in body["extracted_text"]
+    assert "Tailoring notes (grounded)" in body["extracted_text"]
     assert body["parsed_json"]["tailored_for"]["company_name"] == "Acme"
+    tailoring = body["parsed_json"]["tailoring"]
+    assert tailoring["source"]["source_version_id"] == str(source.id)
+    assert tailoring["source"]["analysis_id"] == str(analysis.id)
+    assert tailoring["grounding"]["matched_existing_terms"] == ["Python", "APIs"]
+    assert tailoring["grounding"]["job_terms_not_added"] == ["Kubernetes"]
+    assert [item["section"] for item in tailoring["suggested_changes"]] == [
+        "summary",
+        "skills",
+        "experience",
+        "gaps",
+    ]
+    assert body["parsed_json"]["skills"][:2] == ["Python", "APIs"]
 
     session.refresh(source)
     assert source.extracted_text == source_text

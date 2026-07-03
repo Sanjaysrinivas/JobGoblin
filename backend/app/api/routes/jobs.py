@@ -14,7 +14,7 @@ from sqlmodel import Session, select
 
 from app.api.deps import get_current_user
 from app.core.database import get_session
-from app.models import Job, JobAnalysis, Resume, ResumeVersion, User
+from app.models import Job, JobAnalysis, Profile, Resume, ResumeVersion, User
 from app.schemas.analysis import JobAnalysisOut
 from app.schemas.job import JobCreate, JobOut, JobUpdate
 from app.schemas.resume import ResumeVersionOut, TailoredResumeDraftCreate
@@ -76,6 +76,205 @@ def _get_source_version(
     ).first()
 
 
+def _strings(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [item.strip() for item in value if isinstance(item, str) and item.strip()]
+
+
+def _dicts(value: object) -> list[dict]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _unique(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        key = value.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(value)
+    return result
+
+
+def _contains(text: str, value: str) -> bool:
+    return value.casefold() in text.casefold()
+
+
+def _latest_analysis(
+    session: Session,
+    user: User,
+    job: Job,
+    resume: Resume,
+) -> JobAnalysis | None:
+    return session.exec(
+        select(JobAnalysis)
+        .where(
+            JobAnalysis.user_id == user.id,
+            JobAnalysis.job_id == job.id,
+            JobAnalysis.resume_id == resume.id,
+        )
+        .order_by(JobAnalysis.created_at.desc())
+    ).first()
+
+
+def _tailored_resume_json(
+    session: Session,
+    user: User,
+    job: Job,
+    resume: Resume,
+    source: ResumeVersion | None,
+) -> tuple[dict, str]:
+    source_json = copy.deepcopy(source.parsed_json if source else resume.parsed_json) or {}
+    if not isinstance(source_json, dict):
+        source_json = {}
+    source_title = source.title if source else resume.title
+    source_text = source.extracted_text if source else resume.extracted_text
+    source_text = source_text or ""
+    profile = session.exec(select(Profile).where(Profile.user_id == user.id)).first()
+    analysis = _latest_analysis(session, user, job, resume)
+
+    resume_skills = _strings(source_json.get("skills"))
+    profile_skills = profile.skills if profile else []
+    all_skills = _unique([*resume_skills, *profile_skills])
+    job_text = f"{job.title}\n{job.company_name}\n{job.description}"
+    analysis_matches = _strings(analysis.matched_keywords if analysis else None)
+    source_blob = "\n".join(
+        [
+            source_text,
+            str(source_json.get("summary") or ""),
+            "\n".join(all_skills),
+            "\n".join(profile.projects if profile else []),
+            "\n".join(profile.certifications if profile else []),
+        ]
+    )
+    matched = _unique(
+        [
+            item
+            for item in [*analysis_matches, *all_skills]
+            if _contains(job_text, item) and _contains(source_blob, item)
+        ]
+    )[:10]
+    missing = [
+        item
+        for item in _strings(analysis.missing_keywords if analysis else None)
+        if not _contains(source_blob, item)
+    ][:10]
+
+    changes: list[dict] = []
+    diff: list[dict] = []
+    summary = source_json.get("summary")
+    if isinstance(summary, str) and summary.strip() and matched:
+        after = f"{summary.strip()}\nFocus for this role: {', '.join(matched[:4])}."
+        source_json["summary"] = after
+        changes.append(
+            {
+                "section": "summary",
+                "action": "append_focus",
+                "why": (
+                    "Uses only existing resume/profile terms that also appear in the job "
+                    "or stored analysis."
+                ),
+                "evidence": matched[:4],
+            }
+        )
+        diff.append({"section": "summary", "before": summary, "after": after})
+
+    if resume_skills and matched:
+        reordered = _unique([*matched, *resume_skills])
+        if reordered != resume_skills:
+            source_json["skills"] = reordered
+            changes.append(
+                {
+                    "section": "skills",
+                    "action": "move_matching_existing_skills_first",
+                    "why": (
+                        "Prioritizes skills already present in the resume/profile and relevant "
+                        "to the job text."
+                    ),
+                    "evidence": matched,
+                }
+            )
+            diff.append({"section": "skills", "before": resume_skills, "after": reordered})
+
+    highlight_matches: list[dict] = []
+    for item in [*_dicts(source_json.get("experience")), *(profile.experience if profile else [])]:
+        highlights = _strings(item.get("highlights"))
+        matched_highlights = [
+            highlight
+            for highlight in highlights
+            if any(_contains(highlight, term) for term in matched)
+        ]
+        if matched_highlights:
+            highlight_matches.append(
+                {
+                    "company": item.get("company"),
+                    "role": item.get("role"),
+                    "highlights": matched_highlights[:2],
+                }
+            )
+    if highlight_matches:
+        changes.append(
+            {
+                "section": "experience",
+                "action": "emphasize_existing_matching_bullets",
+                "why": "These bullets already exist and overlap with the job or stored analysis.",
+                "evidence": highlight_matches[:5],
+            }
+        )
+
+    if missing:
+        changes.append(
+            {
+                "section": "gaps",
+                "action": "verify_before_adding",
+                "why": "These job/analysis terms were not found in resume/profile text.",
+                "evidence": missing,
+            }
+        )
+
+    source_json["tailored_for"] = {
+        "job_id": str(job.id),
+        "title": job.title,
+        "company_name": job.company_name,
+    }
+    source_json["tailoring"] = {
+        "source": {
+            "resume_id": str(resume.id),
+            "source_version_id": str(source.id) if source else None,
+            "source_version_title": source_title,
+            "profile_id": str(profile.id) if profile else None,
+            "analysis_id": str(analysis.id) if analysis else None,
+        },
+        "grounding": {
+            "rule": (
+                "Generated from stored resume/profile/job/analysis text only; missing "
+                "terms are not added as skills or credentials."
+            ),
+            "matched_existing_terms": matched,
+            "job_terms_not_added": missing,
+        },
+        "suggested_changes": changes,
+        "diff": diff,
+    }
+
+    notes = [
+        "",
+        "",
+        "Tailoring notes (grounded)",
+        f"Target role: {job.title} at {job.company_name}",
+    ]
+    if matched:
+        notes.append("Existing evidence to emphasize:")
+        notes.extend(f"- {item}" for item in matched[:8])
+    if missing:
+        notes.append("Verify before adding:")
+        notes.extend(f"- {item}" for item in missing[:8])
+    return source_json, source_text + "\n".join(notes)
+
 def _validate_salary_range(salary_min: int | None, salary_max: int | None) -> None:
     if salary_min is not None and salary_max is not None and salary_min > salary_max:
         raise _error(
@@ -126,21 +325,14 @@ def create_resume_draft(
     resume = _get_owned_resume(session, current_user, payload.resume_id)
     source = _get_source_version(session, resume, payload.source_version_id)
     source_title = source.title if source else resume.title
-    source_text = source.extracted_text if source else resume.extracted_text
-    source_json = copy.deepcopy(source.parsed_json if source else resume.parsed_json) or {}
-    source_json["tailored_for"] = {
-        "job_id": str(job.id),
-        "title": job.title,
-        "company_name": job.company_name,
-    }
+    parsed_json, extracted_text = _tailored_resume_json(session, current_user, job, resume, source)
     draft = ResumeVersion(
         resume_id=resume.id,
         job_id=job.id,
         source_version_id=source.id if source else None,
         title=payload.title or f"{source_title} - {job.company_name} {job.title}",
-        extracted_text=(source_text or "")
-        + f"\n\nTailored focus: {job.title} at {job.company_name}.",
-        parsed_json=source_json,
+        extracted_text=extracted_text,
+        parsed_json=parsed_json,
         is_current=False,
     )
     session.add(draft)

@@ -89,10 +89,19 @@ class ApplicationFollowUpOut(BaseModel):
     latest_activity: ApplicationFollowUpActivityOut | None = None
 
 
+class ApplicationWorkflowResumeVersionOut(BaseModel):
+    id: uuid.UUID
+    title: str
+    source_version_id: uuid.UUID | None = None
+    updated_at: datetime
+
+
 class ApplicationWorkflowResumeOut(BaseModel):
     id: uuid.UUID
     title: str
     current_version_id: uuid.UUID | None = None
+    current_version_title: str | None = None
+    tailored_draft: ApplicationWorkflowResumeVersionOut | None = None
 
 
 class ApplicationWorkflowActivityOut(BaseModel):
@@ -103,9 +112,16 @@ class ApplicationWorkflowActivityOut(BaseModel):
     created_at: datetime
 
 
+class ApplicationWorkflowNextActionOut(BaseModel):
+    label: str
+    due_at: datetime | None = None
+    due: bool = False
+
+
 class ApplicationWorkflowOut(BaseModel):
     application: ApplicationOut
     job: JobOut
+    next_action: ApplicationWorkflowNextActionOut
     linked_resume: ApplicationWorkflowResumeOut | None = None
     linked_cover_letter: CoverLetterOut | None = None
     cover_letters: list[CoverLetterOut]

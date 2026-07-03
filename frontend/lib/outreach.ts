@@ -8,6 +8,7 @@ import type {
   Outreach,
   OutreachCreatePayload,
   OutreachEmailExport,
+  OutreachGeneratePayload,
   OutreachUpdatePayload,
 } from "@/lib/types";
 
@@ -32,6 +33,7 @@ export interface OutreachDraft extends Outreach {
   contact: OutreachContactSummary | null;
 }
 
+export type OutreachEmailExportAction = "export" | "copy" | "open" | "download";
 
 /** GET /api/outreach - list the current user's local outreach drafts. */
 export function listOutreach(): Promise<OutreachDraft[]> {
@@ -39,14 +41,26 @@ export function listOutreach(): Promise<OutreachDraft[]> {
 }
 
 /** POST /api/outreach/{id}/email-export - build a manual email export and record it locally. */
-export function getOutreachEmailExport(id: string): Promise<OutreachEmailExport> {
-  return api.post<OutreachEmailExport>(`/outreach/${id}/email-export`);
+export function getOutreachEmailExport(
+  id: string,
+  action: OutreachEmailExportAction = "export"
+): Promise<OutreachEmailExport> {
+  const query = new URLSearchParams({ action });
+  return api.post<OutreachEmailExport>(`/outreach/${id}/email-export?${query}`);
 }
+
 /** POST /api/outreach - create a review-only local draft. */
 export function createOutreach(
   payload: OutreachCreatePayload
 ): Promise<OutreachDraft> {
   return api.post<OutreachDraft>("/outreach", payload);
+}
+
+/** POST /api/outreach/generate - create a generated review-only local draft. */
+export function generateOutreach(
+  payload: OutreachGeneratePayload
+): Promise<OutreachDraft> {
+  return api.post<OutreachDraft>("/outreach/generate", payload);
 }
 
 /** PATCH /api/outreach/{id} - update draft text or local review status. */

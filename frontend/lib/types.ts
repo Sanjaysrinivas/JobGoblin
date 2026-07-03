@@ -50,7 +50,7 @@ export type CoverLetterStatus =
 
 export type OutreachChannel = "email" | "linkedin" | "other";
 
-export type OutreachStatus = "draft" | "copied" | "sent" | "replied" | "closed";
+export type OutreachStatus = "draft" | "copied" | "replied" | "closed";
 
 export type DiscoveryRunStatus = "pending" | "completed" | "failed";
 
@@ -119,6 +119,36 @@ export interface ResumeVersion {
   updated_at: string;
 }
 
+export interface TailoredResumeChange {
+  section: string;
+  action: string;
+  why: string;
+  evidence: unknown;
+}
+
+export interface TailoredResumeDiff {
+  section: string;
+  before: unknown;
+  after: unknown;
+}
+
+export interface TailoredResumeMetadata {
+  source?: {
+    resume_id?: string;
+    source_version_id?: string | null;
+    source_version_title?: string | null;
+    profile_id?: string | null;
+    analysis_id?: string | null;
+  };
+  grounding?: {
+    rule?: string;
+    matched_existing_terms?: string[];
+    job_terms_not_added?: string[];
+  };
+  suggested_changes?: TailoredResumeChange[];
+  diff?: TailoredResumeDiff[];
+}
+
 export interface ParsedResume {
   summary: string | null;
   skills: string[];
@@ -126,6 +156,12 @@ export interface ParsedResume {
   education: ParsedEducation[];
   projects: string[];
   certifications: string[];
+  tailored_for?: {
+    job_id: string;
+    title: string;
+    company_name: string;
+  };
+  tailoring?: TailoredResumeMetadata;
 }
 
 export interface ParsedExperience {
@@ -283,10 +319,19 @@ export interface Application {
   updated_at: string;
 }
 
+export interface ApplicationWorkflowResumeVersion {
+  id: string;
+  title: string;
+  source_version_id: string | null;
+  updated_at: string;
+}
+
 export interface ApplicationWorkflowResume {
   id: string;
   title: string;
   current_version_id: string | null;
+  current_version_title: string | null;
+  tailored_draft: ApplicationWorkflowResumeVersion | null;
 }
 
 export interface ApplicationWorkflowActivity {
@@ -297,9 +342,16 @@ export interface ApplicationWorkflowActivity {
   created_at: string;
 }
 
+export interface ApplicationWorkflowNextAction {
+  label: string;
+  due_at: string | null;
+  due: boolean;
+}
+
 export interface ApplicationWorkflow {
   application: Application;
   job: Job;
+  next_action: ApplicationWorkflowNextAction;
   linked_resume: ApplicationWorkflowResume | null;
   linked_cover_letter: CoverLetter | null;
   cover_letters: CoverLetter[];
@@ -363,6 +415,20 @@ export interface OutreachCreatePayload {
   message_type: string;
   content: string;
   status?: OutreachStatus;
+}
+
+export type OutreachGeneratedType =
+  | "recruiter_follow_up"
+  | "referral"
+  | "thank_you"
+  | "status_check";
+
+export interface OutreachGeneratePayload {
+  job_id?: string | null;
+  contact_id?: string | null;
+  channel?: OutreachChannel;
+  message_type: OutreachGeneratedType;
+  notes?: string | null;
 }
 
 export type OutreachUpdatePayload = Partial<OutreachCreatePayload>;

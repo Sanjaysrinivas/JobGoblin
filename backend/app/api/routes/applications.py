@@ -33,8 +33,10 @@ from app.schemas.application import (
     ApplicationOut,
     ApplicationUpdate,
     ApplicationWorkflowActivityOut,
+    ApplicationWorkflowNextActionOut,
     ApplicationWorkflowOut,
     ApplicationWorkflowResumeOut,
+    ApplicationWorkflowResumeVersionOut,
 )
 
 router = APIRouter(prefix="/applications", tags=["applications"])
@@ -143,7 +145,10 @@ def _validate_cover_letter_reference(
 
 
 def _workflow_resume(
-    session: Session, user: User, resume_id: uuid.UUID | None
+    session: Session,
+    user: User,
+    resume_id: uuid.UUID | None,
+    job_id: uuid.UUID,
 ) -> ApplicationWorkflowResumeOut | None:
     if resume_id is None:
         return None
@@ -152,19 +157,56 @@ def _workflow_resume(
     ).first()
     if resume is None:
         return None
+    current_query = select(ResumeVersion).where(ResumeVersion.resume_id == resume.id)
     current = session.exec(
+        current_query.order_by(ResumeVersion.is_current.desc(), ResumeVersion.updated_at.desc())
+    ).first()
+    tailored_draft = session.exec(
         select(ResumeVersion)
-        .where(
-            ResumeVersion.resume_id == resume.id,
-            ResumeVersion.is_current == True,  # noqa: E712 - SQLAlchemy expression
-        )
+        .where(ResumeVersion.resume_id == resume.id, ResumeVersion.job_id == job_id)
         .order_by(ResumeVersion.updated_at.desc())
     ).first()
     return ApplicationWorkflowResumeOut(
         id=resume.id,
         title=current.title if current else resume.title,
         current_version_id=current.id if current else None,
+        current_version_title=current.title if current else None,
+        tailored_draft=(
+            ApplicationWorkflowResumeVersionOut(
+                id=tailored_draft.id,
+                title=tailored_draft.title,
+                source_version_id=tailored_draft.source_version_id,
+                updated_at=_as_utc(tailored_draft.updated_at),
+            )
+            if tailored_draft
+            else None
+        ),
     )
+
+
+def _workflow_next_action(application: Application) -> ApplicationWorkflowNextActionOut:
+    follow_up_at = _as_utc(application.follow_up_at)
+    if follow_up_at is not None:
+        return ApplicationWorkflowNextActionOut(
+            label="Follow up",
+            due_at=follow_up_at,
+            due=follow_up_at <= datetime.now(UTC),
+        )
+    if application.status in _TERMINAL_STATUSES:
+        return ApplicationWorkflowNextActionOut(label="Application closed")
+    labels = {
+        ApplicationStatus.saved: "Review saved job",
+        ApplicationStatus.interested: "Tailor resume",
+        ApplicationStatus.resume_tailored: "Create or attach cover letter",
+        ApplicationStatus.cover_letter_created: "Apply or set follow-up",
+        ApplicationStatus.applied: "Set follow-up date",
+        ApplicationStatus.contacted_recruiter: "Watch for reply",
+        ApplicationStatus.referred: "Watch for referral update",
+        ApplicationStatus.phone_screen: "Prepare for screen",
+        ApplicationStatus.technical_interview: "Prepare for technical interview",
+        ApplicationStatus.final_interview: "Prepare for final interview",
+    }
+    return ApplicationWorkflowNextActionOut(label=labels.get(application.status, "Set next step"))
 
 
 def _workflow_activity(event: ActivityEvent) -> ApplicationWorkflowActivityOut:
@@ -429,7 +471,8 @@ def get_application_workflow(
     return ApplicationWorkflowOut(
         application=_serialize(application, job),
         job=job,
-        linked_resume=_workflow_resume(session, current_user, application.resume_id),
+        next_action=_workflow_next_action(application),
+        linked_resume=_workflow_resume(session, current_user, application.resume_id, job.id),
         linked_cover_letter=linked_cover_letter,
         cover_letters=cover_letters,
         contacts=contacts,

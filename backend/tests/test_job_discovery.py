@@ -5,7 +5,7 @@ import pytest
 from app.models.enums import JobSource, WorkMode
 from app.schemas.discovery import JobSearchPreferencesPayload
 from app.services.ai_provider import MockProvider
-from app.services.job_discovery import DiscoveredJob, rank_result_with_ai
+from app.services.job_discovery import DiscoveredJob, rank_result, rank_result_with_ai, search_jobs
 
 
 class RankingProvider(MockProvider):
@@ -36,6 +36,38 @@ class SlowProvider(MockProvider):
 class FailingProvider(MockProvider):
     async def generate_json(self, prompt: str, schema: dict, *, system: str | None = None) -> dict:
         raise RuntimeError("offline")
+
+
+def test_rank_result_explains_location_work_mode_and_visa():
+    preferences = JobSearchPreferencesPayload(
+        desired_titles=["Platform Engineer"],
+        required_keywords=["Python"],
+        target_locations=["Remote"],
+        visa_sponsorship_required=True,
+        work_mode=WorkMode.remote,
+    )
+
+    score, reason = rank_result(
+        _job("Build Python APIs. Visa sponsorship available."),
+        preferences,
+    )
+
+    assert score > 0
+    assert "work mode matches remote" in reason
+    assert "location matches Remote" in reason
+    assert "visa sponsorship is mentioned" in reason
+
+
+@pytest.mark.asyncio
+async def test_search_jobs_rejects_bad_country_code():
+    with pytest.raises(ValueError, match="2-letter"):
+        await search_jobs(
+            provider="mock",
+            country="u1",
+            location=None,
+            query="python",
+            results_per_page=1,
+        )
 
 
 def _job(description: str = "Build Python APIs with PostgreSQL.") -> DiscoveredJob:
@@ -77,13 +109,20 @@ async def test_rank_result_with_ai_uses_provider_payload_and_context():
 
 
 @pytest.mark.asyncio
-async def test_rank_result_with_ai_falls_back_when_provider_fails():
+async def test_rank_result_with_ai_falls_back_when_provider_fails(monkeypatch):
+    fallbacks = []
+    monkeypatch.setattr(
+        "app.services.job_discovery.record_llm_fallback",
+        lambda **attrs: fallbacks.append(attrs),
+    )
     preferences = JobSearchPreferencesPayload(required_keywords=["Python"])
 
     score, reason = await rank_result_with_ai(_job(), preferences, FailingProvider())
 
     assert score > 0
     assert reason.startswith("Matched")
+    assert fallbacks[-1]["operation"] == "discovery.rank_json"
+    assert fallbacks[-1]["reason"] == "RuntimeError"
 
 
 @pytest.mark.asyncio

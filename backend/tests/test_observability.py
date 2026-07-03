@@ -4,7 +4,7 @@ from types import ModuleType
 
 from app.core import observability
 from app.core.config import get_settings
-from app.core.observability import llm_span_attributes
+from app.core.observability import llm_span_attributes, record_llm_fallback
 from app.services.ai_provider import MockProvider
 
 
@@ -91,3 +91,32 @@ async def test_mock_provider_observability_uses_sanitized_span(monkeypatch):
     assert "llm.latency_ms" in attrs
     assert "raw profile prompt secret" not in serialized
     assert "raw system secret" not in serialized
+
+
+def test_record_llm_fallback_is_metadata_only(monkeypatch):
+    fake_logfire = _FakeLogfire()
+    monkeypatch.setitem(sys.modules, "logfire", fake_logfire)
+    monkeypatch.setenv("OBSERVABILITY_ENABLED", "true")
+    monkeypatch.setattr(observability, "_configured", False)
+    get_settings.cache_clear()
+
+    try:
+        record_llm_fallback(
+            provider="ollama",
+            model="qwen",
+            operation="discovery.rank_json",
+            reason="timeout",
+        )
+    finally:
+        get_settings.cache_clear()
+        observability._configured = False
+
+    assert fake_logfire.spans[-1]["name"] == "llm.fallback"
+    attrs = fake_logfire.spans[-1]["attrs"]
+    assert attrs == {
+        "llm.provider": "ollama",
+        "llm.model": "qwen",
+        "llm.operation": "discovery.rank_json",
+        "llm.fallback": True,
+        "llm.fallback_reason": "timeout",
+    }

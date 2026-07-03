@@ -94,11 +94,18 @@ function errorMessage(err: unknown, fallback: string): string {
   return fallback;
 }
 
-export function InterviewPrepPanel({ jobId }: { jobId: string }) {
+export function InterviewPrepPanel({
+  jobId,
+  applicationId = null,
+}: {
+  jobId: string;
+  applicationId?: string | null;
+}) {
   const [resumes, setResumes] = React.useState<ResumeDetail[]>([]);
   const [prep, setPrep] = React.useState<InterviewPrep[] | null>(null);
   const [drafts, setDrafts] = React.useState<Record<string, DraftState>>({});
   const [selectedResumeId, setSelectedResumeId] = React.useState("");
+  const [newNotes, setNewNotes] = React.useState("");
   const [busy, setBusy] = React.useState<Busy>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [actionError, setActionError] = React.useState<string | null>(null);
@@ -110,7 +117,7 @@ export function InterviewPrepPanel({ jobId }: { jobId: string }) {
       try {
         const [resumeData, prepData] = await Promise.all([
           listResumes(),
-          listInterviewPrep(jobId),
+          listInterviewPrep(jobId, applicationId),
         ]);
         if (!active) return;
         setResumes(resumeData);
@@ -131,7 +138,7 @@ export function InterviewPrepPanel({ jobId }: { jobId: string }) {
     return () => {
       active = false;
     };
-  }, [jobId]);
+  }, [jobId, applicationId]);
 
   async function run(kind: Exclude<Busy, null>, fn: () => Promise<void>) {
     setActionError(null);
@@ -165,8 +172,11 @@ export function InterviewPrepPanel({ jobId }: { jobId: string }) {
     return run("create", async () => {
       const created = await createInterviewPrep({
         job_id: jobId,
+        application_id: applicationId,
         resume_id: selectedResumeId || null,
+        notes: newNotes || null,
       });
+      setNewNotes("");
       setPrep((current) => [created, ...(current ?? [])]);
       setDrafts((current) => ({ ...current, [created.id]: draftFromPrep(created) }));
     });
@@ -200,7 +210,7 @@ export function InterviewPrepPanel({ jobId }: { jobId: string }) {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
           <div className="space-y-2">
             <Label htmlFor="interview-prep-resume">Resume context</Label>
             <select
@@ -217,6 +227,17 @@ export function InterviewPrepPanel({ jobId }: { jobId: string }) {
                 </option>
               ))}
             </select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="interview-prep-new-notes">Prep notes</Label>
+            <textarea
+              id="interview-prep-new-notes"
+              className={textareaClass}
+              value={newNotes}
+              disabled={busy !== null}
+              onChange={(event) => setNewNotes(event.target.value)}
+              placeholder="Paste application notes, interview round details, or STAR-story reminders."
+            />
           </div>
           <Button type="button" onClick={onCreate} disabled={busy !== null}>
             {busy === "create" ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}

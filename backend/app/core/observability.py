@@ -115,8 +115,37 @@ def observe_llm_call(
         try:
             yield
         except Exception as exc:
+            _set_attribute(span, "llm.success", False)
             _set_attribute(span, "llm.error", type(exc).__name__)
             raise
+        else:
+            _set_attribute(span, "llm.success", True)
         finally:
             latency_ms = round((perf_counter() - started) * 1000, 2)
             _set_attribute(span, "llm.latency_ms", latency_ms)
+
+
+def record_llm_fallback(
+    *,
+    provider: str,
+    model: str,
+    operation: str,
+    reason: str,
+) -> None:
+    """Record sanitized fallback metadata without prompt or user text."""
+    attrs = {
+        "llm.provider": provider,
+        "llm.model": model,
+        "llm.operation": operation,
+        "llm.fallback": True,
+        "llm.fallback_reason": reason,
+    }
+    logger.info("LLM fallback used", extra={"llm": attrs})
+    logfire = _logfire()
+    if logfire is None:
+        return
+    try:
+        with logfire.span("llm.fallback", **attrs):
+            pass
+    except Exception:
+        logger.debug("Failed to record LLM fallback span", exc_info=True)

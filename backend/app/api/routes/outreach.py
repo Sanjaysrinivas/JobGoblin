@@ -6,10 +6,10 @@ email, open mail clients, post to LinkedIn, or perform any external outreach.
 
 import re
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import quote, urlencode
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
 from sqlmodel import Session, select
 
@@ -20,11 +20,20 @@ from app.models.enums import OutreachChannel, OutreachStatus
 from app.schemas.outreach import (
     OutreachCreate,
     OutreachEmailExportOut,
+    OutreachGenerate,
     OutreachOut,
     OutreachUpdate,
 )
 
 router = APIRouter(prefix="/outreach", tags=["outreach"])
+
+EmailExportAction = Literal["export", "copy", "open", "download"]
+_EMAIL_EXPORT_EVENTS: dict[str, str] = {
+    "export": "outreach_email_exported",
+    "copy": "outreach_email_copied",
+    "open": "outreach_email_opened",
+    "download": "outreach_email_downloaded",
+}
 
 
 def _error(status_code: int, message: str, code: str) -> HTTPException:
@@ -139,6 +148,55 @@ def _add_activity(
     )
 
 
+def _first_name(contact: Contact | None) -> str:
+    return contact.name.split()[0] if contact and contact.name.strip() else "there"
+
+
+def _job_label(job: Job | None) -> str:
+    return f"{job.title} at {job.company_name}" if job else "the opportunity"
+
+
+def _outreach_content(
+    message_type: str,
+    user: User,
+    job: Job | None,
+    contact: Contact | None,
+    notes: str | None,
+) -> str:
+    role = _job_label(job)
+    company = (
+        job.company_name
+        if job
+        else contact.company
+        if contact and contact.company
+        else "your team"
+    )
+    greeting = f"Hi {_first_name(contact)},"
+    note = f"\n\nA detail I want to include: {notes}" if notes else ""
+    signoff = f"\n\nBest,\n{user.display_name}"
+    if message_type == "referral":
+        body = (
+            f"I noticed {role} and think it could be a strong fit. If you are comfortable, "
+            "would you be open to referring me or pointing me to the right person?"
+        )
+    elif message_type == "thank_you":
+        body = (
+            f"Thank you for taking the time to speak with me about {role}. I appreciated "
+            f"learning more about {company} and wanted to reiterate my interest."
+        )
+    elif message_type == "status_check":
+        body = (
+            f"I wanted to check in on the status of {role}. I remain interested and would "
+            "appreciate any update you can share on timing or next steps."
+        )
+    else:
+        body = (
+            f"I wanted to follow up on {role}. I am still interested and would be glad "
+            "to share anything else that would help with the process."
+        )
+    return f"{greeting}\n\n{body}{note}{signoff}"
+
+
 @router.get("", response_model=list[OutreachOut])
 def list_outreach(
     current_user: Annotated[User, Depends(get_current_user)],
@@ -185,11 +243,45 @@ def create_outreach(
     return _serialize(outreach, job, contact)
 
 
+@router.post("/generate", response_model=OutreachOut, status_code=status.HTTP_201_CREATED)
+def generate_outreach(
+    payload: OutreachGenerate,
+    current_user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_session)],
+) -> OutreachOut:
+    job = _get_owned_job(session, current_user, payload.job_id)
+    contact = _get_owned_contact(session, current_user, payload.contact_id)
+    content = _outreach_content(payload.message_type, current_user, job, contact, payload.notes)
+    outreach = OutreachMessage(
+        user_id=current_user.id,
+        job_id=job.id if job else None,
+        contact_id=contact.id if contact else None,
+        channel=payload.channel,
+        message_type=payload.message_type,
+        content=content,
+        status=OutreachStatus.draft,
+    )
+    session.add(outreach)
+    session.flush()
+    _add_activity(
+        session,
+        current_user,
+        outreach,
+        "outreach_generated",
+        f"Generated {payload.message_type} outreach draft",
+        {"status": outreach.status.value, "channel": outreach.channel.value},
+    )
+    session.commit()
+    session.refresh(outreach)
+    return _serialize(outreach, job, contact)
+
+
 @router.post("/{outreach_id}/email-export", response_model=OutreachEmailExportOut)
 def export_outreach_email(
     outreach_id: uuid.UUID,
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_session)],
+    action: Annotated[EmailExportAction, Query()] = "export",
 ) -> OutreachEmailExportOut:
     outreach, job, contact = _get_owned_outreach(session, current_user, outreach_id)
     if outreach.channel != OutreachChannel.email:
@@ -208,9 +300,9 @@ def export_outreach_email(
         session,
         current_user,
         outreach,
-        "outreach_email_exported",
-        "Exported email outreach draft",
-        {"channel": outreach.channel.value},
+        _EMAIL_EXPORT_EVENTS[action],
+        "Prepared email outreach draft for manual use",
+        {"channel": outreach.channel.value, "action": action},
     )
     session.commit()
     return OutreachEmailExportOut(

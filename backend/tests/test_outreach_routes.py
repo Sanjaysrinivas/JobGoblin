@@ -266,6 +266,16 @@ def test_email_export_returns_mailto_text_and_records_activity(client, session, 
     assert events[-1].event_type == "outreach_email_exported"
     assert events[-1].entity_id == uuid.UUID(created.json()["id"])
 
+    opened = client.post(f"/api/outreach/{created.json()['id']}/email-export?action=open")
+    assert opened.status_code == 200
+    stored = session.get(OutreachMessage, uuid.UUID(created.json()["id"]))
+    assert stored is not None
+    assert stored.status.value == "draft"
+
+    events = session.exec(select(ActivityEvent).order_by(ActivityEvent.created_at)).all()
+    assert events[-1].event_type == "outreach_email_opened"
+    assert events[-1].event_metadata == {"channel": "email", "action": "open"}
+
 
 def test_email_export_rejects_non_email_outreach(client):
     created = client.post("/api/outreach", json=_payload(channel="linkedin"))
@@ -274,3 +284,58 @@ def test_email_export_rejects_non_email_outreach(client):
     exported = client.post(f"/api/outreach/{created.json()['id']}/email-export")
     assert exported.status_code == 422
     assert exported.json()["code"] == "not_email_outreach"
+
+
+@pytest.mark.parametrize(
+    ("message_type", "expected"),
+    [
+        ("recruiter_follow_up", "follow up"),
+        ("referral", "referring me"),
+        ("thank_you", "Thank you"),
+        ("status_check", "check in"),
+    ],
+)
+def test_generate_outreach_creates_review_only_drafts(
+    client, session, user, message_type, expected
+):
+    job = _job(session, user)
+    contact = _contact(session, user, job_id=job.id)
+
+    resp = client.post(
+        "/api/outreach/generate",
+        json={
+            "job_id": str(job.id),
+            "contact_id": str(contact.id),
+            "message_type": message_type,
+            "notes": "Mention API reliability work.",
+        },
+    )
+
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["status"] == "draft"
+    assert body["message_type"] == message_type
+    assert "Backend Engineer at Acme" in body["content"]
+    assert expected in body["content"]
+    assert "Mention API reliability work." in body["content"]
+
+    stored = session.get(OutreachMessage, uuid.UUID(body["id"]))
+    assert stored is not None
+    assert stored.status.value == "draft"
+
+    event = session.exec(select(ActivityEvent).order_by(ActivityEvent.created_at)).all()[-1]
+    assert event.event_type == "outreach_generated"
+    assert event.entity_id == stored.id
+
+
+def test_outreach_rejects_sent_status_without_sending(client, session):
+    create_resp = client.post("/api/outreach", json=_payload(status="sent"))
+    assert create_resp.status_code == 422
+
+    created = client.post("/api/outreach", json=_payload()).json()
+    patch_resp = client.patch(f"/api/outreach/{created['id']}", json={"status": "sent"})
+    assert patch_resp.status_code == 422
+
+    stored = session.get(OutreachMessage, uuid.UUID(created["id"]))
+    assert stored is not None
+    assert stored.status.value == "draft"

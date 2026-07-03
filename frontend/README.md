@@ -96,15 +96,15 @@ The frontend currently talks to implemented backend endpoints for:
 - Resumes: upload, list, detail, edit, delete, re-parse, version management, and PDF export.
 - Jobs: list, create, detail, edit, delete, and saved analysis history.
 - Contacts: list, create, detail, edit, and delete.
-- Applications: list, create, edit, delete, manual status tracking, and follow-up reminder fields.
+- Applications: list, create, edit, delete, manual status tracking, follow-up reminder fields, workflow context, next action, and active/due/interview/outcome filters.
 - Dashboard: summary counts and recent activity.
 - Resume-to-job analysis: run an estimated match and fetch saved results.
 - Cover letters: create grounded job/resume drafts from job detail, edit content, and update local review status.
-- Outreach: local review-only draft list/create/edit/delete flows; no email or external send action is performed.
+- Tailored resume drafts: create job-specific grounded resume-version drafts, review changes, accept/reject, and export PDF.
+- Outreach: local review-only draft list/create/edit/delete/generate/export flows; no email or external send action is performed.
 - Discovery: reviewable results only; saving a discovered role creates a normal job and does not apply, contact employers, or send silent outreach.
+- Interview prep: generate grounded question sets, STAR/story-bank prompts, notes, copy/export text, and prep status.
 - Profile: view, save, delete, and seed a private profile from parsed resume facts.
-
-Tailored drafts, email draft/export integration, and interview prep are still future work.
 
 All API requests use `credentials: "include"` so the HTTP-only session cookie flows with same-origin Docker/Caddy requests and direct dev requests.
 

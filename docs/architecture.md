@@ -24,7 +24,7 @@ one reverse proxy so the browser sees a single origin:
 
 State and AI run as local containers alongside them:
 
-- PostgreSQL: users, profiles, resumes, jobs, analyses, cover letters, applications, contacts, outreach messages, and activity data.
+- PostgreSQL: users, profiles, resumes, resume versions, jobs, discovery runs/results, analyses, cover letters, applications, contacts, outreach messages, interview prep, and activity data.
 - File storage: uploaded resume files on a mounted local volume behind a storage
   interface, so object storage remains a later swap.
 - Ollama: local LLM runtime. `MockProvider` is used for tests and fast dev.
@@ -58,7 +58,7 @@ scoped to `user_id`:
 `profiles`, `resumes`, `resume_versions`, `jobs`, `job_analyses`, `cover_letters`,
 `applications`, `contacts`, `outreach_messages`, `activity_events`.
 
-Deferred V2 tables: `tailored_resume_drafts`, `email_drafts`.
+Tailored resume drafts reuse `resume_versions`; email drafts reuse `outreach_messages` so the workflow stays simple and auditable.
 
 Operational probes:
 
@@ -82,7 +82,7 @@ This is implemented and pending integrated validation. The resume upload, storag
    qualifies for from qualifications they lack, and suggests truthful changes.
 5. Persist numeric score, matched/missing keywords, explanation, and
    recommendations.
-6. User saves the job to the tracker, creates local review-only drafts as needed, and advances the application through the pipeline with optional follow-up reminders.
+6. User saves the job to the tracker, creates local review-only cover letters, tailored resume-version drafts, outreach email exports, and interview prep as needed, then advances the application through the pipeline with optional follow-up reminders.
 
 ## 6. Branching Workflow
 

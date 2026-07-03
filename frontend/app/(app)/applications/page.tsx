@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ClipboardList,
   FileText,
+  Filter,
   Mail,
   Users,
   Loader2,
@@ -68,6 +69,16 @@ type Draft = {
   followUpDate: string;
   notes: string;
 };
+
+type StatusFilter = "all" | "active" | "interviewing" | "outcome" | "archived";
+type FollowUpFilter = "all" | "due" | "scheduled";
+
+const interviewingStatuses = new Set<ApplicationStatus>([
+  "phone_screen",
+  "technical_interview",
+  "final_interview",
+]);
+const outcomeStatuses = new Set<ApplicationStatus>(["offer", "rejected", "withdrawn"]);
 
 function label(value: string): string {
   return value
@@ -157,6 +168,8 @@ export default function ApplicationsPage() {
   const [jobs, setJobs] = React.useState<Job[]>([]);
   const [drafts, setDrafts] = React.useState<Record<string, Draft>>({});
   const [showCreate, setShowCreate] = React.useState(false);
+  const [statusFilter, setStatusFilter] = React.useState<StatusFilter>("all");
+  const [followUpFilter, setFollowUpFilter] = React.useState<FollowUpFilter>("all");
   const [newJobId, setNewJobId] = React.useState("");
   const [newStatus, setNewStatus] =
     React.useState<ApplicationStatus>("saved");
@@ -220,6 +233,19 @@ export default function ApplicationsPage() {
   const selectedNewJobId = availableJobs.some((job) => job.id === newJobId)
     ? newJobId
     : availableJobs[0]?.id ?? "";
+  const filteredApplications = (applications ?? []).filter((app) => {
+    const statusMatch =
+      statusFilter === "all" ||
+      (statusFilter === "active" && !outcomeStatuses.has(app.status) && app.status !== "archived") ||
+      (statusFilter === "interviewing" && interviewingStatuses.has(app.status)) ||
+      (statusFilter === "outcome" && outcomeStatuses.has(app.status)) ||
+      (statusFilter === "archived" && app.status === "archived");
+    const followUpMatch =
+      followUpFilter === "all" ||
+      (followUpFilter === "due" && isFollowUpDue(app)) ||
+      (followUpFilter === "scheduled" && Boolean(app.follow_up_at));
+    return statusMatch && followUpMatch;
+  });
 
 
   function updateDraft(id: string, changes: Partial<Draft>) {
@@ -369,6 +395,39 @@ export default function ApplicationsPage() {
         ))}
       </div>
 
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="application-status-filter" className="flex items-center gap-2">
+            <Filter className="size-4" />
+            Status
+          </Label>
+          <select
+            id="application-status-filter"
+            className={selectClass}
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
+          >
+            <option value="all">All statuses</option>
+            <option value="active">Active</option>
+            <option value="interviewing">Interviewing</option>
+            <option value="outcome">Offer/rejected/withdrawn</option>
+            <option value="archived">Archived</option>
+          </select>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="application-follow-up-filter">Follow-up</Label>
+          <select
+            id="application-follow-up-filter"
+            className={selectClass}
+            value={followUpFilter}
+            onChange={(event) => setFollowUpFilter(event.target.value as FollowUpFilter)}
+          >
+            <option value="all">All applications</option>
+            <option value="due">Due now</option>
+            <option value="scheduled">With reminder</option>
+          </select>
+        </div>
+      </div>
       {followUps && followUps.length > 0 && (
         <section className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -515,6 +574,41 @@ export default function ApplicationsPage() {
         </Card>
       )}
 
+      {applications !== null && applications.length > 0 && (
+        <Card>
+          <CardContent className="grid grid-cols-1 gap-4 pt-6 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="application-status-filter">Status</Label>
+              <select
+                id="application-status-filter"
+                className={selectClass}
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
+              >
+                <option value="all">All</option>
+                <option value="active">Active</option>
+                <option value="interviewing">Interviewing</option>
+                <option value="outcome">Outcome</option>
+                <option value="archived">Archived</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="application-follow-up-filter">Follow-up</Label>
+              <select
+                id="application-follow-up-filter"
+                className={selectClass}
+                value={followUpFilter}
+                onChange={(event) => setFollowUpFilter(event.target.value as FollowUpFilter)}
+              >
+                <option value="all">All</option>
+                <option value="due">Due</option>
+                <option value="scheduled">Scheduled</option>
+              </select>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {loading || applications === null ? (
         <div className="text-muted-foreground flex items-center gap-2 text-sm">
           <Loader2 className="size-4 animate-spin" />
@@ -538,7 +632,7 @@ export default function ApplicationsPage() {
         />
       ) : (
         <ul className="grid grid-cols-1 gap-4">
-          {applications.map((app) => {
+          {filteredApplications.map((app) => {
             const draft = drafts[app.id] ?? draftFromApplication(app);
             const saving = savingId === app.id;
             const expanded = expandedId === app.id;
@@ -686,7 +780,7 @@ export default function ApplicationsPage() {
                                 Cover letter: {workflow.linked_cover_letter ? label(workflow.linked_cover_letter.status) : app.cover_letter_id ? "Linked" : "None"}
                               </p>
                               <p className="text-muted-foreground">
-                                Next action: {app.follow_up_at ? `Follow up ${formatDate(app.follow_up_at)}` : "None"}
+                                Next action: {workflow.next_action.due_at ? `${workflow.next_action.label} ${formatDate(workflow.next_action.due_at)}` : workflow.next_action.label}
                               </p>
                             </section>
 

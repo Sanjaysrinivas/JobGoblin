@@ -6,7 +6,16 @@ from sqlmodel import Session, select
 
 from app.api.deps import get_current_user
 from app.core.database import get_session
-from app.models import ActivityEvent, Application, InterviewPrep, Job, Resume, ResumeVersion, User
+from app.models import (
+    ActivityEvent,
+    Application,
+    InterviewPrep,
+    Job,
+    Profile,
+    Resume,
+    ResumeVersion,
+    User,
+)
 from app.models.enums import InterviewPrepStatus
 from app.schemas.interview_prep import InterviewPrepCreate, InterviewPrepOut, InterviewPrepUpdate
 from app.services.interview_prep import generate_interview_questions
@@ -151,13 +160,21 @@ def create_interview_prep(
         session, current_user, payload.resume_id or (application.resume_id if application else None)
     )
     resume, version = _get_owned_version(session, current_user, resume, payload.resume_version_id)
+    profile = session.exec(select(Profile).where(Profile.user_id == current_user.id)).first()
     prep = InterviewPrep(
         user_id=current_user.id,
         job_id=job.id,
         application_id=application.id if application else None,
         resume_id=resume.id if resume else None,
         resume_version_id=version.id if version else None,
-        questions=generate_interview_questions(job, resume, version),
+        questions=generate_interview_questions(
+            job,
+            resume,
+            version,
+            profile,
+            application.notes if application else None,
+            payload.notes,
+        ),
         notes=payload.notes,
         provider="mock",
         model_used="deterministic",
@@ -196,6 +213,7 @@ def update_interview_prep(
     prep = _get_owned_prep(session, current_user, prep_id)
     updates = payload.model_dump(exclude_unset=True)
     old_status: InterviewPrepStatus = prep.status
+    old_notes = prep.notes
     if "questions" in updates and updates["questions"] is not None:
         updates["questions"] = [question.model_dump() for question in payload.questions or []]
     for field, value in updates.items():
@@ -208,6 +226,14 @@ def update_interview_prep(
             "interview_prep_status_changed",
             f"Moved interview prep to {prep.status.value}",
             {"from": old_status.value, "to": prep.status.value},
+        )
+    if "notes" in updates and prep.notes != old_notes:
+        _add_activity(
+            session,
+            current_user,
+            prep,
+            "interview_prep_notes_updated",
+            "Updated interview prep notes",
         )
     session.add(prep)
     session.commit()
