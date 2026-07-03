@@ -123,7 +123,7 @@
     <h2>Visual Roadmap</h2>
     <svg xmlns="http://www.w3.org/2000/svg" class="roadmap-svg" viewBox="0 0 1120 760" role="img" aria-labelledby="roadmapTitle roadmapDesc">
       <title id="roadmapTitle">JobGoblin product roadmap from current MVP to final state</title>
-      <desc id="roadmapDesc">The diagram shows completed foundations, current validation work, next feature work, and the final target state.</desc>
+      <desc id="roadmapDesc">The diagram shows completed foundations, proven local AI runtime, merge-ready resume versions, next job discovery work, and the final target state.</desc>
       <defs>
         <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
           <feGaussianBlur stdDeviation="4" result="blur"/>
@@ -166,36 +166,36 @@
 
       <g transform="translate(800 88)">
         <rect class="lane" width="250" height="244" rx="18"/>
-        <rect class="pill next-fill" x="20" y="20" width="96" height="28" rx="14" ry="14"/>
-        <text class="svg-label" x="34" y="39">Prove</text>
-        <text class="stage-title" x="20" y="76">Runtime Proof</text>
-        <text class="stage-sub" x="20" y="104">Ollama, Google OAuth, tunnel,</text>
-        <text class="stage-sub" x="20" y="124">secure cookies, full smoke.</text>
-        <rect class="node next" x="20" y="154" width="210" height="54" rx="12"/>
-        <text class="svg-small" x="38" y="177">Use AI_PROVIDER=ollama</text>
-        <text class="svg-small" x="38" y="197">Verify browser AI workflows</text>
+        <rect class="pill done-fill" x="20" y="20" width="96" height="28" rx="14" ry="14"/>
+        <text class="svg-label" x="34" y="39">Proven</text>
+        <text class="stage-title" x="20" y="76">Local AI Runtime</text>
+        <text class="stage-sub" x="20" y="104">Ollama via Caddy smoke,</text>
+        <text class="stage-sub" x="20" y="124">resume parse, analysis, drafts.</text>
+        <rect class="node done" x="20" y="154" width="210" height="54" rx="12"/>
+        <text class="svg-small" x="38" y="177">Real Ollama runtime proven</text>
+        <text class="svg-small" x="38" y="197">AI workflows smoke-tested</text>
       </g>
 
       <g transform="translate(250 420)">
         <rect class="lane" width="250" height="228" rx="18"/>
-        <rect class="pill next-fill" x="20" y="20" width="108" height="28" rx="14" ry="14"/>
-        <text class="svg-label" x="34" y="39">Next slice</text>
+        <rect class="pill done-fill" x="20" y="20" width="130" height="28" rx="14" ry="14"/>
+        <text class="svg-label" x="34" y="39">Merge-ready</text>
         <text class="stage-title" x="20" y="76">Resume Versions</text>
         <text class="stage-sub" x="20" y="104">Base resumes, duplicates,</text>
         <text class="stage-sub" x="20" y="124">version history, exports.</text>
-        <rect class="node next" x="20" y="152" width="210" height="50" rx="12"/>
-        <text class="svg-small" x="38" y="176">Do not overwrite source facts</text>
+        <rect class="node done" x="20" y="152" width="210" height="50" rx="12"/>
+        <text class="svg-small" x="38" y="176">Implemented without overwrites</text>
       </g>
 
       <g transform="translate(610 420)">
         <rect class="lane" width="250" height="228" rx="18"/>
-        <rect class="pill future-fill" x="20" y="20" width="126" height="28" rx="14" ry="14"/>
-        <text class="svg-label" x="34" y="39">Expand</text>
-        <text class="stage-title" x="20" y="76">Tailored Drafts</text>
-        <text class="stage-sub" x="20" y="104">Resume tailoring, workflow</text>
-        <text class="stage-sub" x="20" y="124">links, email drafts, prep.</text>
-        <rect class="node final" x="20" y="152" width="210" height="50" rx="12"/>
-        <text class="svg-small" x="38" y="176">Ground every AI suggestion</text>
+        <rect class="pill next-fill" x="20" y="20" width="126" height="28" rx="14" ry="14"/>
+        <text class="svg-label" x="34" y="39">Next stage</text>
+        <text class="stage-title" x="20" y="76">Job Discovery</text>
+        <text class="stage-sub" x="20" y="104">Preferences, country/location,</text>
+        <text class="stage-sub" x="20" y="124">providers, AI ranking.</text>
+        <rect class="node next" x="20" y="152" width="210" height="50" rx="12"/>
+        <text class="svg-small" x="38" y="176">Save matches, no auto-apply</text>
       </g>
 
       <g transform="translate(780 566)">
@@ -209,14 +209,14 @@
         <rect class="pill done-fill" x="0" y="0" width="18" height="18" rx="14" ry="14"/>
         <text class="svg-small" x="28" y="14">Built</text>
         <rect class="pill next-fill" x="90" y="0" width="18" height="18" rx="14" ry="14"/>
-        <text class="svg-small" x="118" y="14">Immediate proof / next work</text>
+        <text class="svg-small" x="118" y="14">Immediate next work</text>
         <rect class="pill future-fill" x="306" y="0" width="18" height="18" rx="14" ry="14"/>
         <text class="svg-small" x="334" y="14">Future product expansion</text>
       </g>
     </svg>
     <div class="legend">
       <span><i class="swatch" style="background:var(--green)"></i>Implemented</span>
-      <span><i class="swatch" style="background:var(--amber)"></i>Needs verification or next build</span>
+      <span><i class="swatch" style="background:var(--amber)"></i>Next build</span>
       <span><i class="swatch" style="background:var(--blue)"></i>Final-state expansion</span>
     </div>
   </section>
@@ -224,16 +224,16 @@
   <section id="now">
     <h2>Where We Are Now</h2>
     <div class="grid cols-3">
-      <div class="card"><span class="status"><i class="dot"></i>Merged MVP</span><p>Resumes, jobs, contacts, applications, dashboard, profile builder, follow-up reminders, analysis, cover letters, and outreach drafts exist.</p></div>
+      <div class="card"><span class="status"><i class="dot"></i>Merged MVP</span><p>Resumes, resume versions, jobs, contacts, applications, dashboard, profile builder, follow-up reminders, analysis, cover letters, and outreach drafts exist or are merge-ready.</p></div>
       <div class="card"><span class="status"><i class="dot"></i>Private by design</span><p>Invite-only auth, user scoping, no silent external actions, and review-only drafts are core product constraints.</p></div>
-      <div class="card"><span class="status"><i class="dot"></i>Needs proof</span><p>The merged app still needs integrated verification, real Ollama runtime checks, OAuth validation, and tunnel smoke testing.</p></div>
+      <div class="card"><span class="status"><i class="dot"></i>Runtime proven</span><p>Real Ollama-backed resume parsing, resume-to-job analysis, and cover-letter generation have been proven through Caddy on port 8080; OAuth, tunnel HTTPS, and secure-cookie behavior still need validation.</p></div>
     </div>
   </section>
 
   <section id="target">
     <h2>Final Application State</h2>
     <div class="card">
-      <p>The final app is a local-first job-search command center. A user can maintain a master profile, manage resume versions, save jobs, analyze fit, generate grounded cover letters and tailored resume drafts, track applications and contacts, prepare outreach manually, plan follow-ups, and prepare for interviews.</p>
+      <p>The final app is a local-first job-search command center. A user can maintain a master profile, manage resume versions, set job preferences, target countries and locations, discover jobs through search providers, save promising matches, analyze fit, generate grounded cover letters and tailored resume drafts, track applications and contacts, prepare outreach manually, plan follow-ups, and prepare for interviews.</p>
       <p>Every generated artifact remains editable and traceable to user-provided facts. Every external action remains explicit and human-reviewed.</p>
     </div>
   </section>
@@ -241,15 +241,15 @@
   <section id="remaining">
     <h2>Remaining Work</h2>
     <div class="grid cols-3">
-      <div class="card"><h3>Stabilize</h3><ul><li>Keep local `dev` aligned.</li><li>Run backend, frontend, and E2E checks.</li><li>Smoke the full browser workflow.</li><li>Keep docs aligned with merged code.</li></ul></div>
-      <div class="card"><h3>Prove Runtime</h3><ul><li>Run real Ollama models.</li><li>Inspect AI output quality.</li><li>Validate OAuth and tunnel HTTPS.</li><li>Confirm secure cookies.</li></ul></div>
-      <div class="card"><h3>Build Next</h3><ul><li>Resume versions.</li><li>Tailored resume drafts.</li><li>Workflow linking.</li><li>Email draft/export.</li><li>Interview prep.</li></ul></div>
+      <div class="card"><h3>Stabilize</h3><ul><li>Keep local `dev` aligned.</li><li>Merge resume versions.</li><li>Run backend, frontend, and E2E checks.</li><li>Keep docs aligned with merged code.</li></ul></div>
+      <div class="card"><h3>Job Discovery</h3><ul><li>Store job preferences.</li><li>Target country and location.</li><li>Add a search provider layer.</li><li>Rank matches with AI.</li><li>Save discovered jobs.</li></ul></div>
+      <div class="card"><h3>Build Later</h3><ul><li>Tailored resume drafts.</li><li>Workflow linking.</li><li>Email draft/export.</li><li>Interview prep.</li><li>No auto-apply.</li></ul></div>
     </div>
   </section>
 
   <section id="done">
     <h2>Definition Of Done</h2>
-    <div class="callout"><p>JobGoblin is done when the complete job-search loop works privately from resume/profile to analysis, tailored drafts, application tracking, follow-up, outreach prep, and interview prep, with real local AI, clear operations docs, strong user isolation, and no silent external actions.</p></div>
+    <div class="callout"><p>JobGoblin is done when the complete job-search loop works privately from resume/profile to preference-based job discovery, saved matches, analysis, tailored drafts, application tracking, follow-up, outreach prep, and interview prep, with real local AI, clear operations docs, strong user isolation, and no silent external actions or auto-apply behavior.</p></div>
   </section>
 
   <footer>
