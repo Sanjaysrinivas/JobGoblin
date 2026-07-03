@@ -23,13 +23,13 @@ Hard product boundaries:
 
 The MVP workflow is mostly implemented. PR #25 has been merged into `dev`, adding resume versions and updating the roadmap to make Job Discovery the next main product direction.
 
-Implemented or merge-ready:
+Implemented:
 
 - Docker Compose stack: PostgreSQL, FastAPI backend, Next.js frontend, Caddy, Ollama, optional Cloudflare Tunnel profile.
 - Same-origin browser path through Caddy: `/` to frontend and `/api/*` to backend.
 - Email/password auth, invite-only registration, admin invites, Google OAuth plumbing, allowlist support, TOTP MFA, and environment-aware cookies.
 - Resume upload, PDF/DOCX text extraction, AI parsing, edit/list/detail/delete, and PDF export.
-- Resume versions in PR #25: version records, migration, duplicate/edit/make-current/delete/list/parse/export flows, current-version response fields, source-fact preservation, and focused tests.
+- Resume versions from PR #25: version records, migration, duplicate/edit/make-current/delete/list/parse/export flows, current-version response fields, source-fact preservation, and focused tests.
 - Job CRUD and job detail UI.
 - Contacts, applications, dashboard, activity, follow-up reminders.
 - Resume-to-job analysis with deterministic scoring plus AI explanation.
@@ -240,7 +240,7 @@ Complete or mostly complete:
 - Analysis, cover letters, outreach drafts.
 - Profile builder and follow-up reminders.
 - Runtime smoke tooling.
-- Resume versions are merge-ready in PR #25.
+- Resume versions are merged in PR #25.
 - Local Ollama baseline is proven for main AI smoke flows.
 
 Partial:
@@ -260,7 +260,7 @@ Pending:
 
 ## Next Implementation Plan: Job Discovery MVP
 
-Build this after PR #25 is merged into `dev`.
+Build this from a fresh branch off `dev`.
 
 ### Slice 1: Preferences
 
@@ -379,7 +379,8 @@ Backend:
 ```powershell
 cd backend
 uv run ruff check .
-uv run --extra dev pytest -q
+cd ..
+test\e2e\run-backend-db-tests.ps1
 ```
 
 Frontend:
@@ -433,10 +434,10 @@ Do not print or commit passwords from `.env`.
 ## Known Follow-Up After PR #25 Merge
 
 - Pull latest `dev` before starting new work.
-- Confirm `AGENT_HANDOVER.md`, roadmap markdown, and roadmap HTML reflect the merged state.
+- Confirm `AGENT_HANDOVER.md`, README, roadmap, design, architecture, and frontend docs reflect the merged state.
 - Run full CI-equivalent checks from merged `dev`.
 - Run manual browser pass on `http://localhost:8080`.
-- Decide whether to update `README.md`, `docs/design.md`, and `docs/architecture.md` to move resume versions from deferred/V2 to implemented.
+- Validate the merged resume-version browser workflow.
 - Start Job Discovery on a fresh feature branch from `dev`.
 
 ## Repository Hygiene

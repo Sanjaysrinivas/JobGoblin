@@ -93,7 +93,7 @@ In Docker, browser calls use the same-origin `/api` prefix through Caddy. Server
 The frontend currently talks to implemented backend endpoints for:
 
 - Auth: login, invite-only signup, logout, current user, MFA challenge/enroll/verify, and Google OAuth redirect entry points.
-- Resumes: upload, list, detail, edit, delete, re-parse, and PDF export.
+- Resumes: upload, list, detail, edit, delete, re-parse, version management, and PDF export.
 - Jobs: list, create, detail, edit, delete, and saved analysis history.
 - Contacts: list, create, detail, edit, and delete.
 - Applications: list, create, edit, delete, manual status tracking, and follow-up reminder fields.
@@ -103,7 +103,7 @@ The frontend currently talks to implemented backend endpoints for:
 - Outreach: local review-only draft list/create/edit/delete flows; no email or external send action is performed.
 - Profile: view, save, delete, and seed a private profile from parsed resume facts.
 
-Resume versions, tailored drafts, email draft/export integration, and interview prep are still future work.
+Tailored drafts, email draft/export integration, and interview prep are still future work.
 
 All API requests use `credentials: "include"` so the HTTP-only session cookie flows with same-origin Docker/Caddy requests and direct dev requests.
 

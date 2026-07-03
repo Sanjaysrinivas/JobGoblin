@@ -53,7 +53,7 @@ Remaining validation and V2 work:
 - Integrated post-merge browser workflow validation.
 - Real local AI verification with `AI_PROVIDER=ollama`.
 - Google OAuth, allowlist, HTTPS tunnel, and secure-cookie validation with real credentials.
-- Resume versions, tailored resume drafts, email draft/export integration, and interview prep.
+- Tailored resume drafts, email draft/export integration, and interview prep.
 
 Review posture:
 
@@ -85,6 +85,11 @@ PostgreSQL via SQLModel and Alembic. Primary keys are UUIDs. User-owned tables i
 
 - Stores title, original filename, content type, size, opaque file key, extracted text, parsed JSON, default flag, and timestamps.
 - Files are stored through the storage interface; raw paths are not exposed to clients.
+
+`resume_versions`
+
+- Stores editable resume versions with title, extracted text, parsed JSON, current-version flag, and timestamps.
+- Preserves uploaded source facts on `resumes` while allowing role-specific edits and exports from the current version.
 
 `jobs`
 
@@ -132,7 +137,6 @@ PostgreSQL via SQLModel and Alembic. Primary keys are UUIDs. User-owned tables i
 
 ### Deferred V2 Tables
 
-- `resume_versions`
 - `tailored_resume_drafts`
 - `email_drafts`
 
@@ -235,7 +239,7 @@ Dashboard:
 
 ### Pending V2 Work
 
-- Resume versions, tailored resume drafts, email draft/export integration, and interview prep.
+- Tailored resume drafts, email draft/export integration, and interview prep.
 
 ## 6. Authentication And Isolation
 
