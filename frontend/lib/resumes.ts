@@ -117,13 +117,13 @@ export function updateResumeVersion(
   );
 }
 
-/** POST /api/resumes/{id}/versions/{versionId}/current - make a version current. */
+/** POST /api/resumes/{id}/versions/{versionId}/make-current - make a version current. */
 export function makeResumeVersionCurrent(
   resumeId: string,
   versionId: string
-): Promise<ResumeDetail> {
-  return api.post<ResumeDetail>(
-    `/resumes/${resumeId}/versions/${versionId}/current`
+): Promise<ResumeVersion> {
+  return api.post<ResumeVersion>(
+    `/resumes/${resumeId}/versions/${versionId}/make-current`
   );
 }
 

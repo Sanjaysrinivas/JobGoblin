@@ -82,6 +82,8 @@ def test_upload_creates_initial_current_version(client, session):
     version_id = uuid.UUID(body["current_version_id"])
     version = session.get(ResumeVersion, version_id)
 
+    assert body["version_count"] == 1
+    assert body["current_version"]["id"] == body["current_version_id"]
     assert version is not None
     assert version.resume_id == uuid.UUID(body["id"])
     assert version.is_current is True
@@ -120,6 +122,8 @@ def test_duplicate_edit_make_current_preserves_source_resume_facts(client, sessi
     detail = client.get(f"/api/resumes/{uploaded['id']}")
     assert detail.status_code == 200
     assert detail.json()["current_version_id"] == edited_id
+    assert detail.json()["version_count"] == 2
+    assert detail.json()["current_version"]["id"] == edited_id
     assert detail.json()["title"] == "Edited"
     assert detail.json()["extracted_text"] == "Edited version text"
     assert detail.json()["parsed_json"] == {"summary": "Edited"}

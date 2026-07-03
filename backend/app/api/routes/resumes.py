@@ -115,9 +115,14 @@ def _resume_payload(
     session: Session, resume: Resume, version: ResumeVersion | None = None
 ) -> dict:
     current = version or _get_current_version(session, resume)
+    version_count = session.exec(
+        select(func.count()).select_from(ResumeVersion).where(ResumeVersion.resume_id == resume.id)
+    ).one()
     return {
         "id": resume.id,
         "current_version_id": current.id if current else None,
+        "current_version": current,
+        "version_count": version_count,
         "title": current.title if current else resume.title,
         "original_filename": resume.original_filename,
         "content_type": resume.content_type,

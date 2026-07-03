@@ -36,6 +36,8 @@ class ParsedResume(BaseModel):
 class ResumeOut(BaseModel):
     id: uuid.UUID
     current_version_id: uuid.UUID | None = None
+    current_version: "ResumeVersionOut | None"
+    version_count: int
     title: str
     original_filename: str
     content_type: str
