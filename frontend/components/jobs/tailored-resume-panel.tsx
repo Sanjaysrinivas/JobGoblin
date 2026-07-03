@@ -113,7 +113,17 @@ export function TailoredResumePanel({ jobId }: { jobId: string }) {
   }, [jobId]);
 
   React.useEffect(() => {
-    if (!selectedResumeId) return;
+    if (!selectedResumeId) {
+      let active = true;
+      queueMicrotask(() => {
+        if (!active) return;
+        setVersions([]);
+        setSelectedVersionId("");
+      });
+      return () => {
+        active = false;
+      };
+    }
 
     let active = true;
     (async () => {
