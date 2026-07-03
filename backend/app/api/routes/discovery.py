@@ -4,6 +4,7 @@ Discovery finds and ranks candidate jobs, but never applies or contacts anyone.
 Users explicitly save selected results into normal Jobs.
 """
 
+import asyncio
 import uuid
 from typing import Annotated
 
@@ -21,6 +22,8 @@ from app.models import (
     JobSearchResult,
     JobSearchRun,
     Profile,
+    Resume,
+    ResumeVersion,
     User,
 )
 from app.schemas.discovery import (
@@ -32,7 +35,8 @@ from app.schemas.discovery import (
     JobSearchRunOut,
 )
 from app.schemas.job import JobOut
-from app.services.job_discovery import build_query, rank_result, search_jobs
+from app.services.ai_provider import get_ai_provider
+from app.services.job_discovery import build_query, rank_result_with_ai, search_jobs
 
 router = APIRouter(prefix="/discovery", tags=["discovery"])
 
@@ -85,6 +89,73 @@ def _profile_terms(profile: Profile | None) -> list[str]:
             cleaned.append(text)
             seen.add(key)
     return cleaned[:10]
+
+
+def _format_context_value(value: object) -> str:
+    if isinstance(value, list):
+        parts = []
+        for item in value:
+            if isinstance(item, dict):
+                fields = [
+                    str(item.get(key) or "").strip()
+                    for key in ("role", "company", "credential", "institution")
+                ]
+                highlights = item.get("highlights")
+                if isinstance(highlights, list):
+                    fields.extend(str(h).strip() for h in highlights[:3])
+                text = " - ".join(field for field in fields if field)
+            else:
+                text = str(item).strip()
+            if text:
+                parts.append(text)
+        return "; ".join(parts)
+    if isinstance(value, dict):
+        return "; ".join(
+            f"{key}: {text}" for key, raw in value.items() if (text := _format_context_value(raw))
+        )
+    return str(value or "").strip()
+
+
+def _resume_context(session: Session, user_id: uuid.UUID) -> str:
+    resume = session.exec(
+        select(Resume)
+        .where(Resume.user_id == user_id)
+        .order_by(Resume.is_default.desc(), Resume.created_at.desc())
+    ).first()
+    if resume is None:
+        return ""
+    version = session.exec(
+        select(ResumeVersion).where(
+            ResumeVersion.resume_id == resume.id, ResumeVersion.is_current.is_(True)
+        )
+    ).first()
+    parsed = version.parsed_json if version else resume.parsed_json
+    if isinstance(parsed, dict):
+        parts = []
+        for key in ("summary", "skills", "experience", "projects", "certifications"):
+            text = _format_context_value(parsed.get(key))
+            if text:
+                parts.append(f"{key}: {text}")
+        if parts:
+            return "\n".join(parts)
+    text = version.extracted_text if version else resume.extracted_text
+    return (text or "").strip()
+
+
+def _saved_job_terms(session: Session, user_id: uuid.UUID) -> list[str]:
+    jobs = session.exec(
+        select(Job).where(Job.user_id == user_id).order_by(Job.created_at.desc()).limit(10)
+    ).all()
+    terms: list[str] = []
+    seen = set()
+    for job in jobs:
+        for term in (job.title, job.company_name):
+            text = (term or "").strip()
+            key = text.lower()
+            if text and key not in seen:
+                terms.append(text)
+                seen.add(key)
+    return terms[:20]
 
 
 def _get_result(session: Session, user: User, result_id: uuid.UUID) -> JobSearchResult:
@@ -162,6 +233,9 @@ async def create_run(
         preferences.target_locations[0] if preferences.target_locations else None
     )
     provider = payload.provider or settings.job_discovery_provider
+    resume_context = _resume_context(session, current_user.id)
+    saved_job_terms = _saved_job_terms(session, current_user.id)
+    ai_provider = get_ai_provider()
     query = build_query(preferences, payload.query, profile_terms=profile_terms)
     run = JobSearchRun(
         user_id=current_user.id,
@@ -173,6 +247,7 @@ async def create_run(
         preferences_snapshot={
             **preferences.model_dump(mode="json"),
             "profile_terms": profile_terms,
+            "saved_job_terms": saved_job_terms,
         },
     )
     session.add(run)
@@ -195,7 +270,7 @@ async def create_run(
         session.refresh(run)
         return run
 
-    created = 0
+    candidates = []
     seen_dedupes: set[str] = set()
     for item in raw_results:
         dedupe = _dedupe_key(
@@ -210,29 +285,43 @@ async def create_run(
                 JobSearchResult.dedupe_key == dedupe,
             )
         ).first()
-        if existing is not None:
-            continue
-        fit_score, fit_reason = rank_result(item, preferences, profile_terms=profile_terms)
-        result = JobSearchResult(
-            user_id=current_user.id,
-            run_id=run.id,
-            provider=item.provider,
-            source=item.source,
-            source_url=item.source_url,
-            canonical_url=item.source_url,
-            title=item.title,
-            company_name=item.company_name,
-            location=item.location,
-            work_mode=item.work_mode,
-            description=item.description,
-            posted_at=item.posted_at,
-            dedupe_key=dedupe,
-            fit_score=fit_score,
-            fit_reason=fit_reason,
-        )
-        session.add(result)
-        created += 1
+        if existing is None:
+            candidates.append((item, dedupe))
 
+    rankings = await asyncio.gather(
+        *(
+            rank_result_with_ai(
+                item,
+                preferences,
+                ai_provider,
+                profile_terms=profile_terms,
+                resume_context=resume_context,
+                saved_job_terms=saved_job_terms,
+            )
+            for item, _dedupe in candidates
+        )
+    )
+    for (item, dedupe), (fit_score, fit_reason) in zip(candidates, rankings, strict=False):
+        session.add(
+            JobSearchResult(
+                user_id=current_user.id,
+                run_id=run.id,
+                provider=item.provider,
+                source=item.source,
+                source_url=item.source_url,
+                canonical_url=item.source_url,
+                title=item.title,
+                company_name=item.company_name,
+                location=item.location,
+                work_mode=item.work_mode,
+                description=item.description,
+                posted_at=item.posted_at,
+                dedupe_key=dedupe,
+                fit_score=fit_score,
+                fit_reason=fit_reason,
+            )
+        )
+    created = len(candidates)
     run.status = DiscoveryRunStatus.completed
     run.result_count = created
     session.add(run)
