@@ -8,7 +8,7 @@ def current_resume_content(session: Session, resume: Resume) -> tuple[str, dict 
         select(ResumeVersion)
         .where(
             ResumeVersion.resume_id == resume.id,
-            ResumeVersion.is_current == True,  # noqa: E712 - SQLAlchemy expression
+            ResumeVersion.is_current
         )
         .order_by(ResumeVersion.updated_at.desc())
     ).first()

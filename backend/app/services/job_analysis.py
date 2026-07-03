@@ -437,7 +437,7 @@ async def analyze_resume_for_job(
     parsed_resume: dict | None = None,
 ) -> JobAnalysisResult:
     """Run deterministic scoring, then request AI explanation/recommendations."""
-    text = resume.extracted_text or "" if resume_text is None else resume_text
+    text = resume_text if resume_text is not None else (resume.extracted_text or "")
     parsed = resume.parsed_json if parsed_resume is None else parsed_resume
     scores = score_resume_for_job(
         text,

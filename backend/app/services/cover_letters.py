@@ -43,15 +43,12 @@ async def generate_cover_letter(
     parsed_resume: dict | None = None,
 ) -> str:
     """Generate a grounded, editable draft for the owned resume/job pair."""
-    context = (
-        _resume_context(resume)
-        if resume_text is None and parsed_resume is None
-        else "\n\n".join(
-            part
-            for part in (resume_text or "", str(parsed_resume) if parsed_resume else "")
-            if part.strip()
-        ).strip()
-    )
+    text = resume_text if resume_text is not None else (resume.extracted_text or "")
+    parsed = parsed_resume if parsed_resume is not None else resume.parsed_json
+    parts = [text]
+    if parsed:
+        parts.append(str(parsed))
+    context = "\n\n".join(part for part in parts if part.strip()).strip()
     prompt = (
         "Create a cover-letter draft grounded only in the supplied resume and "
         "job posting. If a qualification is not supported by the resume, omit "

@@ -70,10 +70,10 @@ async def create_resume_job_analysis(
 ) -> JobAnalysis:
     resume, job = _get_owned_resume_and_job(session, current_user, payload)
     resume_text, parsed_resume = current_resume_content(session, resume)
-    if not resume_text.strip():
+    if not resume_text.strip() and not parsed_resume:
         raise _error(
             status.HTTP_400_BAD_REQUEST,
-            "Resume has no extracted text to analyze.",
+            "Resume has no extracted text or parsed content to analyze.",
             "no_extracted_text",
         )
 
