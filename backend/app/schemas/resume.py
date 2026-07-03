@@ -35,6 +35,7 @@ class ParsedResume(BaseModel):
 
 class ResumeOut(BaseModel):
     id: uuid.UUID
+    current_version_id: uuid.UUID | None = None
     title: str
     original_filename: str
     content_type: str
@@ -54,3 +55,29 @@ class ResumeUpdate(BaseModel):
     title: str | None = None
     extracted_text: str | None = None
     is_default: bool | None = None
+
+
+class ResumeVersionOut(BaseModel):
+    id: uuid.UUID
+    resume_id: uuid.UUID
+    title: str
+    extracted_text: str | None = None
+    parsed_json: dict | None = None
+    is_current: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ResumeVersionCreate(BaseModel):
+    source_version_id: uuid.UUID | None = None
+    title: str | None = None
+    extracted_text: str | None = None
+    parsed_json: dict | None = None
+
+
+class ResumeVersionUpdate(BaseModel):
+    title: str | None = None
+    extracted_text: str | None = None
+    parsed_json: dict | None = None
