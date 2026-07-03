@@ -21,7 +21,7 @@ Phase status:
 - Phase 2 core resource modules are implemented: jobs, contacts, applications, dashboard, cover-letter drafts, and outreach drafts.
 - Phase 3 resume-to-job analysis is implemented and needs integrated post-merge validation.
 - Phase 4 runtime tooling and the optional Cloudflare Tunnel profile are implemented; real Ollama, OAuth, and tunnel smoke testing are still required.
-- Phase 5 has profile builder, follow-up reminders, and resume versions merged. Tailored resume drafts, email draft/export integration, and interview prep are still ahead.
+- Phase 5 has the profile builder, follow-up reminders, and resume versions merged. Tailored resume drafts, email draft/export integration, and interview prep are still ahead.
 
 Implemented:
 
