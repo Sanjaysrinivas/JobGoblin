@@ -148,6 +148,49 @@ def _resume_context(session: Session, user_id: uuid.UUID) -> str:
     text = version.extracted_text if version else resume.extracted_text
     return (text or "").strip()
 
+def _resume_search_terms(session: Session, user_id: uuid.UUID) -> list[str]:
+    resume = session.exec(
+        select(Resume)
+        .where(Resume.user_id == user_id)
+        .order_by(Resume.is_default.desc(), Resume.created_at.desc())
+    ).first()
+    if resume is None:
+        return []
+    version = session.exec(
+        select(ResumeVersion).where(
+            ResumeVersion.resume_id == resume.id, ResumeVersion.is_current.is_(True)
+        )
+    ).first()
+    parsed = version.parsed_json if version else resume.parsed_json
+    if not isinstance(parsed, dict):
+        return []
+
+    terms: list[str] = []
+    skills = parsed.get("skills")
+    if isinstance(skills, list):
+        for item in skills[:8]:
+            if isinstance(item, str):
+                terms.append(item)
+    experience = parsed.get("experience")
+    if isinstance(experience, list):
+        for item in experience[:3]:
+            if isinstance(item, dict) and item.get("role"):
+                terms.append(str(item["role"]))
+    projects = parsed.get("projects")
+    if isinstance(projects, list):
+        for item in projects[:3]:
+            if isinstance(item, str):
+                terms.append(item)
+
+    cleaned: list[str] = []
+    seen = set()
+    for term in terms:
+        text = term.strip()
+        key = text.lower()
+        if text and key not in seen:
+            cleaned.append(text)
+            seen.add(key)
+    return cleaned[:10]
 
 def _saved_job_terms(session: Session, user_id: uuid.UUID) -> list[str]:
     jobs = session.exec(
@@ -255,9 +298,15 @@ async def create_run(
         preferences.target_locations[0] if preferences.target_locations else None
     )
     resume_context = _resume_context(session, current_user.id)
+    resume_terms = _resume_search_terms(session, current_user.id)
     saved_job_terms = _saved_job_terms(session, current_user.id)
     ai_provider = get_ai_provider()
-    query = build_query(preferences, payload.query, profile_terms=profile_terms)
+    query = build_query(
+        preferences,
+        payload.query,
+        profile_terms=profile_terms,
+        resume_terms=resume_terms,
+    )
     run = JobSearchRun(
         user_id=current_user.id,
         provider=provider,
@@ -268,6 +317,7 @@ async def create_run(
         preferences_snapshot={
             **preferences.model_dump(mode="json"),
             "profile_terms": profile_terms,
+            "resume_terms": resume_terms,
             "saved_job_terms": saved_job_terms,
         },
     )
