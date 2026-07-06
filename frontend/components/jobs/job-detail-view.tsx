@@ -157,82 +157,92 @@ export function JobDetailView({ jobId }: { jobId: string }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0 space-y-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="-ml-2"
-            onClick={() => router.push("/jobs")}
-          >
-            <ArrowLeft className="size-4" />
-            Jobs
-          </Button>
-          <h1 className="font-display text-2xl font-semibold tracking-tight">
-            {job.title}
-          </h1>
-          <p className="text-muted-foreground text-sm">
-            {job.company_name}
-            {job.location ? ` - ${job.location}` : ""}
-          </p>
-        </div>
+      <div className="space-y-4">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="-ml-2"
+          onClick={() => router.push("/jobs")}
+        >
+          <ArrowLeft className="size-4" />
+          Jobs
+        </Button>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant={editing ? "secondary" : "outline"}
-            size="sm"
-            onClick={() => setEditing((value) => !value)}
-            disabled={busy !== null}
-          >
-            {editing ? <Save className="size-4" /> : <Pencil className="size-4" />}
-            {editing ? "Editing" : "Edit"}
-          </Button>
-          {job.source_url && (
-            <Button variant="outline" size="sm" asChild>
-              <a href={job.source_url} target="_blank" rel="noreferrer">
-                <ExternalLink className="size-4" />
-                Open source
-              </a>
-            </Button>
-          )}
-          {confirmingDelete ? (
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground text-xs">
-                Delete this job?
-              </span>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={onDelete}
-                disabled={busy !== null}
-              >
-                {busy === "delete" ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Trash2 className="size-4" />
-                )}
-                Confirm
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setConfirmingDelete(false)}
-                disabled={busy !== null}
-              >
-                Cancel
-              </Button>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0 space-y-3">
+            <div className="flex flex-wrap gap-2">
+              <Badge variant={priorityVariant(job.priority)}>
+                {label(job.priority)} priority
+              </Badge>
+              <Badge variant={workModeVariant(job.work_mode)}>
+                {label(job.work_mode)}
+              </Badge>
+              <Badge variant="outline">{label(job.source)}</Badge>
             </div>
-          ) : (
+            <h1 className="font-display max-w-5xl break-words text-2xl leading-tight font-semibold tracking-tight sm:text-3xl">
+              {job.title}
+            </h1>
+            <p className="text-muted-foreground flex flex-wrap gap-x-2 gap-y-1 text-sm">
+              <span>{job.company_name}</span>
+              {job.location && <span>- {job.location}</span>}
+            </p>
+          </div>
+
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
             <Button
-              variant="outline"
+              variant={editing ? "secondary" : "outline"}
               size="sm"
-              onClick={() => setConfirmingDelete(true)}
+              onClick={() => setEditing((value) => !value)}
               disabled={busy !== null}
             >
-              <Trash2 className="size-4" />
-              Delete
+              {editing ? <Save className="size-4" /> : <Pencil className="size-4" />}
+              {editing ? "Editing" : "Edit"}
             </Button>
-          )}
+            {job.source_url && (
+              <Button variant="outline" size="sm" asChild>
+                <a href={job.source_url} target="_blank" rel="noreferrer">
+                  <ExternalLink className="size-4" />
+                  Open source
+                </a>
+              </Button>
+            )}
+            {confirmingDelete ? (
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground text-xs">Delete this job?</span>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={onDelete}
+                  disabled={busy !== null}
+                >
+                  {busy === "delete" ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="size-4" />
+                  )}
+                  Confirm
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setConfirmingDelete(false)}
+                  disabled={busy !== null}
+                >
+                  Cancel
+                </Button>
+              </div>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setConfirmingDelete(true)}
+                disabled={busy !== null}
+              >
+                <Trash2 className="size-4" />
+                Delete
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -245,49 +255,14 @@ export function JobDetailView({ jobId }: { jobId: string }) {
         </p>
       )}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="text-base">Job details</CardTitle>
-            <CardDescription>
-              Metadata used for filtering and future analysis.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex flex-wrap gap-2">
-              <Badge variant={priorityVariant(job.priority)}>
-                {label(job.priority)} priority
-              </Badge>
-              <Badge variant={workModeVariant(job.work_mode)}>
-                {label(job.work_mode)}
-              </Badge>
-              <Badge variant="outline">{label(job.source)}</Badge>
-            </div>
-            <dl className="grid grid-cols-1 gap-3 text-sm">
-              <div>
-                <dt className="text-muted-foreground">Salary</dt>
-                <dd className="font-medium">{salary(job)}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Created</dt>
-                <dd className="font-medium">{formatDate(job.created_at)}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Updated</dt>
-                <dd className="font-medium">{formatDate(job.updated_at)}</dd>
-              </div>
-            </dl>
-          </CardContent>
-        </Card>
-
-        <Card className="lg:col-span-3">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
+        <Card className="xl:order-1">
           <CardHeader>
             <CardTitle className="text-base">
               {editing ? "Edit posting" : "Posting"}
             </CardTitle>
             <CardDescription>
-              Keep the full source text here so matching can run against the
-              original role description.
+              Full role description used for resume matching and application prep.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -300,12 +275,45 @@ export function JobDetailView({ jobId }: { jobId: string }) {
                 onCancel={() => setEditing(false)}
               />
             ) : (
-              <pre className="bg-secondary/35 text-foreground whitespace-pre-wrap break-words rounded-md p-4 font-sans text-sm leading-relaxed">
-                {job.description}
-              </pre>
+              <article className="text-foreground whitespace-pre-wrap break-words text-sm leading-7 md:text-[0.95rem]">
+                {job.description || "No description saved."}
+              </article>
             )}
           </CardContent>
         </Card>
+
+        <aside className="space-y-4 xl:order-2">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Quick facts</CardTitle>
+              <CardDescription>Tracking metadata for this role.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-4 text-sm xl:grid-cols-1">
+                <div>
+                  <dt className="text-muted-foreground">Company</dt>
+                  <dd className="break-words font-medium">{job.company_name}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Location</dt>
+                  <dd className="font-medium">{job.location || "Not provided"}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Salary</dt>
+                  <dd className="font-medium">{salary(job)}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Created</dt>
+                  <dd className="font-medium">{formatDate(job.created_at)}</dd>
+                </div>
+                <div>
+                  <dt className="text-muted-foreground">Updated</dt>
+                  <dd className="font-medium">{formatDate(job.updated_at)}</dd>
+                </div>
+              </dl>
+            </CardContent>
+          </Card>
+        </aside>
       </div>
 
       <JobAnalysisPanel jobId={job.id} />

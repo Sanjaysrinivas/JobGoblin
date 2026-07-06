@@ -70,6 +70,26 @@ async def test_search_jobs_rejects_bad_country_code():
         )
 
 
+@pytest.mark.asyncio
+async def test_mock_search_urls_are_unique_per_query():
+    first = await search_jobs(
+        provider="mock",
+        country="it",
+        location="Italy",
+        query="data analyst",
+        results_per_page=10,
+    )
+    second = await search_jobs(
+        provider="mock",
+        country="it",
+        location="Italy",
+        query="software engineer",
+        results_per_page=10,
+    )
+
+    assert {job.source_url for job in first}.isdisjoint(job.source_url for job in second)
+
+
 def _job(description: str = "Build Python APIs with PostgreSQL.") -> DiscoveredJob:
     return DiscoveredJob(
         provider="mock",

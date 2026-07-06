@@ -156,6 +156,66 @@ def test_run_uses_profile_terms_when_preferences_are_sparse(client, session, use
     result = client.get("/api/discovery/results").json()[0]
     assert result["fit_score"] > 35
 
+def test_run_uses_current_resume_terms_when_preferences_are_sparse(client, session, user):
+    resume = Resume(
+        user_id=user.id,
+        title="Default Resume",
+        original_filename="resume.pdf",
+        file_key="resume.pdf",
+        content_type="application/pdf",
+        file_size=12,
+        extracted_text="Old resume text",
+        parsed_json={"skills": ["Python"]},
+        is_default=True,
+    )
+    session.add(resume)
+    session.commit()
+    session.refresh(resume)
+    session.add(
+        ResumeVersion(
+            resume_id=resume.id,
+            title="Current",
+            extracted_text="Current resume version",
+            parsed_json={
+                "skills": ["Kubernetes", "FastAPI"],
+                "experience": [{"role": "Platform Engineer"}],
+            },
+            is_current=True,
+        )
+    )
+    session.commit()
+
+    run = client.post("/api/discovery/runs", json={"country": "us"})
+    assert run.status_code == 201, run.text
+    body = run.json()
+    assert "Kubernetes" in body["query"]
+    assert body["preferences_snapshot"]["resume_terms"] == [
+        "Kubernetes",
+        "FastAPI",
+        "Platform Engineer",
+    ]
+
+def test_resume_search_terms_ignores_non_list_parsed_fields(session, user):
+    from app.api.routes.discovery import _resume_search_terms
+
+    resume = Resume(
+        user_id=user.id,
+        title="Default Resume",
+        original_filename="resume.pdf",
+        file_key="resume.pdf",
+        content_type="application/pdf",
+        file_size=12,
+        parsed_json={
+            "skills": "Python",
+            "experience": {"role": "Platform Engineer"},
+            "projects": "Discovery",
+        },
+        is_default=True,
+    )
+    session.add(resume)
+    session.commit()
+
+    assert _resume_search_terms(session, user.id) == []
 
 def test_patch_cannot_mark_result_saved_directly(client):
     run = client.post("/api/discovery/runs", json={"country": "us", "query": "python"})

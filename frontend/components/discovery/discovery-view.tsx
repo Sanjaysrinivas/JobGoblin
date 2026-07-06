@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import {
   BookmarkPlus,
   ExternalLink,
@@ -36,33 +37,267 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 type FormState = {
+  continent: string;
   country: string;
-  location: string;
-  titles: string;
-  requiredKeywords: string;
-  optionalKeywords: string;
-  excludedKeywords: string;
-  blockedCompanies: string;
+  jobCategory: string;
+  jobTitle: string;
   visaSponsorshipRequired: boolean;
   workMode: WorkMode;
 };
 
-const defaultState: FormState = {
-  country: "us",
-  location: "",
-  titles: "",
-  requiredKeywords: "",
-  optionalKeywords: "",
-  excludedKeywords: "",
-  blockedCompanies: "",
-  visaSponsorshipRequired: false,
-  workMode: "unknown",
-};
+const selectClass =
+  "border-input bg-card focus-visible:border-ring focus-visible:ring-ring/40 h-9 w-full rounded-md border px-3 py-1 text-sm shadow-xs outline-none focus-visible:ring-[3px] disabled:opacity-50";
 
+const continents = [
+  {
+    value: "north_america",
+    label: "North America",
+    countries: [
+      { code: "us", label: "United States" },
+      { code: "ca", label: "Canada" },
+      { code: "mx", label: "Mexico" },
+    ],
+  },
+  {
+    value: "europe",
+    label: "Europe",
+    countries: [
+      { code: "gb", label: "United Kingdom" },
+      { code: "it", label: "Italy" },
+      { code: "de", label: "Germany" },
+      { code: "fr", label: "France" },
+      { code: "es", label: "Spain" },
+      { code: "nl", label: "Netherlands" },
+      { code: "ch", label: "Switzerland" },
+      { code: "at", label: "Austria" },
+      { code: "be", label: "Belgium" },
+      { code: "pl", label: "Poland" },
+    ],
+  },
+  {
+    value: "asia_pacific",
+    label: "Asia Pacific",
+    countries: [
+      { code: "in", label: "India" },
+      { code: "sg", label: "Singapore" },
+      { code: "au", label: "Australia" },
+      { code: "nz", label: "New Zealand" },
+    ],
+  },
+  { value: "south_america", label: "South America", countries: [{ code: "br", label: "Brazil" }] },
+  { value: "africa", label: "Africa", countries: [{ code: "za", label: "South Africa" }] },
+];
+
+const jobCategories = [
+  {
+    value: "it",
+    label: "IT",
+    titles: [
+      "A/B Test Engineer",
+      "AI Engineer",
+      "AI Product Engineer",
+      "AI Research Engineer",
+      "API Engineer",
+      "Application Analyst",
+      "Application Developer",
+      "Application Security Engineer",
+      "Applied Machine Learning Engineer",
+      "AR/VR Developer",
+      "Automation Engineer",
+      "Backend Developer",
+      "Backend Engineer",
+      "BI Analyst",
+      "BI Developer",
+      "Blockchain Developer",
+      "Blockchain Engineer",
+      "Business Intelligence Analyst",
+      "Business Systems Analyst",
+      "Cloud Architect",
+      "Cloud Engineer",
+      "Cloud Infrastructure Engineer",
+      "Cloud Security Engineer",
+      "Computer and Information Research Scientist",
+      "Computer Network Architect",
+      "Computer Network Support Specialist",
+      "Computer Programmer",
+      "Computer Support Specialist",
+      "Computer Systems Analyst",
+      "Computer Systems Engineer",
+      "Computer Vision Engineer",
+      "CRM Developer",
+      "Cybersecurity Analyst",
+      "Cybersecurity Engineer",
+      "Data Analyst",
+      "Data Architect",
+      "Data Engineer",
+      "Data Scientist",
+      "Data Visualization Engineer",
+      "Data Warehouse Engineer",
+      "Data Warehousing Specialist",
+      "Database Administrator",
+      "Database Architect",
+      "Database Developer",
+      "DevOps Engineer",
+      "DevSecOps Engineer",
+      "Digital Forensics Analyst",
+      "Digital Interface Designer",
+      "Document Management Specialist",
+      "Embedded Software Engineer",
+      "Enterprise Architect",
+      "ETL Developer",
+      "Firmware Engineer",
+      "Frontend Developer",
+      "Frontend Engineer",
+      "Full Stack Developer",
+      "Full Stack Engineer",
+      "Game Developer",
+      "Geographic Information Systems Technologist",
+      "Hardware Engineer",
+      "Health Informatics Specialist",
+      "Help Desk Analyst",
+      "Help Desk Technician",
+      "Information Security Analyst",
+      "Information Security Engineer",
+      "Information Systems Technician",
+      "Infrastructure Engineer",
+      "iOS Developer",
+      "IT Analyst",
+      "IT Architect",
+      "IT Consultant",
+      "IT Project Manager",
+      "IT Security Specialist",
+      "IT Service Manager",
+      "IT Support Engineer",
+      "IT Support Specialist",
+      "Java Developer",
+      "JavaScript Developer",
+      "Kubernetes Engineer",
+      "LLM Engineer",
+      "Machine Learning Engineer",
+      "Mainframe Developer",
+      "MLOps Engineer",
+      "Mobile Developer",
+      "Natural Language Processing Engineer",
+      "Network Administrator",
+      "Network Analyst",
+      "Network Engineer",
+      "Network Security Engineer",
+      "Network Support Specialist",
+      "Platform Engineer",
+      "Penetration Tester",
+      "PHP Developer",
+      "Power Platform Developer",
+      "Prompt Engineer",
+      "Python Developer",
+      "QA Analyst",
+      "QA Automation Engineer",
+      "QA Engineer",
+      "Release Engineer",
+      "Reliability Engineer",
+      "Research Software Engineer",
+      "Robotics Software Engineer",
+      "Salesforce Developer",
+      "SAP Developer",
+      "Scrum Master",
+      "Security Architect",
+      "Security Engineer",
+      "Security Operations Center Analyst",
+      "Site Reliability Engineer",
+      "Software Architect",
+      "Software Developer",
+      "Software Development Engineer in Test",
+      "Software Engineer",
+      "Software Engineering Manager",
+      "Software QA Analyst",
+      "Software Test Engineer",
+      "Solutions Architect",
+      "Systems Administrator",
+      "Systems Analyst",
+      "Systems Architect",
+      "Systems Engineer",
+      "Technical Program Manager",
+      "Technical Support Engineer",
+      "Technical Writer",
+      "Telecommunications Engineer",
+      "Test Automation Engineer",
+      "UI Developer",
+      "UX Engineer",
+      "Video Game Designer",
+      "Web Administrator",
+      "Web and Digital Interface Designer",
+      "Web Developer",
+      "WordPress Developer",
+    ],
+  },
+  {
+    value: "data",
+    label: "Data",
+    titles: [
+      "Analytics Engineer",
+      "BI Analyst",
+      "BI Developer",
+      "Business Intelligence Analyst",
+      "Clinical Data Manager",
+      "Data Analyst",
+      "Data Architect",
+      "Data Engineer",
+      "Data Scientist",
+      "Data Visualization Engineer",
+      "Data Warehouse Engineer",
+      "Database Administrator",
+      "Machine Learning Engineer",
+      "Marketing Analyst",
+      "Operations Analyst",
+      "Product Analyst",
+      "Quantitative Analyst",
+      "Research Analyst",
+      "Statistician",
+    ],
+  },
+  {
+    value: "product_design",
+    label: "Product & Design",
+    titles: [
+      "Digital Product Manager",
+      "Product Designer",
+      "Product Manager",
+      "Product Owner",
+      "Technical Product Manager",
+      "UI Designer",
+      "UX Designer",
+      "UX Researcher",
+      "Web and Digital Interface Designer",
+    ],
+  },
+  {
+    value: "sales_marketing",
+    label: "Sales & Marketing",
+    titles: ["Account Executive", "Sales Development Representative", "Marketing Manager"],
+  },
+  {
+    value: "operations",
+    label: "Operations",
+    titles: ["Operations Manager", "Project Manager", "Business Analyst"],
+  },
+  {
+    value: "finance",
+    label: "Finance",
+    titles: ["Financial Analyst", "Accountant", "Controller"],
+  },
+  {
+    value: "healthcare",
+    label: "Healthcare",
+    titles: ["Nurse", "Healthcare Administrator", "Clinical Research Associate"],
+  },
+  {
+    value: "education",
+    label: "Education",
+    titles: ["Teacher", "Instructional Designer", "Academic Advisor"],
+  },
+];
 const workModes: { value: WorkMode; label: string }[] = [
   { value: "unknown", label: "Any" },
   { value: "remote", label: "Remote" },
@@ -70,46 +305,64 @@ const workModes: { value: WorkMode; label: string }[] = [
   { value: "onsite", label: "On-site" },
 ];
 
-function splitList(value: string): string[] {
-  return value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
+const defaultState: FormState = {
+  continent: "north_america",
+  country: "us",
+  jobCategory: "it",
+  jobTitle: "Software Engineer",
+  visaSponsorshipRequired: false,
+  workMode: "unknown",
+};
+
+function countriesForContinent(continent: string) {
+  return continents.find((item) => item.value === continent)?.countries ?? continents[0].countries;
 }
 
-function joinList(value: string[] | undefined): string {
-  return value?.join(", ") ?? "";
+function titlesForCategory(category: string) {
+  return jobCategories.find((item) => item.value === category)?.titles ?? jobCategories[0].titles;
+}
+
+function continentForCountry(country: string): string {
+  return (
+    continents.find((group) => group.countries.some((item) => item.code === country))?.value ??
+    defaultState.continent
+  );
+}
+
+function categoryForTitle(title: string): string {
+  return jobCategories.find((group) => group.titles.includes(title))?.value ?? defaultState.jobCategory;
+}
+
+function countryLabel(continent: string, country: string): string {
+  return countriesForContinent(continent).find((item) => item.code === country)?.label ?? country;
 }
 
 function fromPreferences(preferences: JobSearchPreferences | null): FormState {
   if (!preferences) return defaultState;
+  const country = preferences.target_countries[0] ?? defaultState.country;
+  const title = preferences.desired_titles[0] ?? defaultState.jobTitle;
   return {
-    country: preferences.target_countries[0] ?? defaultState.country,
-    location: preferences.target_locations[0] ?? "",
-    titles: joinList(preferences.desired_titles),
-    requiredKeywords: joinList(preferences.required_keywords),
-    optionalKeywords: joinList(preferences.optional_keywords),
-    excludedKeywords: joinList(preferences.excluded_keywords),
-    blockedCompanies: joinList(preferences.blocked_companies),
+    continent: continentForCountry(country),
+    country,
+    jobCategory: categoryForTitle(title),
+    jobTitle: title,
     visaSponsorshipRequired: preferences.visa_sponsorship_required,
     workMode: preferences.work_mode,
   };
 }
 
 function toPreferences(state: FormState): JobSearchPreferencesPayload {
-  const country = state.country.trim().toLowerCase();
-  const location = state.location.trim();
   return {
-    target_countries: country ? [country] : [],
-    target_locations: location ? [location] : [],
-    desired_titles: splitList(state.titles),
+    target_countries: [state.country],
+    target_locations: [countryLabel(state.continent, state.country)],
+    desired_titles: [state.jobTitle],
     seniority: null,
     industries: [],
-    required_keywords: splitList(state.requiredKeywords),
-    optional_keywords: splitList(state.optionalKeywords),
-    excluded_keywords: splitList(state.excludedKeywords),
+    required_keywords: [],
+    optional_keywords: [],
+    excluded_keywords: [],
     visa_sponsorship_required: state.visaSponsorshipRequired,
-    blocked_companies: splitList(state.blockedCompanies),
+    blocked_companies: [],
     work_mode: state.workMode,
   };
 }
@@ -136,6 +389,7 @@ function errorMessage(err: unknown, fallback: string): string {
 }
 
 export function DiscoveryView() {
+  const router = useRouter();
   const [form, setForm] = React.useState<FormState>(defaultState);
   const [results, setResults] = React.useState<JobSearchResult[] | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -172,6 +426,22 @@ export function DiscoveryView() {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  function updateContinent(value: string) {
+    setForm((prev) => ({
+      ...prev,
+      continent: value,
+      country: countriesForContinent(value)[0].code,
+    }));
+  }
+
+  function updateJobCategory(value: string) {
+    setForm((prev) => ({
+      ...prev,
+      jobCategory: value,
+      jobTitle: titlesForCategory(value)[0],
+    }));
+  }
+
   async function refreshResults() {
     setResults(await listDiscoveryResults());
   }
@@ -179,7 +449,7 @@ export function DiscoveryView() {
   async function runSearch(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const preferences = toPreferences(form);
-    const country = preferences.target_countries[0] ?? "us";
+    const country = preferences.target_countries[0] ?? defaultState.country;
     const location = preferences.target_locations[0] ?? null;
     setError(null);
     setRunMessage(null);
@@ -192,11 +462,16 @@ export function DiscoveryView() {
         results_per_page: 10,
       });
       await refreshResults();
-      setRunMessage(
-        run.status === "failed"
-          ? run.error || "Search failed."
-          : `Found ${run.result_count} new result${run.result_count === 1 ? "" : "s"}.`
-      );
+      if (run.status === "failed") {
+        setRunMessage(run.error || "Search failed.");
+      } else {
+        const countLabel = `Found ${run.result_count} new result${run.result_count === 1 ? "" : "s"}`;
+        setRunMessage(
+          run.provider === "mock"
+            ? `${countLabel} from the mock provider. Configure Adzuna credentials to search live jobs.`
+            : `${countLabel}.`
+        );
+      }
     } catch (err) {
       setError(errorMessage(err, "Could not run discovery."));
     } finally {
@@ -204,12 +479,13 @@ export function DiscoveryView() {
     }
   }
 
-  async function saveResult(resultId: string) {
+  async function saveResult(resultId: string, openAfterSave = false) {
     setError(null);
     setBusyResultId(resultId);
     try {
-      await saveDiscoveryResult(resultId);
+      const job = await saveDiscoveryResult(resultId);
       setResults((prev) => prev?.filter((item) => item.id !== resultId) ?? []);
+      if (openAfterSave) router.push(`/jobs/${job.id}`);
     } catch (err) {
       setError(errorMessage(err, "Could not save this result."));
     } finally {
@@ -230,7 +506,9 @@ export function DiscoveryView() {
     }
   }
 
-  const canSearch = form.country.trim().length === 2 && !running;
+  const countryOptions = countriesForContinent(form.continent);
+  const jobTitleOptions = titlesForCategory(form.jobCategory);
+  const canSearch = form.country.length === 2 && !!form.jobTitle && !running;
 
   return (
     <div className="space-y-6">
@@ -252,46 +530,43 @@ export function DiscoveryView() {
         <CardHeader>
           <CardTitle className="text-base">Search preferences</CardTitle>
           <CardDescription>
-            Comma-separate titles or keywords. Country uses a two-letter code.
+            Pick a region, country, and role. JobGoblin uses your resume and profile to rank results.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form className="space-y-4" onSubmit={runSearch}>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div className="space-y-1.5">
-                <Label htmlFor="discover-country">Target country</Label>
-                <Input
+                <Label htmlFor="discover-continent">Target region</Label>
+                <select
+                  id="discover-continent"
+                  value={form.continent}
+                  onChange={(e) => updateContinent(e.target.value)}
+                  disabled={running}
+                  className={selectClass}
+                >
+                  {continents.map((continent) => (
+                    <option key={continent.value} value={continent.value}>
+                      {continent.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="discover-country">Location</Label>
+                <select
                   id="discover-country"
                   value={form.country}
                   onChange={(e) => update("country", e.target.value)}
                   disabled={running}
-                  maxLength={2}
-                  placeholder="us"
-                  required
-                />
-              </div>
-              <div className="space-y-1.5 sm:col-span-2">
-                <Label htmlFor="discover-location">Location</Label>
-                <Input
-                  id="discover-location"
-                  value={form.location}
-                  onChange={(e) => update("location", e.target.value)}
-                  disabled={running}
-                  placeholder="New York, NY"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <div className="space-y-1.5 sm:col-span-2">
-                <Label htmlFor="discover-titles">Titles</Label>
-                <Input
-                  id="discover-titles"
-                  value={form.titles}
-                  onChange={(e) => update("titles", e.target.value)}
-                  disabled={running}
-                  placeholder="Frontend Engineer, Product Engineer"
-                />
+                  className={selectClass}
+                >
+                  {countryOptions.map((country) => (
+                    <option key={country.code} value={country.code}>
+                      {country.label}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="discover-work-mode">Work mode</Label>
@@ -300,7 +575,7 @@ export function DiscoveryView() {
                   value={form.workMode}
                   onChange={(e) => update("workMode", e.target.value as WorkMode)}
                   disabled={running}
-                  className="border-input bg-card focus-visible:border-ring focus-visible:ring-ring/40 h-9 w-full rounded-md border px-3 py-1 text-sm shadow-xs outline-none focus-visible:ring-[3px] disabled:opacity-50"
+                  className={selectClass}
                 >
                   {workModes.map((mode) => (
                     <option key={mode.value} value={mode.value}>
@@ -311,49 +586,38 @@ export function DiscoveryView() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div className="space-y-1.5">
-                <Label htmlFor="discover-required-keywords">Keywords</Label>
-                <Input
-                  id="discover-required-keywords"
-                  value={form.requiredKeywords}
-                  onChange={(e) => update("requiredKeywords", e.target.value)}
+                <Label htmlFor="discover-job-category">Job type</Label>
+                <select
+                  id="discover-job-category"
+                  value={form.jobCategory}
+                  onChange={(e) => updateJobCategory(e.target.value)}
                   disabled={running}
-                  placeholder="React, TypeScript"
-                />
+                  className={selectClass}
+                >
+                  {jobCategories.map((category) => (
+                    <option key={category.value} value={category.value}>
+                      {category.label}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="discover-optional-keywords">Nice-to-have keywords</Label>
-                <Input
-                  id="discover-optional-keywords"
-                  value={form.optionalKeywords}
-                  onChange={(e) => update("optionalKeywords", e.target.value)}
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="discover-job-title">Role</Label>
+                <select
+                  id="discover-job-title"
+                  value={form.jobTitle}
+                  onChange={(e) => update("jobTitle", e.target.value)}
                   disabled={running}
-                  placeholder="Next.js, design systems"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="discover-excluded-keywords">Excluded keywords</Label>
-                <Input
-                  id="discover-excluded-keywords"
-                  value={form.excludedKeywords}
-                  onChange={(e) => update("excludedKeywords", e.target.value)}
-                  disabled={running}
-                  placeholder="contract, unpaid"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="discover-blocked-companies">Blocked companies</Label>
-                <Input
-                  id="discover-blocked-companies"
-                  value={form.blockedCompanies}
-                  onChange={(e) => update("blockedCompanies", e.target.value)}
-                  disabled={running}
-                  placeholder="Acme Corp"
-                />
+                  className={selectClass}
+                >
+                  {jobTitleOptions.map((title) => (
+                    <option key={title} value={title}>
+                      {title}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 
@@ -373,9 +637,7 @@ export function DiscoveryView() {
                 {running ? <Loader2 className="size-4 animate-spin" /> : <Search className="size-4" />}
                 {running ? "Searching..." : "Run search"}
               </Button>
-              {runMessage && (
-                <p className="text-muted-foreground text-sm">{runMessage}</p>
-              )}
+              {runMessage && <p className="text-muted-foreground text-sm">{runMessage}</p>}
             </div>
           </form>
         </CardContent>
@@ -430,9 +692,7 @@ export function DiscoveryView() {
                       </Badge>
                     </div>
 
-                    {result.fit_reason && (
-                      <p className="text-sm">{result.fit_reason}</p>
-                    )}
+                    {result.fit_reason && <p className="text-sm">{result.fit_reason}</p>}
                     <p className="text-muted-foreground line-clamp-3 text-sm">
                       {result.description}
                     </p>
@@ -442,13 +702,19 @@ export function DiscoveryView() {
                         type="button"
                         size="sm"
                         disabled={busyResultId !== null}
+                        onClick={() => saveResult(result.id, true)}
+                      >
+                        {busy ? <Loader2 className="size-4 animate-spin" /> : <ExternalLink className="size-4" />}
+                        Save & open
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={busyResultId !== null}
                         onClick={() => saveResult(result.id)}
                       >
-                        {busy ? (
-                          <Loader2 className="size-4 animate-spin" />
-                        ) : (
-                          <BookmarkPlus className="size-4" />
-                        )}
+                        {busy ? <Loader2 className="size-4 animate-spin" /> : <BookmarkPlus className="size-4" />}
                         Save
                       </Button>
                       <Button

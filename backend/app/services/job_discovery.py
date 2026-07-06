@@ -74,6 +74,7 @@ def build_query(
     override: str | None = None,
     *,
     profile_terms: list[str] | None = None,
+    resume_terms: list[str] | None = None,
 ) -> str:
     if override:
         return override.strip()
@@ -81,6 +82,7 @@ def build_query(
     parts.extend(preferences.required_keywords[:5])
     parts.extend(preferences.optional_keywords[:3])
     parts.extend((profile_terms or [])[:6])
+    parts.extend((resume_terms or [])[:6])
     if preferences.work_mode != WorkMode.unknown:
         parts.append(preferences.work_mode.value)
     query = " ".join(part for part in parts if part).strip()
@@ -297,11 +299,12 @@ async def search_jobs(
 
 def _mock_results(*, country: str, location: str | None, query: str) -> list[DiscoveredJob]:
     place = location or country.upper()
+    slug = _mock_slug(country, place, query)
     return [
         DiscoveredJob(
             provider="mock",
             source=JobSource.other,
-            source_url="https://example.com/jobs/mock-platform-engineer",
+            source_url=f"https://example.com/jobs/mock-{slug}-platform-engineer",
             title=f"{query.title()} Engineer",
             company_name="Mock Hiring Co",
             location=place,
@@ -313,7 +316,7 @@ def _mock_results(*, country: str, location: str | None, query: str) -> list[Dis
         DiscoveredJob(
             provider="mock",
             source=JobSource.other,
-            source_url="https://example.com/jobs/mock-backend-engineer",
+            source_url=f"https://example.com/jobs/mock-{slug}-backend-engineer",
             title="Backend Developer",
             company_name="Example Systems",
             location=place,
@@ -321,6 +324,12 @@ def _mock_results(*, country: str, location: str | None, query: str) -> list[Dis
             description="Build backend services, integrations, auth flows, CI, and data pipelines.",
         ),
     ]
+
+
+def _mock_slug(country: str, location: str, query: str) -> str:
+    raw = f"{country}-{location}-{query}".lower()
+    slug = "".join(char if char.isalnum() else "-" for char in raw).strip("-")
+    return "-".join(part for part in slug.split("-") if part)[:120] or "search"
 
 
 async def _adzuna_results(
