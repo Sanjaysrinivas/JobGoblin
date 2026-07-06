@@ -58,6 +58,44 @@ def test_rank_result_explains_location_work_mode_and_visa():
     assert "visa sponsorship is mentioned" in reason
 
 
+def test_rank_result_blocks_required_constraints():
+    score, reason = rank_result(
+        _job("Build Python APIs."),
+        JobSearchPreferencesPayload(required_keywords=["Kubernetes"]),
+    )
+    assert score == 0
+    assert reason == "Blocked by missing required keyword: Kubernetes."
+
+    score, reason = rank_result(
+        _job("Build Python APIs."),
+        JobSearchPreferencesPayload(target_locations=["London"]),
+    )
+    assert score == 0
+    assert reason == "Blocked by location requirement."
+
+    onsite = _job("Build Python APIs.")
+    onsite.work_mode = WorkMode.onsite
+    score, reason = rank_result(onsite, JobSearchPreferencesPayload(work_mode=WorkMode.remote))
+    assert score == 0
+    assert reason == "Blocked by work mode requirement."
+
+    score, reason = rank_result(
+        _job("Build Python APIs."),
+        JobSearchPreferencesPayload(visa_sponsorship_required=True),
+    )
+    assert score == 0
+    assert reason == "Blocked by visa sponsorship requirement."
+
+
+def test_rank_result_uses_whole_word_matching():
+    score, _reason = rank_result(
+        _job("Build Django APIs."),
+        JobSearchPreferencesPayload(excluded_keywords=["go"]),
+    )
+
+    assert score > 0
+
+
 @pytest.mark.asyncio
 async def test_search_jobs_rejects_bad_country_code():
     with pytest.raises(ValueError, match="2-letter"):

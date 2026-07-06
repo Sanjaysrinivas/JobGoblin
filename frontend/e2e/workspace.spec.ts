@@ -116,9 +116,9 @@ test.describe("workspace workflows", () => {
     await expect(page.getByLabel("Headline")).toHaveValue("Platform Engineer");
 
     await page.goto("/discover");
-    await expect(page.getByRole("heading", { name: "Discover" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Discover", exact: true })).toBeVisible();
     await page.getByLabel("Target region").selectOption("north_america");
-    await page.getByLabel("Location").selectOption("us");
+    await page.getByLabel("Country").selectOption("us");
     await page.getByLabel("Job type").selectOption("it");
     await page.getByLabel("Role").selectOption("Backend Developer");
     await page.getByLabel("Work mode").selectOption("remote");

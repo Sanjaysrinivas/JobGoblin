@@ -30,6 +30,7 @@ import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Card,
   CardContent,
@@ -42,6 +43,7 @@ import { Label } from "@/components/ui/label";
 type FormState = {
   continent: string;
   country: string;
+  location: string;
   jobCategory: string;
   jobTitle: string;
   visaSponsorshipRequired: boolean;
@@ -308,6 +310,7 @@ const workModes: { value: WorkMode; label: string }[] = [
 const defaultState: FormState = {
   continent: "north_america",
   country: "us",
+  location: "",
   jobCategory: "it",
   jobTitle: "Software Engineer",
   visaSponsorshipRequired: false,
@@ -333,17 +336,20 @@ function categoryForTitle(title: string): string {
   return jobCategories.find((group) => group.titles.includes(title))?.value ?? defaultState.jobCategory;
 }
 
-function countryLabel(continent: string, country: string): string {
-  return countriesForContinent(continent).find((item) => item.code === country)?.label ?? country;
+function countryName(country: string): string {
+  return continents.flatMap((group) => group.countries).find((item) => item.code === country)?.label ?? country;
 }
+
 
 function fromPreferences(preferences: JobSearchPreferences | null): FormState {
   if (!preferences) return defaultState;
   const country = preferences.target_countries[0] ?? defaultState.country;
   const title = preferences.desired_titles[0] ?? defaultState.jobTitle;
+  const location = preferences.target_locations[0] ?? "";
   return {
     continent: continentForCountry(country),
     country,
+    location: location === countryName(country) ? "" : location,
     jobCategory: categoryForTitle(title),
     jobTitle: title,
     visaSponsorshipRequired: preferences.visa_sponsorship_required,
@@ -351,18 +357,22 @@ function fromPreferences(preferences: JobSearchPreferences | null): FormState {
   };
 }
 
-function toPreferences(state: FormState): JobSearchPreferencesPayload {
+function toPreferences(
+  state: FormState,
+  previous: JobSearchPreferences | null
+): JobSearchPreferencesPayload {
+  const location = state.location.trim();
   return {
     target_countries: [state.country],
-    target_locations: [countryLabel(state.continent, state.country)],
+    target_locations: location ? [location] : [],
     desired_titles: [state.jobTitle],
-    seniority: null,
-    industries: [],
-    required_keywords: [],
-    optional_keywords: [],
-    excluded_keywords: [],
+    seniority: previous?.seniority ?? null,
+    industries: previous?.industries ?? [],
+    required_keywords: previous?.required_keywords ?? [],
+    optional_keywords: previous?.optional_keywords ?? [],
+    excluded_keywords: previous?.excluded_keywords ?? [],
     visa_sponsorship_required: state.visaSponsorshipRequired,
-    blocked_companies: [],
+    blocked_companies: previous?.blocked_companies ?? [],
     work_mode: state.workMode,
   };
 }
@@ -391,6 +401,7 @@ function errorMessage(err: unknown, fallback: string): string {
 export function DiscoveryView() {
   const router = useRouter();
   const [form, setForm] = React.useState<FormState>(defaultState);
+  const [savedPreferences, setSavedPreferences] = React.useState<JobSearchPreferences | null>(null);
   const [results, setResults] = React.useState<JobSearchResult[] | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [running, setRunning] = React.useState(false);
@@ -407,6 +418,7 @@ export function DiscoveryView() {
           listDiscoveryResults(),
         ]);
         if (!active) return;
+        setSavedPreferences(preferences);
         setForm(fromPreferences(preferences));
         setResults(loadedResults);
       } catch (err) {
@@ -448,14 +460,15 @@ export function DiscoveryView() {
 
   async function runSearch(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const preferences = toPreferences(form);
+    const preferences = toPreferences(form, savedPreferences);
     const country = preferences.target_countries[0] ?? defaultState.country;
     const location = preferences.target_locations[0] ?? null;
     setError(null);
     setRunMessage(null);
     setRunning(true);
     try {
-      await saveDiscoveryPreferences(preferences);
+      const saved = await saveDiscoveryPreferences(preferences);
+      setSavedPreferences(saved);
       const run = await createDiscoveryRun({
         country,
         location,
@@ -535,7 +548,7 @@ export function DiscoveryView() {
         </CardHeader>
         <CardContent>
           <form className="space-y-4" onSubmit={runSearch}>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
               <div className="space-y-1.5">
                 <Label htmlFor="discover-continent">Target region</Label>
                 <select
@@ -553,7 +566,7 @@ export function DiscoveryView() {
                 </select>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="discover-country">Location</Label>
+                <Label htmlFor="discover-country">Country</Label>
                 <select
                   id="discover-country"
                   value={form.country}
@@ -567,6 +580,16 @@ export function DiscoveryView() {
                     </option>
                   ))}
                 </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="discover-location">City or region</Label>
+                <Input
+                  id="discover-location"
+                  value={form.location}
+                  onChange={(e) => update("location", e.target.value)}
+                  disabled={running}
+                  placeholder="Optional"
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="discover-work-mode">Work mode</Label>
@@ -673,7 +696,7 @@ export function DiscoveryView() {
                             </span>
                           )}
                           <span>{label(result.work_mode)}</span>
-                          <span>{label(result.source)}</span>
+                          <span>{label(result.provider || result.source)}</span>
                           {result.source_url && (
                             <a
                               href={result.source_url}

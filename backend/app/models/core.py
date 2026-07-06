@@ -181,6 +181,9 @@ class JobSearchRun(_UUIDMixin, _TimeMixin, table=True):
 
 class JobSearchResult(_UUIDMixin, _TimeMixin, table=True):
     __tablename__ = "job_search_results"
+    __table_args__ = (
+        UniqueConstraint("user_id", "dedupe_key", name="uq_job_search_results_user_dedupe"),
+    )
 
     user_id: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE", index=True)
     run_id: uuid.UUID = Field(foreign_key="job_search_runs.id", ondelete="CASCADE", index=True)

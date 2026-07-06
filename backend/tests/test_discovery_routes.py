@@ -217,6 +217,66 @@ def test_resume_search_terms_ignores_non_list_parsed_fields(session, user):
 
     assert _resume_search_terms(session, user.id) == []
 
+def test_blocked_result_cannot_be_saved(client):
+    prefs = client.put(
+        "/api/discovery/preferences",
+        json={"target_countries": ["us"], "required_keywords": ["Rust"]},
+    )
+    assert prefs.status_code == 200
+
+    run = client.post("/api/discovery/runs", json={"country": "us", "query": "python"})
+    assert run.status_code == 201
+
+    blocked = client.get("/api/discovery/results?status=blocked").json()[0]
+    saved = client.post(f"/api/discovery/results/{blocked['id']}/save")
+
+    assert saved.status_code == 409
+    assert saved.json()["code"] == "result_not_saveable"
+
+
+def test_run_refreshes_existing_new_results(client, monkeypatch):
+    prefs = client.put(
+        "/api/discovery/preferences",
+        json={
+            "target_countries": ["us"],
+            "target_locations": ["Remote"],
+            "optional_keywords": ["Kubernetes"],
+        },
+    )
+    assert prefs.status_code == 200
+    first_run = client.post("/api/discovery/runs", json={"country": "us", "query": "python"})
+    assert first_run.status_code == 201
+    original = client.get("/api/discovery/results").json()[0]
+
+    async def _updated_results(**_kwargs):
+        from app.services.job_discovery import DiscoveredJob
+
+        return [
+            DiscoveredJob(
+                provider="mock",
+                source=JobSource.other,
+                source_url=original["source_url"],
+                title=original["title"],
+                company_name=original["company_name"],
+                location=original["location"],
+                work_mode=WorkMode.remote,
+                description="Kubernetes platform work.",
+            )
+        ]
+
+    import app.api.routes.discovery as discovery_routes
+
+    monkeypatch.setattr(discovery_routes, "search_jobs", _updated_results)
+    second_run = client.post("/api/discovery/runs", json={"country": "us", "query": "python"})
+    assert second_run.status_code == 201
+    assert second_run.json()["result_count"] == 0
+
+    refreshed = client.get("/api/discovery/results").json()[0]
+    assert refreshed["id"] == original["id"]
+    assert refreshed["fit_score"] > original["fit_score"]
+    assert refreshed["description"] == "Kubernetes platform work."
+
+
 def test_patch_cannot_mark_result_saved_directly(client):
     run = client.post("/api/discovery/runs", json={"country": "us", "query": "python"})
     assert run.status_code == 201
