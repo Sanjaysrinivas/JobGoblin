@@ -227,6 +227,35 @@ def _dedupe_key(
     return raw.strip().lower()
 
 
+def _result_status_for_score(score: int) -> DiscoveryResultStatus:
+    return DiscoveryResultStatus.blocked if score == 0 else DiscoveryResultStatus.new
+
+
+def _apply_discovered_job(
+    result: JobSearchResult,
+    item,
+    run_id: uuid.UUID,
+    dedupe: str,
+    fit_score: int,
+    fit_reason: str,
+) -> None:
+    result.run_id = run_id
+    result.provider = item.provider
+    result.source = item.source
+    result.source_url = item.source_url
+    result.canonical_url = item.source_url
+    result.title = item.title
+    result.company_name = item.company_name
+    result.location = item.location
+    result.work_mode = item.work_mode
+    result.description = item.description
+    result.posted_at = item.posted_at
+    result.dedupe_key = dedupe
+    result.fit_score = fit_score
+    result.fit_reason = fit_reason
+    result.status = _result_status_for_score(fit_score)
+
+
 def _discovery_error_message(provider: str, exc: Exception) -> str:
     if isinstance(exc, httpx.HTTPStatusError):
         return f"{provider} discovery failed with HTTP {exc.response.status_code}."
@@ -356,8 +385,11 @@ async def create_run(
                 JobSearchResult.dedupe_key == dedupe,
             )
         ).first()
-        if existing is None:
-            candidates.append((item, dedupe))
+        if existing is None or existing.status in {
+            DiscoveryResultStatus.new,
+            DiscoveryResultStatus.blocked,
+        }:
+            candidates.append((item, dedupe, existing))
 
     rankings = await asyncio.gather(
         *(
@@ -369,12 +401,17 @@ async def create_run(
                 resume_context=resume_context,
                 saved_job_terms=saved_job_terms,
             )
-            for item, _dedupe in candidates
+            for item, _dedupe, _existing in candidates
         )
     )
-    for (item, dedupe), (fit_score, fit_reason) in zip(candidates, rankings, strict=False):
-        session.add(
-            JobSearchResult(
+    created = 0
+    for (item, dedupe, existing), (fit_score, fit_reason) in zip(
+        candidates, rankings, strict=False
+    ):
+        result = existing
+        if result is None:
+            created += 1
+            result = JobSearchResult(
                 user_id=current_user.id,
                 run_id=run.id,
                 provider=item.provider,
@@ -390,9 +427,11 @@ async def create_run(
                 dedupe_key=dedupe,
                 fit_score=fit_score,
                 fit_reason=fit_reason,
+                status=_result_status_for_score(fit_score),
             )
-        )
-    created = len(candidates)
+        else:
+            _apply_discovered_job(result, item, run.id, dedupe, fit_score, fit_reason)
+        session.add(result)
     run.status = DiscoveryRunStatus.completed
     run.result_count = created
     session.add(run)
@@ -461,6 +500,12 @@ def save_result_as_job(
         job = session.get(Job, result.saved_job_id)
         if job is not None and job.user_id == current_user.id:
             return job
+    if result.status != DiscoveryResultStatus.new:
+        raise _error(
+            status.HTTP_409_CONFLICT,
+            "Only new discovery results can be saved as jobs.",
+            "result_not_saveable",
+        )
 
     job = Job(
         user_id=current_user.id,

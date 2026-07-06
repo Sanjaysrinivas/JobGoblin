@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -69,6 +70,17 @@ def validate_discovery_country(provider: str, country: str) -> str:
     return code
 
 
+def _contains_term(text: str, term: str) -> bool:
+    needle = term.strip().lower()
+    if not needle:
+        return False
+    return re.search(rf"(?<!\w){re.escape(needle)}(?!\w)", text.lower()) is not None
+
+
+def _contains_any(text: str, terms: list[str]) -> bool:
+    return any(_contains_term(text, term) for term in terms)
+
+
 def build_query(
     preferences: JobSearchPreferencesPayload,
     override: str | None = None,
@@ -95,23 +107,46 @@ def rank_result(
     *,
     profile_terms: list[str] | None = None,
 ) -> tuple[int, str]:
-    haystack = (
-        f"{result.title} {result.company_name} {result.location or ''} {result.description}".lower()
-    )
-    blocked = [c for c in preferences.blocked_companies if c.lower() in result.company_name.lower()]
-    excluded = [word for word in preferences.excluded_keywords if word.lower() in haystack]
+    haystack = f"{result.title} {result.company_name} {result.location or ''} {result.description}"
+    blocked = [c for c in preferences.blocked_companies if _contains_term(result.company_name, c)]
+    excluded = [word for word in preferences.excluded_keywords if _contains_term(haystack, word)]
     if blocked or excluded:
         return 0, "Blocked by company or excluded keyword."
+
+    missing_required = [
+        word for word in preferences.required_keywords if not _contains_term(haystack, word)
+    ]
+    if missing_required:
+        return 0, f"Blocked by missing required keyword: {missing_required[0]}."
+
+    location = result.location or ""
+    location_matches = [
+        loc for loc in preferences.target_locations if _contains_term(location, loc)
+    ]
+    if preferences.target_locations and not location_matches:
+        return 0, "Blocked by location requirement."
+
+    if (
+        preferences.work_mode != WorkMode.unknown
+        and result.work_mode != WorkMode.unknown
+        and result.work_mode != preferences.work_mode
+    ):
+        return 0, "Blocked by work mode requirement."
+
+    if preferences.visa_sponsorship_required and not _contains_any(
+        haystack, ["visa", "sponsor", "sponsorship"]
+    ):
+        return 0, "Blocked by visa sponsorship requirement."
 
     score = 35
     matched: list[str] = []
     details: list[str] = []
     for word in [*preferences.required_keywords, *preferences.optional_keywords]:
-        if word.lower() in haystack:
+        if _contains_term(haystack, word):
             matched.append(word)
     score += min(35, len(set(w.lower() for w in matched)) * 7)
 
-    profile_matches = [term for term in (profile_terms or []) if term.lower() in haystack]
+    profile_matches = [term for term in (profile_terms or []) if _contains_term(haystack, term)]
     score += min(15, len(set(term.lower() for term in profile_matches)) * 3)
     matched.extend(profile_matches[:3])
 
@@ -121,32 +156,21 @@ def rank_result(
             details.append(f"work mode matches {preferences.work_mode.value}")
         elif result.work_mode == WorkMode.unknown:
             details.append("work mode is not specified by the provider")
-        else:
-            details.append(
-                f"work mode is {result.work_mode.value}, preferred {preferences.work_mode.value}"
-            )
 
-    location = (result.location or "").lower()
-    location_matches = [loc for loc in preferences.target_locations if loc.lower() in location]
     if location_matches:
         score += 10
         details.append(f"location matches {location_matches[0]}")
-    elif preferences.target_locations:
-        details.append("location does not match preferred locations")
 
     title_matches = [
-        title for title in preferences.desired_titles if title.lower() in result.title.lower()
+        title for title in preferences.desired_titles if _contains_term(result.title, title)
     ]
     if title_matches:
         score += 10
         details.append(f"title matches {title_matches[0]}")
 
     if preferences.visa_sponsorship_required:
-        if "visa" in haystack or "sponsor" in haystack:
-            score += 5
-            details.append("visa sponsorship is mentioned")
-        else:
-            details.append("visa sponsorship is not verified by the provider")
+        score += 5
+        details.append("visa sponsorship is mentioned")
 
     score = max(0, min(100, score))
     parts = []
