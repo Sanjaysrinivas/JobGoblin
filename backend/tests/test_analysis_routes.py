@@ -121,7 +121,7 @@ def test_create_resume_job_analysis_persists_result(client, session, user):
     assert "python" in body["matched_keywords"]
     assert "kubernetes" in body["missing_keywords"]
     assert body["fit_label"] == "Strong match"
-    assert body["application_readiness"] == "Ready to apply"
+    assert body["application_readiness"] == "Needs tailoring"
     assert body["keyword_checklist"]
     assert body["rewrite_suggestions"]
 
