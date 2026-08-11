@@ -11,7 +11,15 @@ from app.core.database import get_session
 from app.models import Job, JobAnalysis, Resume, User
 from app.schemas.analysis import JobAnalysisOut, ResumeJobAnalysisCreate
 from app.services.ai_provider import get_ai_provider
-from app.services.job_analysis import analyze_resume_for_job, provider_metadata
+from app.services.job_analysis import (
+    analyze_resume_for_job,
+    application_readiness,
+    fit_label,
+    keyword_checklist,
+    provider_metadata,
+    readiness_steps,
+    rewrite_suggestions,
+)
 from app.services.resume_context import current_resume_content
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
@@ -58,6 +66,37 @@ def _get_owned_analysis(session: Session, user: User, analysis_id: uuid.UUID) ->
     return analysis
 
 
+def _string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if str(item).strip()]
+
+
+def analysis_response(session: Session, analysis: JobAnalysis) -> dict:
+    job = session.get(Job, analysis.job_id)
+    resume = session.get(Resume, analysis.resume_id)
+    resume_text = ""
+    parsed_resume = None
+    if resume is not None:
+        resume_text, parsed_resume = current_resume_content(session, resume)
+    checklist = keyword_checklist(
+        resume_text,
+        parsed_resume,
+        job.title if job else "",
+        job.description if job else "",
+    )
+    missing = _string_list(analysis.missing_keywords)
+    matched = _string_list(analysis.matched_keywords)
+    return {
+        **JobAnalysisOut.model_validate(analysis).model_dump(),
+        "fit_label": fit_label(analysis.overall_score),
+        "application_readiness": application_readiness(analysis.overall_score, missing),
+        "readiness_steps": readiness_steps(analysis.overall_score, checklist),
+        "keyword_checklist": checklist,
+        "rewrite_suggestions": rewrite_suggestions(checklist, matched, missing),
+    }
+
+
 @router.post(
     "/resume-job",
     response_model=JobAnalysisOut,
@@ -67,7 +106,7 @@ async def create_resume_job_analysis(
     payload: ResumeJobAnalysisCreate,
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_session)],
-) -> JobAnalysis:
+) -> dict:
     resume, job = _get_owned_resume_and_job(session, current_user, payload)
     resume_text, parsed_resume = current_resume_content(session, resume)
     if not resume_text.strip() and not parsed_resume:
@@ -108,7 +147,7 @@ async def create_resume_job_analysis(
     session.add(analysis)
     session.commit()
     session.refresh(analysis)
-    return analysis
+    return analysis_response(session, analysis)
 
 
 @router.get("/{analysis_id}", response_model=JobAnalysisOut)
@@ -116,5 +155,5 @@ def get_analysis(
     analysis_id: uuid.UUID,
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_session)],
-) -> JobAnalysis:
-    return _get_owned_analysis(session, current_user, analysis_id)
+) -> dict:
+    return analysis_response(session, _get_owned_analysis(session, current_user, analysis_id))

@@ -120,6 +120,10 @@ def test_create_resume_job_analysis_persists_result(client, session, user):
     assert body["recommendations"] == ["sample"]
     assert "python" in body["matched_keywords"]
     assert "kubernetes" in body["missing_keywords"]
+    assert body["fit_label"] == "Strong match"
+    assert body["application_readiness"] == "Ready to apply"
+    assert body["keyword_checklist"]
+    assert body["rewrite_suggestions"]
 
     stored = session.get(JobAnalysis, uuid.UUID(body["id"]))
     assert stored is not None
@@ -233,6 +237,8 @@ def test_get_analysis_returns_owned_analysis(client, session, user):
     body = resp.json()
     assert body["id"] == str(analysis.id)
     assert body["missing_keywords"] == ["kubernetes"]
+    assert body["fit_label"] == "Stretch match"
+    assert body["application_readiness"] == "Needs tailoring"
 
 
 def test_get_analysis_cross_user_returns_404(client, session, other_user):

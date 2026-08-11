@@ -1,6 +1,10 @@
 from app.models import Job, Resume
 from app.services.ai_provider import MockProvider
-from app.services.job_analysis import analyze_resume_for_job, score_resume_for_job
+from app.services.job_analysis import (
+    analyze_resume_for_job,
+    keyword_checklist,
+    score_resume_for_job,
+)
 
 
 class FailingProvider(MockProvider):
@@ -93,6 +97,35 @@ def test_missing_keywords_lower_keyword_score():
     assert complete.keyword_score > sparse.keyword_score
     assert complete.overall_score > sparse.overall_score
     assert {"fastapi", "postgresql", "docker", "kubernetes"}.issubset(set(sparse.missing_keywords))
+
+
+def test_job_keywords_skip_generic_terms_and_keep_real_gaps():
+    scores = score_resume_for_job(
+        "Business analyst with AI project delivery experience.",
+        None,
+        "Project Manager - artificial intelligence focus",
+        "Strong working knowledge of Agile, change management, and stakeholder engagement.",
+    )
+
+    assert "strong" not in scores.missing_keywords
+    assert "working" not in scores.missing_keywords
+    assert "agile" in scores.missing_keywords
+    assert "change management" in scores.missing_keywords
+
+
+def test_keyword_checklist_groups_ats_terms():
+    checklist = keyword_checklist(
+        "Built LLM data workflows with Python and stakeholder engagement.",
+        None,
+        "AI Project Manager",
+        "Lead AI projects with Agile delivery, stakeholder engagement, Python, and Excel.",
+    )
+
+    by_label = {group["label"]: group for group in checklist}
+    assert "AI and data" in by_label
+    assert "Tools" in by_label
+    assert "python" in by_label["Tools"]["matched"]
+    assert "excel" in by_label["Tools"]["missing"]
 
 
 async def test_analyze_resume_for_job_falls_back_when_ai_provider_fails():

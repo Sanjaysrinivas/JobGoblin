@@ -64,10 +64,15 @@ _STOPWORDS = {
     "our",
     "the",
     "their",
+    "into",
+    "key",
     "this",
     "to",
+    "through",
+    "strong",
     "we",
     "will",
+    "working",
     "with",
     "you",
     "your",
@@ -105,6 +110,22 @@ _KNOWN_SKILLS = (
     "leadership",
     "mentoring",
     "agile",
+    "lean-agile",
+    "project management",
+    "project lifecycle",
+    "stakeholder engagement",
+    "change management",
+    "risk management",
+    "status reporting",
+    "business needs",
+    "process optimization",
+    "ai",
+    "artificial intelligence",
+    "llm",
+    "excel",
+    "pivot tables",
+    "powerpoint",
+    "copilot",
 )
 
 _ROLE_TERMS = {
@@ -189,6 +210,170 @@ class JobAnalysisResult:
     missing_keywords: list[str]
     recommendations: list[str]
     explanation: str
+
+
+GUIDANCE_GROUPS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    (
+        "Project management",
+        (
+            "project management",
+            "project lifecycle",
+            "agile",
+            "lean-agile",
+            "risk management",
+            "dependencies",
+            "stakeholder engagement",
+            "status reporting",
+            "deliverables",
+            "scope",
+        ),
+    ),
+    (
+        "AI and data",
+        (
+            "ai",
+            "artificial intelligence",
+            "llm",
+            "machine learning",
+            "data",
+            "data quality",
+            "data analysis",
+            "analytics",
+            "automation",
+        ),
+    ),
+    (
+        "Tools",
+        (
+            "python",
+            "sql",
+            "excel",
+            "pivot tables",
+            "powerpoint",
+            "word",
+            "copilot",
+            "power bi",
+            "tableau",
+            "databricks",
+        ),
+    ),
+    (
+        "Business change",
+        (
+            "business needs",
+            "change management",
+            "adoption",
+            "process optimization",
+            "operational efficiency",
+            "communication",
+            "presentation",
+        ),
+    ),
+    (
+        "Education and logistics",
+        (
+            "degree",
+            "bachelor",
+            "master",
+            "english",
+            "luxembourg",
+            "hybrid",
+        ),
+    ),
+)
+
+
+def fit_label(score: int) -> str:
+    if score >= 75:
+        return "Strong match"
+    if score >= 45:
+        return "Stretch match"
+    return "Weak match"
+
+
+def application_readiness(score: int, missing_keywords: list[str]) -> str:
+    if score >= 75 and len(missing_keywords) <= 3:
+        return "Ready to apply"
+    if score >= 45:
+        return "Needs tailoring"
+    return "Not ready"
+
+
+def keyword_checklist(
+    resume_text: str,
+    parsed_resume: dict | None,
+    job_title: str,
+    job_description: str,
+) -> list[dict[str, object]]:
+    job_text = f"{job_title}\n{job_description}"
+    candidates = _resume_candidates(resume_text, parsed_resume)
+    groups: list[dict[str, object]] = []
+    for label, terms in GUIDANCE_GROUPS:
+        required = [term for term in terms if _contains_term(job_text, term)]
+        if not required:
+            continue
+        matched = [term for term in required if _matches_term(term, resume_text, candidates)]
+        missing = [term for term in required if term not in matched]
+        groups.append({"label": label, "matched": matched, "missing": missing})
+    return groups
+
+
+def readiness_steps(
+    score: int,
+    checklist: list[dict[str, object]],
+) -> list[str]:
+    steps: list[str] = []
+    if score < 75:
+        steps.append("Tailor the resume before applying.")
+    for group in checklist:
+        missing = group["missing"]
+        if isinstance(missing, list) and missing:
+            shown = ", ".join(str(item) for item in missing[:3])
+            steps.append(f"Verify and add truthful evidence for {group['label']}: {shown}.")
+    return steps[:5] or ["Review the final resume and apply."]
+
+
+def rewrite_suggestions(
+    checklist: list[dict[str, object]],
+    matched_keywords: list[str],
+    missing_keywords: list[str],
+) -> list[dict[str, object]]:
+    matched = ", ".join(matched_keywords[:5]) or "the strongest matched evidence"
+    suggestions = [
+        {
+            "section": "Summary",
+            "action": "Position the candidate around the target role.",
+            "prompt": f"Rewrite the summary to connect {matched} to the job's business outcome.",
+            "verify_before_adding": missing_keywords[:5],
+        },
+        {
+            "section": "Experience",
+            "action": "Move delivery and stakeholder bullets higher.",
+            "prompt": (
+                "Reframe existing bullets around project delivery, business needs, "
+                "adoption, and measurable impact."
+            ),
+            "verify_before_adding": [],
+        },
+    ]
+    missing_by_group = [
+        f"{group['label']}: {', '.join(str(item) for item in group['missing'][:3])}"
+        for group in checklist
+        if isinstance(group["missing"], list) and group["missing"]
+    ]
+    if missing_by_group:
+        suggestions.append(
+            {
+                "section": "ATS checklist",
+                "action": "Fill only truthful gaps.",
+                "prompt": (
+                    "Add missing terms only where the resume can prove them with real "
+                    "experience."
+                ),
+                "verify_before_adding": missing_by_group[:5],
+            }
+        )
+    return suggestions
 
 
 def _normalize_text(text: str) -> str:
