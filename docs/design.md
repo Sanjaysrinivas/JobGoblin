@@ -326,8 +326,24 @@ Hybrid approach:
 2. Extract resume terms from `extracted_text` and parsed skills.
 3. Match exact terms first, then fuzzy terms with `rapidfuzz`.
 4. Score weighted categories: keyword 30, skills 25, experience 20, role 10, education 5, formatting 10.
-5. Use AI for explanation, recommendations, and missing-keyword classification.
+5. Use AI for explanation and concise recommendations.
 6. Persist results to `job_analyses` and label UI output as an estimate.
+7. Derive application guidance at response time from the saved analysis, current
+   resume text, and saved job description.
+
+Application guidance returned with analysis responses:
+
+- `fit_label`: strong, stretch, or weak match label based on the overall score.
+- `application_readiness`: ready to apply, needs tailoring, or not ready.
+- `readiness_steps`: short next actions before applying.
+- `keyword_checklist`: grouped ATS terms split into matched evidence and terms to
+  verify before adding.
+- `rewrite_suggestions`: grounded prompts for summary, experience, and ATS gap
+  edits. Missing terms must be added only when the resume can truthfully support
+  them.
+
+The keyword extractor filters generic filler terms and prefers concrete skills,
+project-management terms, AI/data terms, tools, education, and logistics terms.
 
 Future upgrade: semantic matching through local embeddings after the deterministic MVP is working.
 

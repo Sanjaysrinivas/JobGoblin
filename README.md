@@ -32,8 +32,8 @@ Implemented:
 - Resume upload, text extraction, AI parse, edit/list/detail/delete, version management, and PDF export.
 - Jobs CRUD API and jobs list/create/detail/edit/delete UI.
 - Job discovery preferences, mock/Adzuna provider plumbing, run/result storage, dedupe, dismiss/save states, `/discover` UI, save-to-job behavior, and AI-assisted ranking with profile/resume/saved-job context.
-- Contacts, applications, dashboard data, resume-to-job analysis, cover-letter draft, profile builder, follow-up reminder, and review-only outreach APIs.
-- Next.js app shell, auth guard, login/MFA/signup flow, resume, jobs, discovery, contacts, applications, dashboard, job-detail analysis/cover-letter, outreach, and profile screens.
+- Contacts, applications, dashboard data, resume-to-job analysis with application guidance, cover-letter draft, profile builder, follow-up reminder, and review-only outreach APIs.
+- Next.js app shell, auth guard, login/MFA/signup flow, resume, jobs, discovery, contacts, applications, dashboard, job-detail analysis guidance/cover-letter, outreach, and profile screens.
 - Runtime operator checks for Ollama, DB readiness, local smoke testing, Adzuna smoke guidance, Cloudflare Tunnel/OAuth setup, backups, migrations, rollback, secrets, and release promotion.
 - CI for backend ruff/pytest, frontend lint/build, and the merged E2E harness.
 
