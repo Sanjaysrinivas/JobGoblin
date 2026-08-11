@@ -290,9 +290,27 @@ export interface JobAnalysis {
   missing_keywords: string[] | null;
   explanation: string | null;
   recommendations: string[] | null;
+  fit_label: string | null;
+  application_readiness: string | null;
+  readiness_steps: string[] | null;
+  keyword_checklist: KeywordChecklistGroup[] | null;
+  rewrite_suggestions: RewriteSuggestion[] | null;
   provider: string;
   model_used: string;
   created_at: string;
+}
+
+export interface KeywordChecklistGroup {
+  label: string;
+  matched: string[];
+  missing: string[];
+}
+
+export interface RewriteSuggestion {
+  section: string;
+  action: string;
+  prompt: string;
+  verify_before_adding: string[];
 }
 
 export interface CoverLetter {

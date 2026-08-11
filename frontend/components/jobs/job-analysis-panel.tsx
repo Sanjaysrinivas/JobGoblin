@@ -5,6 +5,8 @@ import {
   AlertTriangle,
   BarChart3,
   CheckCircle2,
+  ClipboardCheck,
+  ListChecks,
   Loader2,
   Play,
   ShieldCheck,
@@ -60,6 +62,12 @@ function scoreTone(score: number): string {
   if (score >= 75) return "bg-success";
   if (score >= 50) return "bg-warning";
   return "bg-destructive";
+}
+
+function readinessVariant(value: string | null | undefined): "success" | "warning" | "destructive" {
+  if (value === "Ready to apply") return "success";
+  if (value === "Needs tailoring") return "warning";
+  return "destructive";
 }
 
 function resumeLabel(resumeId: string, resumes: ResumeDetail[]): string {
@@ -308,10 +316,36 @@ export function JobAnalysisPanel({ jobId }: JobAnalysisPanelProps) {
                     {resumeLabel(selectedAnalysis.resume_id, resumes)}
                   </Badge>
                 </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {selectedAnalysis.fit_label && (
+                    <Badge variant={scoreVariant(selectedAnalysis.overall_score)}>
+                      {selectedAnalysis.fit_label}
+                    </Badge>
+                  )}
+                  {selectedAnalysis.application_readiness && (
+                    <Badge variant={readinessVariant(selectedAnalysis.application_readiness)}>
+                      {selectedAnalysis.application_readiness}
+                    </Badge>
+                  )}
+                </div>
                 <p className="text-muted-foreground mt-3 text-xs">
                   {selectedAnalysis.provider} / {selectedAnalysis.model_used} - {formatDate(selectedAnalysis.created_at)}
                 </p>
               </div>
+
+              {selectedAnalysis.readiness_steps && selectedAnalysis.readiness_steps.length > 0 && (
+                <div className="space-y-2 rounded-lg border p-4">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <ClipboardCheck className="text-primary size-4" />
+                    Application readiness
+                  </div>
+                  <ul className="text-muted-foreground list-disc space-y-1 pl-5 text-sm">
+                    {selectedAnalysis.readiness_steps.map((step) => (
+                      <li key={step}>{step}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               <div className="space-y-3 rounded-lg border p-4">
                 <div className="flex items-center gap-2 text-sm font-medium">
@@ -359,6 +393,69 @@ export function JobAnalysisPanel({ jobId }: JobAnalysisPanelProps) {
                   variant="destructive"
                 />
               </div>
+
+              {selectedAnalysis.keyword_checklist && selectedAnalysis.keyword_checklist.length > 0 && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <ListChecks className="text-primary size-4" />
+                    ATS checklist
+                  </div>
+                  <div className="grid grid-cols-1 gap-3">
+                    {selectedAnalysis.keyword_checklist.map((group) => (
+                      <div key={group.label} className="rounded-lg border p-3">
+                        <h3 className="text-sm font-medium">{group.label}</h3>
+                        <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
+                          <KeywordList
+                            icon={<CheckCircle2 className="text-success size-4" />}
+                            title="Present"
+                            values={group.matched}
+                            empty="No matching evidence found."
+                            variant="success"
+                          />
+                          <KeywordList
+                            icon={<XCircle className="text-destructive size-4" />}
+                            title="Verify before adding"
+                            values={group.missing}
+                            empty="No gaps in this group."
+                            variant="outline"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {selectedAnalysis.rewrite_suggestions && selectedAnalysis.rewrite_suggestions.length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-medium">Resume rewrite suggestions</h3>
+                  <div className="grid grid-cols-1 gap-3">
+                    {selectedAnalysis.rewrite_suggestions.map((suggestion) => (
+                      <div key={`${suggestion.section}-${suggestion.action}`} className="rounded-lg border p-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant="outline">{suggestion.section}</Badge>
+                          <span className="text-sm font-medium">{suggestion.action}</span>
+                        </div>
+                        <p className="text-muted-foreground mt-2 text-sm">{suggestion.prompt}</p>
+                        {suggestion.verify_before_adding.length > 0 && (
+                          <div className="mt-3">
+                            <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+                              Verify before adding
+                            </p>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {suggestion.verify_before_adding.map((item) => (
+                                <Badge key={item} variant="outline">
+                                  {item}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <h3 className="text-sm font-medium">Recommendations</h3>

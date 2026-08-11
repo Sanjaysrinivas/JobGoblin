@@ -134,6 +134,7 @@ test.describe("workspace workflows", () => {
     await expect(page.getByText("Resume analysis")).toBeVisible();
     expect(analysis.overall_score).toBeGreaterThan(0);
     await expect(page.getByText("Overall match")).toBeVisible();
+    await expect(page.getByText("Application readiness")).toBeVisible();
     await expect(page.getByText("Cover letters", { exact: true })).toBeVisible();
     await expect(page.getByText("Tailored resumes", { exact: true })).toBeVisible();
     await expect(page.getByText("Interview prep", { exact: true })).toBeVisible();
