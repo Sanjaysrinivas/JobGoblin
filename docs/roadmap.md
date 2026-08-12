@@ -36,6 +36,7 @@ Implemented:
 - Review-only outreach draft workflow with local copy/export behavior and explicit email export/copy/mail-client handoff.
 - Profile builder seeded from parsed resume sections and editable by the user.
 - Tailored resume-version drafts for saved jobs, with source version provenance and PDF export through the resume-version export path.
+- AI resume editing is specified in `docs/ai-resume-editing.md`: create a job-specific tailored copy, review grounded edits, apply or reject them, and download the edited version without overwriting the original upload.
 - Interview prep packets for saved jobs/applications using job, resume, and resume-version context, with editable notes/status.
 - Sanitized LLM observability hooks for provider/model/operation, prompt/schema hashes, latency, success/failure, and deterministic fallback visibility.
 - Job Discovery MVP from PR #28, including preferences, mock/Adzuna provider plumbing, run/result storage, dedupe, review/dismiss/save states, `/discover` UI, and save-to-job behavior.
@@ -70,6 +71,7 @@ A user should be able to:
 - See clear estimated match scores, matched keywords, gaps, and recommendations.
 - Generate grounded cover-letter drafts from selected resume/profile/job facts.
 - Generate tailored resume drafts without inventing experience or credentials.
+- Review and apply grounded AI edits to a job-specific resume copy, then download the tailored version.
 - Track contacts, recruiters, referrals, outreach drafts, and conversation notes.
 - Track each application from saved role through interviews, offer, rejection, withdrawal, or archival.
 - See upcoming follow-ups and recent activity without relying on memory.
