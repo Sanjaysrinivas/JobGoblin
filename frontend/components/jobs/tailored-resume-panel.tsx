@@ -2,7 +2,16 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Check, Download, ExternalLink, FileText, Loader2, Plus, Trash2 } from "lucide-react";
+import {
+  Check,
+  Download,
+  ExternalLink,
+  Loader2,
+  Plus,
+  ShieldCheck,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
 
 import { ApiError } from "@/lib/api";
 import {
@@ -33,6 +42,29 @@ const selectClass =
 
 type Busy = "create" | `accept:${string}` | `reject:${string}` | `export:${string}` | null;
 
+type TailoringMeta = {
+  ai?: {
+    status?: string;
+  };
+  source?: {
+    source_version_title?: string;
+  };
+  grounding?: {
+    rule?: string;
+    matched_existing_terms?: string[];
+    job_terms_not_added?: string[];
+  };
+  suggested_changes?: Array<{
+    section?: string;
+    action?: string;
+    why?: string;
+  }>;
+  diff?: Array<{
+    section?: string;
+    before?: unknown;
+    after?: unknown;
+  }>;
+};
 
 function formatDate(value: string): string {
   const date = new Date(value);
@@ -65,6 +97,22 @@ function actionLabel(value: string): string {
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
 }
+
+function tailoringMeta(draft: ResumeVersion): TailoringMeta | null {
+  const value = draft.parsed_json?.tailoring;
+  return value && typeof value === "object" ? (value as TailoringMeta) : null;
+}
+
+function aiBadge(meta: TailoringMeta | null) {
+  if (meta?.ai?.status === "applied") {
+    return <Badge variant="success">AI edits applied</Badge>;
+  }
+  if (meta?.ai?.status === "fallback") {
+    return <Badge variant="warning">Fallback copy</Badge>;
+  }
+  return <Badge variant="info">Needs review</Badge>;
+}
+
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -92,6 +140,8 @@ export function TailoredResumePanel({ jobId }: { jobId: string }) {
   const [loadingVersions, setLoadingVersions] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [actionError, setActionError] = React.useState<string | null>(null);
+  const [highlightedDraftId, setHighlightedDraftId] = React.useState<string | null>(null);
+  const draftRefs = React.useRef<Record<string, HTMLLIElement | null>>({});
 
   React.useEffect(() => {
     let active = true;
@@ -182,6 +232,10 @@ export function TailoredResumePanel({ jobId }: { jobId: string }) {
         source_version_id: selectedVersionId || null,
       });
       setDrafts((current) => [created, ...(current ?? [])]);
+      setHighlightedDraftId(created.id);
+      window.setTimeout(() => {
+        draftRefs.current[created.id]?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      }, 0);
     });
   }
 
@@ -218,14 +272,22 @@ export function TailoredResumePanel({ jobId }: { jobId: string }) {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <FileText className="text-primary size-4" />
-          Tailored resumes
+          <Sparkles className="text-primary size-4" />
+          AI resume editor
         </CardTitle>
         <CardDescription>
-          Create a grounded copy for this job, review the edits, then download the tailored resume.
+          Create a job-specific copy, review grounded edits, then download the tailored resume.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
+        <div className="bg-secondary/30 text-muted-foreground flex flex-col gap-2 rounded-md px-3 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+          <span className="inline-flex items-center gap-2">
+            <ShieldCheck className="text-success size-4" />
+            Original upload stays unchanged.
+          </span>
+          <span className="text-xs">Select resume / create copy / review edits / download</span>
+        </div>
+
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_1fr_auto] lg:items-end">
           <div className="space-y-2">
             <Label htmlFor="tailored-resume">Resume</Label>
@@ -285,19 +347,22 @@ export function TailoredResumePanel({ jobId }: { jobId: string }) {
         {drafts === null ? (
           <div className="text-muted-foreground flex items-center gap-2 text-sm">
             <Loader2 className="size-4 animate-spin" />
-            Loading tailored drafts...
+            Loading tailored copies...
           </div>
         ) : drafts.length === 0 ? (
-          <p className="text-muted-foreground rounded-md border border-dashed px-3 py-4 text-sm">
-            No tailored resume drafts for this job yet.
-          </p>
+          <div className="text-muted-foreground rounded-md border border-dashed px-3 py-4 text-sm">
+            <p className="text-foreground font-medium">No tailored copies yet.</p>
+            <p className="mt-1">
+              Run analysis first for better tailoring, then create a copy from the selected resume.
+            </p>
+          </div>
         ) : (
           <ul className="space-y-3">
             {drafts.map((draft) => {
               const exporting = busy === `export:${draft.id}`;
               const accepting = busy === `accept:${draft.id}`;
               const rejecting = busy === `reject:${draft.id}`;
-              const tailoring = draft.parsed_json?.tailoring;
+              const tailoring = tailoringMeta(draft);
               const changes = tailoring?.suggested_changes ?? [];
               const diffs = tailoring?.diff ?? [];
               const matched = tailoring?.grounding?.matched_existing_terms ?? [];
@@ -306,12 +371,21 @@ export function TailoredResumePanel({ jobId }: { jobId: string }) {
                 tailoring?.source?.source_version_title ??
                 versionLabel(versions, draft.source_version_id);
               return (
-                <li key={draft.id} className="border-border/70 rounded-lg border p-4">
+                <li
+                  key={draft.id}
+                  ref={(node) => {
+                    draftRefs.current[draft.id] = node;
+                  }}
+                  className={`border-border/70 rounded-lg border p-4 ${
+                    highlightedDraftId === draft.id ? "ring-primary/40 ring-2" : ""
+                  }`}
+                >
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div className="min-w-0 space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-medium">{draft.title || resumeLabel(resumes, draft.resume_id)}</span>
                         <Badge variant={draft.is_current ? "success" : "info"}>{draft.is_current ? "Applied" : "Copy"}</Badge>
+                        {aiBadge(tailoring)}
                         <Badge variant="outline">Source: {sourceTitle}</Badge>
                       </div>
                       <p className="text-muted-foreground text-sm">Updated {formatDate(draft.updated_at)}</p>
@@ -323,7 +397,7 @@ export function TailoredResumePanel({ jobId }: { jobId: string }) {
                       <Button variant="outline" size="sm" asChild>
                         <Link href={`/resumes/${draft.resume_id}`}>
                           <ExternalLink className="size-4" />
-                          Open editor
+                          Review copy
                         </Link>
                       </Button>
                       <Button type="button" variant="outline" size="sm" onClick={() => onAccept(draft)} disabled={busy !== null || draft.is_current}>
@@ -336,7 +410,7 @@ export function TailoredResumePanel({ jobId }: { jobId: string }) {
                       </Button>
                       <Button type="button" variant="outline" size="sm" onClick={() => onExport(draft)} disabled={busy !== null}>
                         {exporting ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
-                        Export PDF
+                        Download tailored resume
                       </Button>
                     </div>
                   </div>
@@ -348,9 +422,9 @@ export function TailoredResumePanel({ jobId }: { jobId: string }) {
                         {changes.length > 0 ? (
                           <ul className="space-y-2 text-sm">
                             {changes.map((change, index) => (
-                              <li key={`${change.section}-${change.action}-${index}`} className="text-muted-foreground">
-                                <span className="text-foreground font-medium">{change.section}:</span>{" "}
-                                {actionLabel(change.action)}. {change.why}
+                              <li key={`${change.section ?? "section"}-${change.action ?? "update"}-${index}`} className="text-muted-foreground">
+                                <span className="text-foreground font-medium">{change.section ?? "section"}:</span>{" "}
+                                {actionLabel(change.action ?? "update")}. {change.why}
                               </li>
                             ))}
                           </ul>
@@ -365,7 +439,7 @@ export function TailoredResumePanel({ jobId }: { jobId: string }) {
                           <p className="text-muted-foreground text-sm">Existing terms: {matched.join(", ")}</p>
                         )}
                         {missing.length > 0 && (
-                          <p className="text-muted-foreground text-sm">Verify before adding: {missing.join(", ")}</p>
+                          <p className="text-muted-foreground text-sm">Not added because not found in your resume: {missing.join(", ")}</p>
                         )}
                       </section>
                     </div>
@@ -373,12 +447,20 @@ export function TailoredResumePanel({ jobId }: { jobId: string }) {
 
                   {diffs.length > 0 && (
                     <div className="mt-3 space-y-2 text-sm">
-                      <h4 className="font-medium">Diff</h4>
+                      <h4 className="font-medium">Review edits</h4>
                       {diffs.slice(0, 2).map((item, index) => (
-                        <div key={`${item.section}-${index}`} className="bg-secondary/30 rounded-md p-3">
-                          <p className="font-medium">{item.section}</p>
-                          <p className="text-muted-foreground">Before: {formatValue(item.before)}</p>
-                          <p className="text-muted-foreground">After: {formatValue(item.after)}</p>
+                        <div key={`${item.section ?? "section"}-${index}`} className="bg-secondary/30 rounded-md p-3">
+                          <p className="font-medium">{item.section ?? "section"}</p>
+                          <div className="mt-2 grid gap-2 lg:grid-cols-2">
+                            <div>
+                              <p className="text-xs font-medium">Before</p>
+                              <p className="text-muted-foreground">{formatValue(item.before)}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs font-medium">After</p>
+                              <p className="text-muted-foreground">{formatValue(item.after)}</p>
+                            </div>
+                          </div>
                         </div>
                       ))}
                     </div>
