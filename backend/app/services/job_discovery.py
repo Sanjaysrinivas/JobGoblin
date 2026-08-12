@@ -260,7 +260,7 @@ async def rank_result_with_ai(
     profile_terms: list[str] | None = None,
     resume_context: str | None = None,
     saved_job_terms: list[str] | None = None,
-    timeout_seconds: float = 5.0,
+    timeout_seconds: float = 20.0,
 ) -> tuple[int, str]:
     base_score, base_reason = rank_result(result, preferences, profile_terms=profile_terms)
     if base_score == 0:
@@ -396,14 +396,28 @@ def _from_adzuna(item: dict[str, Any]) -> DiscoveredJob:
             posted_at = datetime.fromisoformat(created.replace("Z", "+00:00")).astimezone(UTC)
         except ValueError:
             posted_at = None
+    title = item.get("title") or "Untitled role"
+    description = item.get("description") or "No description provided."
+    display_location = ", ".join(area) if area else location.get("display_name")
     return DiscoveredJob(
         provider="adzuna",
         source=JobSource.other,
         source_url=item.get("redirect_url"),
-        title=item.get("title") or "Untitled role",
+        title=title,
         company_name=company.get("display_name") or "Unknown company",
-        location=", ".join(area) if area else location.get("display_name"),
-        work_mode=WorkMode.unknown,
-        description=item.get("description") or "No description provided.",
+        location=display_location,
+        work_mode=_infer_work_mode(title, description, display_location),
+        description=description,
         posted_at=posted_at,
     )
+
+
+def _infer_work_mode(title: str, description: str, location: str | None) -> WorkMode:
+    haystack = f"{title} {description} {location or ''}".lower()
+    if _contains_any(haystack, ["remote", "work from home", "wfh", "zdalna", "zdalnie"]):
+        return WorkMode.remote
+    if _contains_any(haystack, ["hybrid", "hybrydowa", "hybrydowo"]):
+        return WorkMode.hybrid
+    if _contains_any(haystack, ["onsite", "on-site", "office based", "biuro"]):
+        return WorkMode.onsite
+    return WorkMode.unknown

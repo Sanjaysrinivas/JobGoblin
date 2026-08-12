@@ -5,7 +5,13 @@ import pytest
 from app.models.enums import JobSource, WorkMode
 from app.schemas.discovery import JobSearchPreferencesPayload
 from app.services.ai_provider import MockProvider
-from app.services.job_discovery import DiscoveredJob, rank_result, rank_result_with_ai, search_jobs
+from app.services.job_discovery import (
+    DiscoveredJob,
+    _from_adzuna,
+    rank_result,
+    rank_result_with_ai,
+    search_jobs,
+)
 
 
 class RankingProvider(MockProvider):
@@ -94,6 +100,19 @@ def test_rank_result_uses_whole_word_matching():
     )
 
     assert score > 0
+
+
+def test_from_adzuna_infers_remote_work_mode():
+    job = _from_adzuna(
+        {
+            "title": "AI Engineer 100% REMOTE",
+            "company": {"display_name": "Example Co"},
+            "location": {"area": ["Poland"]},
+            "description": "Build LLM workflows.",
+        }
+    )
+
+    assert job.work_mode == WorkMode.remote
 
 
 @pytest.mark.asyncio
