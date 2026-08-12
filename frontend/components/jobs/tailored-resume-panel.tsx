@@ -222,7 +222,7 @@ export function TailoredResumePanel({ jobId }: { jobId: string }) {
           Tailored resumes
         </CardTitle>
         <CardDescription>
-          Create grounded resume-version drafts for this job, then edit and export from the resume screen.
+          Create a grounded copy for this job, review the edits, then download the tailored resume.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -275,7 +275,7 @@ export function TailoredResumePanel({ jobId }: { jobId: string }) {
           </div>
           <Button type="button" onClick={onCreate} disabled={busy !== null || !selectedResumeId}>
             {busy === "create" ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
-            {busy === "create" ? "Creating..." : "Create draft"}
+            {busy === "create" ? "Creating..." : "Create tailored copy"}
           </Button>
         </div>
 
@@ -311,7 +311,7 @@ export function TailoredResumePanel({ jobId }: { jobId: string }) {
                     <div className="min-w-0 space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-medium">{draft.title || resumeLabel(resumes, draft.resume_id)}</span>
-                        <Badge variant={draft.is_current ? "success" : "info"}>{draft.is_current ? "Accepted" : "Draft"}</Badge>
+                        <Badge variant={draft.is_current ? "success" : "info"}>{draft.is_current ? "Applied" : "Copy"}</Badge>
                         <Badge variant="outline">Source: {sourceTitle}</Badge>
                       </div>
                       <p className="text-muted-foreground text-sm">Updated {formatDate(draft.updated_at)}</p>
@@ -328,7 +328,7 @@ export function TailoredResumePanel({ jobId }: { jobId: string }) {
                       </Button>
                       <Button type="button" variant="outline" size="sm" onClick={() => onAccept(draft)} disabled={busy !== null || draft.is_current}>
                         {accepting ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
-                        Accept
+                        Apply edits
                       </Button>
                       <Button type="button" variant="outline" size="sm" onClick={() => onReject(draft)} disabled={busy !== null || draft.is_current}>
                         {rejecting ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
