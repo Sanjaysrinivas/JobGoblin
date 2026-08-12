@@ -15,12 +15,30 @@ from sqlmodel import Session, select
 from app.api.deps import get_current_user
 from app.api.routes.analysis import analysis_response
 from app.core.database import get_session
+from app.core.observability import record_llm_fallback
 from app.models import Job, JobAnalysis, Profile, Resume, ResumeVersion, User
 from app.schemas.analysis import JobAnalysisOut
 from app.schemas.job import JobCreate, JobOut, JobUpdate
 from app.schemas.resume import ResumeVersionOut, TailoredResumeDraftCreate
+from app.services.ai_provider import AIProvider, get_ai_provider
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
+
+_AI_TAILORING_SYSTEM = (
+    "You tailor resume copies for a private job-search workspace. Never invent "
+    "skills, employers, credentials, dates, education, projects, metrics, or "
+    "experience. Use only facts present in the supplied resume/profile context. "
+    "Return JSON only."
+)
+
+_AI_TAILORING_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "summary": {"type": "string"},
+        "skills": {"type": "array", "items": {"type": "string"}},
+        "change_notes": {"type": "array", "items": {"type": "string"}},
+    },
+}
 
 
 def _error(status_code: int, message: str, code: str) -> HTTPException:
@@ -105,6 +123,10 @@ def _contains(text: str, value: str) -> bool:
     return value.casefold() in text.casefold()
 
 
+def _provider_name(provider: AIProvider) -> str:
+    return provider.__class__.__name__.replace("Provider", "").lower()
+
+
 def _latest_analysis(
     session: Session,
     user: User,
@@ -122,12 +144,114 @@ def _latest_analysis(
     ).first()
 
 
-def _tailored_resume_json(
+def _ai_tailoring_prompt(
+    job: Job,
+    source_text: str,
+    source_json: dict,
+    matched: list[str],
+    missing: list[str],
+) -> str:
+    return (
+        "Create a concise tailored resume copy for this job. Rewrite only the "
+        "summary and reorder existing skills. Do not add terms listed under "
+        "'verify before adding' unless the resume context already proves them.\n\n"
+        f"Job: {job.title} at {job.company_name}\n"
+        f"Job description:\n{job.description[:4000]}\n\n"
+        f"Existing matched evidence: {', '.join(matched) or 'none'}\n"
+        f"Verify before adding: {', '.join(missing) or 'none'}\n\n"
+        f"Resume text:\n{source_text[:5000]}\n\n"
+        f"Parsed resume JSON:\n{source_json}"
+    )
+
+
+async def _ai_tailoring(
+    provider: AIProvider,
+    job: Job,
+    source_text: str,
+    source_json: dict,
+    matched: list[str],
+    missing: list[str],
+) -> dict | None:
+    try:
+        payload = await provider.generate_json(
+            _ai_tailoring_prompt(job, source_text, source_json, matched, missing),
+            _AI_TAILORING_SCHEMA,
+            system=_AI_TAILORING_SYSTEM,
+        )
+    except Exception as exc:
+        record_llm_fallback(
+            provider=_provider_name(provider),
+            model=str(getattr(provider, "_model", _provider_name(provider))),
+            operation="resume.tailor_json",
+            reason=type(exc).__name__,
+        )
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _apply_ai_tailoring(
+    source_json: dict,
+    payload: dict | None,
+    *,
+    matched: list[str],
+    missing: list[str],
+    changes: list[dict],
+    diff: list[dict],
+) -> bool:
+    if not payload:
+        return False
+    applied = False
+    current_summary = source_json.get("summary")
+    summary = str(payload.get("summary") or "").strip()
+    if (
+        summary
+        and summary.casefold() != "sample"
+        and isinstance(current_summary, str)
+        and summary != current_summary
+        and not any(_contains(summary, term) for term in missing)
+    ):
+        source_json["summary"] = summary
+        changes.append(
+            {
+                "section": "summary",
+                "action": "ai_rewrite",
+                "why": "AI rewrote the summary using existing resume evidence.",
+                "evidence": matched[:5],
+            }
+        )
+        diff.append({"section": "summary", "before": current_summary, "after": summary})
+        applied = True
+
+    current_skills = _strings(source_json.get("skills"))
+    by_key = {skill.casefold(): skill for skill in current_skills}
+    ai_skills = [
+        by_key[item.casefold()]
+        for item in _strings(payload.get("skills"))
+        if item.casefold() in by_key
+    ]
+    reordered = _unique([*ai_skills, *current_skills])
+    if reordered and reordered != current_skills:
+        source_json["skills"] = reordered
+        changes.append(
+            {
+                "section": "skills",
+                "action": "ai_reorder_existing_skills",
+                "why": "AI reordered only skills already present in the source resume.",
+                "evidence": ai_skills[:8],
+            }
+        )
+        diff.append({"section": "skills", "before": current_skills, "after": reordered})
+        applied = True
+    return applied
+
+
+async def _tailored_resume_json(
     session: Session,
     user: User,
     job: Job,
     resume: Resume,
     source: ResumeVersion | None,
+    provider: AIProvider,
 ) -> tuple[dict, str]:
     source_json = copy.deepcopy(source.parsed_json if source else resume.parsed_json) or {}
     if not isinstance(source_json, dict):
@@ -240,6 +364,16 @@ def _tailored_resume_json(
             }
         )
 
+    ai_payload = await _ai_tailoring(provider, job, source_text, source_json, matched, missing)
+    ai_applied = _apply_ai_tailoring(
+        source_json,
+        ai_payload,
+        matched=matched,
+        missing=missing,
+        changes=changes,
+        diff=diff,
+    )
+
     source_json["tailored_for"] = {
         "job_id": str(job.id),
         "title": job.title,
@@ -260,6 +394,10 @@ def _tailored_resume_json(
             ),
             "matched_existing_terms": matched,
             "job_terms_not_added": missing,
+        },
+        "ai": {
+            "provider": _provider_name(provider),
+            "status": "applied" if ai_applied else "fallback",
         },
         "suggested_changes": changes,
         "diff": diff,
@@ -319,7 +457,7 @@ def create_job(
     response_model=ResumeVersionOut,
     status_code=status.HTTP_201_CREATED,
 )
-def create_resume_draft(
+async def create_resume_draft(
     job_id: uuid.UUID,
     payload: TailoredResumeDraftCreate,
     current_user: Annotated[User, Depends(get_current_user)],
@@ -329,7 +467,9 @@ def create_resume_draft(
     resume = _get_owned_resume(session, current_user, payload.resume_id)
     source = _get_source_version(session, resume, payload.source_version_id)
     source_title = source.title if source else resume.title
-    parsed_json, extracted_text = _tailored_resume_json(session, current_user, job, resume, source)
+    parsed_json, extracted_text = await _tailored_resume_json(
+        session, current_user, job, resume, source, get_ai_provider()
+    )
     draft = ResumeVersion(
         resume_id=resume.id,
         job_id=job.id,

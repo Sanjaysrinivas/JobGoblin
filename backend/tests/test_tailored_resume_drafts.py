@@ -6,6 +6,16 @@ from fastapi.testclient import TestClient
 from app.api.deps import get_current_user
 from app.core.database import get_session
 from app.models import Job, JobAnalysis, Profile, Resume, ResumeVersion, User
+from app.services.ai_provider import MockProvider
+
+
+class TailoringProvider(MockProvider):
+    async def generate_json(self, prompt: str, schema: dict, *, system: str | None = None) -> dict:
+        return {
+            "summary": "API engineer focused on Python services and internal users.",
+            "skills": ["Python", "APIs", "SQL", "Kubernetes"],
+            "change_notes": ["Reframed summary around existing Python API evidence."],
+        }
 
 
 @pytest.fixture
@@ -27,11 +37,13 @@ def other_user(session) -> User:
 
 
 @pytest.fixture
-def client(session, user):
+def client(session, user, monkeypatch):
+    import app.api.routes.jobs as job_routes
     from app.main import app
 
     app.dependency_overrides[get_session] = lambda: session
     app.dependency_overrides[get_current_user] = lambda: user
+    monkeypatch.setattr(job_routes, "get_ai_provider", lambda: MockProvider())
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
@@ -152,6 +164,54 @@ def test_create_and_list_tailored_resume_draft(client, session, user):
     listed = client.get(f"/api/jobs/{job.id}/resume-drafts")
     assert listed.status_code == 200
     assert [item["id"] for item in listed.json()] == [body["id"]]
+
+
+def test_tailored_resume_draft_applies_grounded_ai_edits(
+    client, session, user, monkeypatch
+):
+    import app.api.routes.jobs as job_routes
+
+    job = _job(session, user)
+    resume, source = _resume_with_version(session, user)
+    session.add(
+        JobAnalysis(
+            user_id=user.id,
+            resume_id=resume.id,
+            job_id=job.id,
+            overall_score=70,
+            keyword_score=20,
+            skills_score=20,
+            experience_score=15,
+            role_score=5,
+            education_score=5,
+            formatting_score=5,
+            matched_keywords=["Python", "APIs"],
+            missing_keywords=["Kubernetes"],
+            provider="test",
+            model_used="test",
+        )
+    )
+    session.commit()
+    monkeypatch.setattr(job_routes, "get_ai_provider", lambda: TailoringProvider())
+
+    created = client.post(
+        f"/api/jobs/{job.id}/resume-drafts",
+        json={"resume_id": str(resume.id), "source_version_id": str(source.id)},
+    )
+
+    assert created.status_code == 201, created.text
+    body = created.json()
+    assert body["parsed_json"]["summary"] == (
+        "API engineer focused on Python services and internal users."
+    )
+    assert body["parsed_json"]["skills"] == ["Python", "APIs", "SQL"]
+    tailoring = body["parsed_json"]["tailoring"]
+    assert tailoring["ai"]["status"] == "applied"
+    assert "Kubernetes" in tailoring["grounding"]["job_terms_not_added"]
+    assert any(
+        change["action"] == "ai_rewrite"
+        for change in tailoring["suggested_changes"]
+    )
 
 
 def test_tailored_resume_drafts_are_user_scoped(client, session, user, other_user):
