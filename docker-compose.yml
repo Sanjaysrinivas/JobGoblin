@@ -1,0 +1,133 @@
+# JobGoblin - local/self-hosted stack.
+# Services: db + ollama + backend (backend-foundation) and
+# frontend + caddy reverse proxy (frontend-foundation).
+# cloudflared is optional and disabled by default. Start it with the "tunnel"
+# profile after configuring Cloudflare credentials.
+#
+# Caddy is the single entry point on http://localhost:8080 - it routes
+# /api/* to the backend and everything else to the Next.js frontend, so the
+# browser always makes same-origin requests (clean session cookies, no CORS).
+# The backend's port 8000 is still published for direct API access / docs.
+name: jobgoblin
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: jobgoblin
+      POSTGRES_PASSWORD: jobgoblin
+      POSTGRES_DB: jobgoblin
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jobgoblin"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama:/root/.ollama
+    # GPU acceleration (NVIDIA RTX 4070) - requires the NVIDIA Container Toolkit
+    # on the host. Uncomment to enable:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    env_file: .env
+    # Shell-style defaults so values in .env take precedence; the defaults only
+    # apply when a variable is unset.
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://jobgoblin:jobgoblin@db:5432/jobgoblin}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+    volumes:
+      - uploads:/data/uploads
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/ready')"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    # In the browser the app talks to the backend through Caddy on the same
+    # origin, so it uses the relative "/api" prefix — no public URL needed.
+    # Server-side rendering (Server Components/Actions) needs an *absolute*
+    # URL and skips the Caddy hop, so it calls the backend container directly.
+    environment:
+      NODE_ENV: production
+      INTERNAL_API_BASE_URL: ${INTERNAL_API_BASE_URL:-http://backend:8000}
+    expose:
+      - "3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./infra/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      frontend:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/api/health/ready >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:2026.6.1
+    profiles: ["tunnel"]
+    # Token-based tunnel. Configure the public hostname in Cloudflare Zero Trust
+    # to point at http://caddy:80, then set CLOUDFLARED_TUNNEL_TOKEN in .env.
+    # For named-tunnel config-file mode, see infra/cloudflared-config.example.yml.
+    # Named-tunnel mode requires mounting config and credentials files, e.g.:
+    # volumes:
+    #   - ./infra/cloudflared-config.yml:/etc/cloudflared/config.yml:ro
+    #   - ./infra/cloudflared-credentials.json:/etc/cloudflared/credentials.json:ro
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TUNNEL_TOKEN:-}
+    depends_on:
+      caddy:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  uploads:
+  ollama:
+  caddy_data:
+  caddy_config:

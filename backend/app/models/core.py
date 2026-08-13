@@ -1,0 +1,357 @@
+import uuid
+from datetime import UTC, datetime
+
+from sqlalchemy import BigInteger, Column, DateTime, Index, Sequence, UniqueConstraint
+from sqlalchemy import Enum as SAEnum
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlmodel import Field, SQLModel
+
+from app.models.enums import (
+    ApplicationStatus,
+    CoverLetterStatus,
+    CoverLetterTone,
+    DiscoveryResultStatus,
+    DiscoveryRunStatus,
+    InterviewPrepStatus,
+    JobSource,
+    OutreachChannel,
+    OutreachStatus,
+    Priority,
+    WorkMode,
+)
+
+
+def _utcnow() -> datetime:
+    return datetime.now(UTC)
+
+
+def _enum(enum_cls: type) -> SAEnum:
+    """Enum stored as VARCHAR + CHECK (native_enum=False) — keeps create_all /
+    migrations idempotent and avoids managing PostgreSQL ENUM types."""
+    return SAEnum(enum_cls, native_enum=False, length=40)
+
+
+# Timestamps are stored WITH TIME ZONE to match the tz-aware UTC values produced
+# by _utcnow(); naive columns would silently drop the offset.
+class _UUIDMixin(SQLModel):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+
+
+class _TimeMixin(SQLModel):
+    created_at: datetime = Field(
+        default_factory=_utcnow, sa_type=DateTime(timezone=True), nullable=False
+    )
+    updated_at: datetime = Field(
+        default_factory=_utcnow,
+        sa_type=DateTime(timezone=True),
+        sa_column_kwargs={"onupdate": _utcnow},
+        nullable=False,
+    )
+
+
+class User(_UUIDMixin, _TimeMixin, table=True):
+    __tablename__ = "users"
+
+    email: str = Field(unique=True, index=True)
+    password_hash: str
+    display_name: str
+    is_admin: bool = Field(default=False)
+    # Google OAuth subject (the stable account id from Google). Null for users
+    # who only ever signed in with email/password.
+    google_sub: str | None = Field(default=None, unique=True, index=True)
+    # TOTP authenticator-app second factor. The secret is generated at enrollment;
+    # totp_enabled flips to True only after the user verifies a code.
+    totp_secret: str | None = Field(default=None)
+    totp_enabled: bool = Field(default=False)
+    # Last TOTP timestep (Unix-time // 30) successfully consumed. Codes whose
+    # timestep is <= this are rejected, preventing replay within the 30s window.
+    last_totp_timestep: int | None = Field(default=None)
+
+
+class InviteToken(_UUIDMixin, table=True):
+    __tablename__ = "invite_tokens"
+
+    token: str = Field(unique=True, index=True)
+    created_by: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE")
+    used_by: uuid.UUID | None = Field(default=None, foreign_key="users.id", ondelete="SET NULL")
+    expires_at: datetime = Field(sa_type=DateTime(timezone=True))
+    created_at: datetime = Field(
+        default_factory=_utcnow, sa_type=DateTime(timezone=True), nullable=False
+    )
+
+
+class Resume(_UUIDMixin, _TimeMixin, table=True):
+    __tablename__ = "resumes"
+
+    user_id: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE", index=True)
+    title: str
+    original_filename: str
+    file_key: str
+    content_type: str
+    file_size: int
+    extracted_text: str | None = None
+    parsed_json: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
+    is_default: bool = Field(default=False)
+
+
+class ResumeVersion(_UUIDMixin, _TimeMixin, table=True):
+    __tablename__ = "resume_versions"
+
+    resume_id: uuid.UUID = Field(foreign_key="resumes.id", ondelete="CASCADE", index=True)
+    job_id: uuid.UUID | None = Field(
+        default=None, foreign_key="jobs.id", ondelete="SET NULL", index=True
+    )
+    source_version_id: uuid.UUID | None = Field(
+        default=None, foreign_key="resume_versions.id", ondelete="SET NULL"
+    )
+    title: str
+    extracted_text: str | None = None
+    parsed_json: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
+    is_current: bool = Field(default=False)
+
+
+class Profile(_UUIDMixin, _TimeMixin, table=True):
+    __tablename__ = "profiles"
+    __table_args__ = (UniqueConstraint("user_id", name="uq_profiles_user_id"),)
+
+    user_id: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE")
+    source_resume_id: uuid.UUID | None = Field(
+        default=None, foreign_key="resumes.id", ondelete="SET NULL"
+    )
+    full_name: str | None = None
+    headline: str | None = None
+    location: str | None = None
+    website_url: str | None = None
+    linkedin_url: str | None = None
+    summary: str | None = None
+    skills: list[str] = Field(default_factory=list, sa_column=Column(JSONB, nullable=False))
+    experience: list[dict] = Field(default_factory=list, sa_column=Column(JSONB, nullable=False))
+    education: list[dict] = Field(default_factory=list, sa_column=Column(JSONB, nullable=False))
+    projects: list[str] = Field(default_factory=list, sa_column=Column(JSONB, nullable=False))
+    certifications: list[str] = Field(default_factory=list, sa_column=Column(JSONB, nullable=False))
+
+
+class JobSearchPreferences(_UUIDMixin, _TimeMixin, table=True):
+    __tablename__ = "job_search_preferences"
+    __table_args__ = (UniqueConstraint("user_id", name="uq_job_search_preferences_user_id"),)
+
+    user_id: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE")
+    target_countries: list[str] = Field(
+        default_factory=list, sa_column=Column(JSONB, nullable=False)
+    )
+    target_locations: list[str] = Field(
+        default_factory=list, sa_column=Column(JSONB, nullable=False)
+    )
+    desired_titles: list[str] = Field(default_factory=list, sa_column=Column(JSONB, nullable=False))
+    seniority: str | None = None
+    industries: list[str] = Field(default_factory=list, sa_column=Column(JSONB, nullable=False))
+    required_keywords: list[str] = Field(
+        default_factory=list, sa_column=Column(JSONB, nullable=False)
+    )
+    optional_keywords: list[str] = Field(
+        default_factory=list, sa_column=Column(JSONB, nullable=False)
+    )
+    excluded_keywords: list[str] = Field(
+        default_factory=list, sa_column=Column(JSONB, nullable=False)
+    )
+    visa_sponsorship_required: bool = Field(default=False)
+    blocked_companies: list[str] = Field(
+        default_factory=list, sa_column=Column(JSONB, nullable=False)
+    )
+    work_mode: WorkMode = Field(default=WorkMode.unknown, sa_type=_enum(WorkMode))
+
+
+class JobSearchRun(_UUIDMixin, _TimeMixin, table=True):
+    __tablename__ = "job_search_runs"
+
+    user_id: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE", index=True)
+    provider: str
+    status: DiscoveryRunStatus = Field(
+        default=DiscoveryRunStatus.pending, sa_type=_enum(DiscoveryRunStatus)
+    )
+    country: str
+    location: str | None = None
+    query: str
+    preferences_snapshot: dict = Field(
+        default_factory=dict, sa_column=Column(JSONB, nullable=False)
+    )
+    result_count: int = Field(default=0)
+    error: str | None = None
+
+
+class JobSearchResult(_UUIDMixin, _TimeMixin, table=True):
+    __tablename__ = "job_search_results"
+    __table_args__ = (
+        UniqueConstraint("user_id", "dedupe_key", name="uq_job_search_results_user_dedupe"),
+    )
+
+    user_id: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE", index=True)
+    run_id: uuid.UUID = Field(foreign_key="job_search_runs.id", ondelete="CASCADE", index=True)
+    provider: str
+    source: JobSource = Field(default=JobSource.other, sa_type=_enum(JobSource))
+    source_url: str | None = None
+    canonical_url: str | None = None
+    title: str
+    company_name: str
+    location: str | None = None
+    work_mode: WorkMode = Field(default=WorkMode.unknown, sa_type=_enum(WorkMode))
+    description: str
+    posted_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))
+    dedupe_key: str
+    fit_score: int = Field(default=0)
+    fit_reason: str | None = None
+    status: DiscoveryResultStatus = Field(
+        default=DiscoveryResultStatus.new, sa_type=_enum(DiscoveryResultStatus)
+    )
+    saved_job_id: uuid.UUID | None = Field(default=None, foreign_key="jobs.id", ondelete="SET NULL")
+
+
+class Job(_UUIDMixin, _TimeMixin, table=True):
+    __tablename__ = "jobs"
+
+    user_id: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE", index=True)
+    company_name: str
+    title: str
+    location: str | None = None
+    work_mode: WorkMode = Field(default=WorkMode.unknown, sa_type=_enum(WorkMode))
+    source: JobSource = Field(default=JobSource.other, sa_type=_enum(JobSource))
+    source_url: str | None = None
+    description: str
+    salary_min: int | None = None
+    salary_max: int | None = None
+    currency: str | None = None
+    priority: Priority = Field(default=Priority.medium, sa_type=_enum(Priority))
+
+
+class JobAnalysis(_UUIDMixin, table=True):
+    __tablename__ = "job_analyses"
+
+    user_id: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE", index=True)
+    resume_id: uuid.UUID = Field(foreign_key="resumes.id", ondelete="CASCADE")
+    job_id: uuid.UUID = Field(foreign_key="jobs.id", ondelete="CASCADE")
+    overall_score: int
+    keyword_score: int
+    skills_score: int
+    experience_score: int
+    role_score: int
+    education_score: int
+    formatting_score: int
+    matched_keywords: list | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
+    missing_keywords: list | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
+    recommendations: list | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
+    explanation: str | None = None
+    provider: str
+    model_used: str
+    created_at: datetime = Field(
+        default_factory=_utcnow, sa_type=DateTime(timezone=True), nullable=False
+    )
+
+
+class CoverLetter(_UUIDMixin, _TimeMixin, table=True):
+    __tablename__ = "cover_letters"
+
+    user_id: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE", index=True)
+    job_id: uuid.UUID = Field(foreign_key="jobs.id", ondelete="CASCADE")
+    resume_id: uuid.UUID = Field(foreign_key="resumes.id", ondelete="CASCADE")
+    content: str
+    tone: CoverLetterTone = Field(sa_type=_enum(CoverLetterTone))
+    status: CoverLetterStatus = Field(
+        default=CoverLetterStatus.draft, sa_type=_enum(CoverLetterStatus)
+    )
+
+
+class Application(_UUIDMixin, _TimeMixin, table=True):
+    __tablename__ = "applications"
+    __table_args__ = (UniqueConstraint("user_id", "job_id", name="uq_application_user_job"),)
+
+    # No standalone index on user_id: the (user_id, job_id) unique index above
+    # already serves user_id-prefixed queries.
+    user_id: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE")
+    job_id: uuid.UUID = Field(foreign_key="jobs.id", ondelete="CASCADE")
+    resume_id: uuid.UUID | None = Field(default=None, foreign_key="resumes.id", ondelete="SET NULL")
+    cover_letter_id: uuid.UUID | None = Field(
+        default=None, foreign_key="cover_letters.id", ondelete="SET NULL"
+    )
+    status: ApplicationStatus = Field(
+        default=ApplicationStatus.saved, sa_type=_enum(ApplicationStatus)
+    )
+    applied_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))
+    follow_up_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))
+    notes: str | None = None
+
+
+class Contact(_UUIDMixin, _TimeMixin, table=True):
+    __tablename__ = "contacts"
+
+    user_id: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE", index=True)
+    job_id: uuid.UUID | None = Field(default=None, foreign_key="jobs.id", ondelete="SET NULL")
+    name: str
+    company: str | None = None
+    role: str | None = None
+    email: str | None = None
+    linkedin_url: str | None = None
+    notes: str | None = None
+    contacted: bool = Field(default=False)
+
+
+class OutreachMessage(_UUIDMixin, _TimeMixin, table=True):
+    __tablename__ = "outreach_messages"
+
+    user_id: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE", index=True)
+    job_id: uuid.UUID | None = Field(default=None, foreign_key="jobs.id", ondelete="SET NULL")
+    contact_id: uuid.UUID | None = Field(
+        default=None, foreign_key="contacts.id", ondelete="SET NULL"
+    )
+    channel: OutreachChannel = Field(sa_type=_enum(OutreachChannel))
+    message_type: str
+    content: str
+    status: OutreachStatus = Field(default=OutreachStatus.draft, sa_type=_enum(OutreachStatus))
+
+
+class InterviewPrep(_UUIDMixin, _TimeMixin, table=True):
+    __tablename__ = "interview_preps"
+
+    user_id: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE", index=True)
+    job_id: uuid.UUID = Field(foreign_key="jobs.id", ondelete="CASCADE", index=True)
+    application_id: uuid.UUID | None = Field(
+        default=None, foreign_key="applications.id", ondelete="SET NULL"
+    )
+    resume_id: uuid.UUID | None = Field(default=None, foreign_key="resumes.id", ondelete="SET NULL")
+    resume_version_id: uuid.UUID | None = Field(
+        default=None, foreign_key="resume_versions.id", ondelete="SET NULL"
+    )
+    status: InterviewPrepStatus = Field(
+        default=InterviewPrepStatus.draft, sa_type=_enum(InterviewPrepStatus)
+    )
+    questions: list[dict] = Field(default_factory=list, sa_column=Column(JSONB, nullable=False))
+    notes: str | None = None
+    provider: str = "mock"
+    model_used: str = "deterministic"
+
+
+class ActivityEvent(_UUIDMixin, table=True):
+    __tablename__ = "activity_events"
+    __table_args__ = (Index("ix_activity_events_entity", "entity_type", "entity_id"),)
+
+    activity_sequence: int | None = Field(
+        default=None,
+        sa_column=Column(
+            BigInteger,
+            Sequence("activity_events_activity_sequence_seq"),
+            nullable=False,
+            unique=True,
+        ),
+    )
+    user_id: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE", index=True)
+    entity_type: str
+    entity_id: uuid.UUID
+    event_type: str
+    description: str | None = None
+    # 'metadata' is reserved on SQLModel/SQLAlchemy classes, so map a differently
+    # named attribute onto the 'metadata' column.
+    event_metadata: dict | None = Field(
+        default=None, sa_column=Column("metadata", JSONB, nullable=True)
+    )
+    created_at: datetime = Field(
+        default_factory=_utcnow, sa_type=DateTime(timezone=True), nullable=False
+    )

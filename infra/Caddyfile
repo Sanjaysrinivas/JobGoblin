@@ -1,0 +1,14 @@
+# Reverse proxy — serves frontend + backend under ONE origin so the browser
+# only ever makes same-origin requests. This is what lets us use secure
+# HTTP-only session cookies without cross-site cookie issues.
+#
+# Used once the frontend service exists (added in a later branch).
+
+:80 {
+	handle /api/* {
+		reverse_proxy backend:8000
+	}
+	handle {
+		reverse_proxy frontend:3000
+	}
+}
