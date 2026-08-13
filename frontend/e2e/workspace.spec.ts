@@ -136,7 +136,7 @@ test.describe("workspace workflows", () => {
     await expect(page.getByText("Overall match")).toBeVisible();
     await expect(page.getByText("Application readiness")).toBeVisible();
     await expect(page.getByText("Cover letters", { exact: true })).toBeVisible();
-    await expect(page.getByText("Tailored resumes", { exact: true })).toBeVisible();
+    await expect(page.getByText("AI resume editor", { exact: true })).toBeVisible();
     await expect(page.getByText("Interview prep", { exact: true })).toBeVisible();
     await expect(page.getByRole("textbox", { name: "Notes", exact: true })).toHaveValue(`Prep notes ${suffix}`);
 
