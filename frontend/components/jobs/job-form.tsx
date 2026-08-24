@@ -51,6 +51,7 @@ type FormState = {
 
 interface JobFormProps {
   job?: Job;
+  initialPayload?: JobCreatePayload | null;
   submitLabel: string;
   disabled?: boolean;
   onSubmit: (payload: JobCreatePayload) => Promise<void> | void;
@@ -70,6 +71,22 @@ function toState(job?: Job): FormState {
     salary_max: job?.salary_max?.toString() ?? "",
     currency: job?.currency ?? "",
     priority: job?.priority ?? "medium",
+  };
+}
+
+function toStateFromPayload(payload: JobCreatePayload): FormState {
+  return {
+    company_name: payload.company_name ?? "",
+    title: payload.title ?? "",
+    location: payload.location ?? "",
+    work_mode: payload.work_mode ?? "unknown",
+    source: payload.source ?? "other",
+    source_url: payload.source_url ?? "",
+    description: payload.description ?? "",
+    salary_min: payload.salary_min?.toString() ?? "",
+    salary_max: payload.salary_max?.toString() ?? "",
+    currency: payload.currency ?? "",
+    priority: payload.priority ?? "medium",
   };
 }
 
@@ -103,12 +120,15 @@ function toPayload(state: FormState): JobCreatePayload {
 
 export function JobForm({
   job,
+  initialPayload,
   submitLabel,
   disabled = false,
   onSubmit,
   onCancel,
 }: JobFormProps) {
-  const [state, setState] = React.useState<FormState>(() => toState(job));
+  const [state, setState] = React.useState<FormState>(() =>
+    initialPayload ? toStateFromPayload(initialPayload) : toState(job)
+  );
 
   const payload = toPayload(state);
   const isSalaryRangeInvalid =

@@ -211,6 +211,11 @@ export interface JobCreatePayload {
 
 export type JobUpdatePayload = Partial<JobCreatePayload>;
 
+export interface JobImportPayload {
+  mode: "text" | "url";
+  content: string;
+}
+
 export interface JobSearchPreferences {
   id?: string;
   target_countries: string[];
@@ -539,7 +544,7 @@ export interface LoginPayload {
 }
 
 export interface RegisterPayload extends LoginPayload {
-  invite_token: string;
+  invite_token?: string;
 }
 
 // ---------------------------------------------------------------------------

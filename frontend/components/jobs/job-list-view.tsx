@@ -2,10 +2,10 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Briefcase, ExternalLink, Loader2, MapPin, Plus } from "lucide-react";
+import { Briefcase, ExternalLink, Loader2, MapPin, Plus, Wand2 } from "lucide-react";
 
 import { ApiError } from "@/lib/api";
-import { createJob, listJobs } from "@/lib/jobs";
+import { createJob, importJob, listJobs } from "@/lib/jobs";
 import type { Job, JobCreatePayload, Priority, WorkMode } from "@/lib/types";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
@@ -57,6 +57,10 @@ export function JobListView() {
   const [createError, setCreateError] = React.useState<string | null>(null);
   const [showCreate, setShowCreate] = React.useState(false);
   const [creating, setCreating] = React.useState(false);
+  const [importMode, setImportMode] = React.useState<"text" | "url">("text");
+  const [importContent, setImportContent] = React.useState("");
+  const [importing, setImporting] = React.useState(false);
+  const [draftJob, setDraftJob] = React.useState<JobCreatePayload | null>(null);
 
   React.useEffect(() => {
     let active = true;
@@ -87,6 +91,8 @@ export function JobListView() {
       const created = await createJob(payload);
       setJobs((prev) => [created, ...(prev ?? [])]);
       setShowCreate(false);
+      setDraftJob(null);
+      setImportContent("");
     } catch (err) {
       setCreateError(
         err instanceof ApiError
@@ -95,6 +101,25 @@ export function JobListView() {
       );
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function onImport(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const content = importContent.trim();
+    if (!content) return;
+    setCreateError(null);
+    setImporting(true);
+    try {
+      setDraftJob(await importJob({ mode: importMode, content }));
+    } catch (err) {
+      setCreateError(
+        err instanceof ApiError
+          ? err.message || "Could not parse this job."
+          : "Could not reach the server. Is the backend running?"
+      );
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -125,8 +150,8 @@ export function JobListView() {
           <CardHeader>
             <CardTitle className="text-base">Add job</CardTitle>
             <CardDescription>
-              Paste the posting details now; analysis and application tracking
-              stay separate.
+              Choose whether you want to parse a pasted posting or a source link,
+              then review the fields before saving.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -138,9 +163,60 @@ export function JobListView() {
                 {createError}
               </p>
             )}
+            <form onSubmit={onImport} className="space-y-3 rounded-md border p-3">
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={importMode === "text" ? "default" : "outline"}
+                  disabled={creating || importing}
+                  onClick={() => setImportMode("text")}
+                >
+                  Paste posting
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={importMode === "url" ? "default" : "outline"}
+                  disabled={creating || importing}
+                  onClick={() => setImportMode("url")}
+                >
+                  Paste link
+                </Button>
+              </div>
+              {importMode === "url" ? (
+                <input
+                  type="url"
+                  value={importContent}
+                  onChange={(e) => setImportContent(e.target.value)}
+                  disabled={creating || importing}
+                  placeholder="https://company.com/careers/job"
+                  className="border-input bg-card focus-visible:border-ring focus-visible:ring-ring/40 h-9 w-full rounded-md border px-3 py-1 text-sm shadow-xs outline-none focus-visible:ring-[3px] disabled:opacity-50"
+                />
+              ) : (
+                <textarea
+                  value={importContent}
+                  onChange={(e) => setImportContent(e.target.value)}
+                  disabled={creating || importing}
+                  rows={7}
+                  placeholder="Paste the full job posting here."
+                  className="border-input bg-card focus-visible:border-ring focus-visible:ring-ring/40 w-full rounded-md border px-3 py-2 text-sm shadow-xs outline-none focus-visible:ring-[3px] disabled:opacity-50"
+                />
+              )}
+              <Button
+                type="submit"
+                variant="outline"
+                disabled={creating || importing || !importContent.trim()}
+              >
+                {importing ? <Loader2 className="size-4 animate-spin" /> : <Wand2 className="size-4" />}
+                {importing ? "Parsing..." : "Parse job"}
+              </Button>
+            </form>
             <JobForm
+              key={draftJob ? JSON.stringify(draftJob) : "blank-job-form"}
+              initialPayload={draftJob}
               submitLabel={creating ? "Saving..." : "Save job"}
-              disabled={creating}
+              disabled={creating || importing}
               onSubmit={onCreate}
               onCancel={() => setShowCreate(false)}
             />
