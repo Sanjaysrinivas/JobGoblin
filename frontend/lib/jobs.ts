@@ -3,7 +3,12 @@
  */
 
 import { api } from "@/lib/api";
-import type { Job, JobCreatePayload, JobUpdatePayload } from "@/lib/types";
+import type {
+  Job,
+  JobCreatePayload,
+  JobImportPayload,
+  JobUpdatePayload,
+} from "@/lib/types";
 
 /** GET /api/jobs - list the current user's saved jobs. */
 export function listJobs(): Promise<Job[]> {
@@ -18,6 +23,11 @@ export function getJob(id: string): Promise<Job> {
 /** POST /api/jobs - create a saved job from pasted role details. */
 export function createJob(payload: JobCreatePayload): Promise<Job> {
   return api.post<Job>("/jobs", payload);
+}
+
+/** POST /api/jobs/import - parse pasted job text or a job URL into editable fields. */
+export function importJob(payload: JobImportPayload): Promise<JobCreatePayload> {
+  return api.post<JobCreatePayload>("/jobs/import", payload);
 }
 
 /** PATCH /api/jobs/{id} - update editable job fields. */

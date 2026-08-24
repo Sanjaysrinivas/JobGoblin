@@ -161,23 +161,12 @@ Google account must fail with `not_allowlisted` after callback.
 
 ## 6. Cloudflare Tunnel Bring-Up
 
-Create the tunnel in Cloudflare Zero Trust and configure its public hostname to
-serve the local Compose origin:
-
-```text
-Public hostname service: http://caddy:80
-```
-
-Token-based Compose mode:
-
-```dotenv
-CLOUDFLARED_TUNNEL_TOKEN=<token from Cloudflare>
-```
-
-Start and verify:
+The default `tunnel` profile uses Cloudflare Quick Tunnel. It requires no
+Cloudflare account login and creates a fresh shareable `trycloudflare.com` URL
+each time the `cloudflared` container starts:
 
 ```bash
-python scripts/cloudflare_tunnel_check.py --start --public-url https://jobs.example.com
+python scripts/cloudflare_tunnel_check.py --start
 ```
 
 Manual equivalent:
@@ -186,16 +175,25 @@ Manual equivalent:
 docker compose --profile tunnel up -d cloudflared
 docker compose --profile tunnel ps cloudflared
 docker compose --profile tunnel logs --tail=80 cloudflared
-curl https://jobs.example.com/api/health
 ```
 
-Named-tunnel config-file mode is documented in
-`infra/cloudflared-config.example.yml`. Keep the real config and credentials
-ignored or outside git-tracked paths.
+Copy the `https://*.trycloudflare.com` URL from the logs and share that while
+the local stack is running. To start the quick tunnel with every normal Compose
+startup, set `COMPOSE_PROFILES=tunnel` in local `.env`.
+
+Signup remains invite-only unless `PUBLIC_SIGNUP_ENABLED=true` is set. Enable
+that only when everyone with the tunnel URL should be able to create an account.
+
+Stable named tunnels are still available through the `named-tunnel` profile.
+Create the tunnel in Cloudflare Zero Trust, point its public hostname at
+`http://caddy:80`, set `CLOUDFLARED_TUNNEL_TOKEN`, then start
+`docker compose --profile named-tunnel up -d cloudflared-named`. Config-file
+mode is documented in `infra/cloudflared-config.example.yml`. Keep real config
+and credentials ignored or outside git-tracked paths.
 
 ## 7. HTTPS Cookie Verification
 
-For tunnel use, set production-like values and restart the stack:
+For a stable named tunnel, set production-like values and restart the stack:
 
 ```dotenv
 APP_ENV=production
@@ -303,23 +301,27 @@ recruiters, submit forms, or perform silent outreach.
 
 ## 11. Cloudflare Tunnel And OAuth Failure Modes
 
-Tunnel setup requires the public hostname in Cloudflare Zero Trust to target the
-Compose origin service `http://caddy:80`. The token belongs in local `.env` only.
-Never commit a token, named-tunnel credential file, Google client secret, or real
-operator hostname if it should stay private.
+Quick Tunnel setup requires local Caddy to be healthy and the `cloudflared`
+container to reach Cloudflare. Quick Tunnel URLs are temporary and change when
+the `cloudflared` container is recreated. Named-tunnel tokens belong in local
+`.env` only. Never commit a token, named-tunnel credential file, Google client
+secret, or real operator hostname if it should stay private.
 
 Troubleshooting commands:
 
 ```bash
-python scripts/cloudflare_tunnel_check.py --start --public-url https://jobs.example.com
+python scripts/cloudflare_tunnel_check.py --start
 docker compose --profile tunnel logs --tail=120 cloudflared
 curl http://localhost:8080/api/health/ready
-curl https://jobs.example.com/api/health
 ```
 
-Common tunnel failures: empty `CLOUDFLARED_TUNNEL_TOKEN`, hostname pointed at the
-wrong service, local Caddy not healthy, DNS still propagating, or cloudflared
-running with an old token.
+The script reads the generated `trycloudflare.com` URL from logs. Pass
+`--public-url https://jobs.example.com` only when validating a stable named
+tunnel. Common quick-tunnel failures: local Caddy not
+healthy, Docker not running, Cloudflare edge connectivity blocked, or the
+temporary URL not emitted yet. Common named-tunnel failures: empty
+`CLOUDFLARED_TUNNEL_TOKEN`, hostname pointed at the wrong service, DNS still
+propagating, or cloudflared running with an old token.
 
 Google OAuth must use the same public base URL that users open in the browser:
 

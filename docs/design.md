@@ -393,7 +393,7 @@ Current compose services:
 | `backend` | FastAPI API | Runs migrations on startup; mounts uploads volume. |
 | `db` | PostgreSQL 16 | Uses `pgdata` Docker volume. |
 | `ollama` | Local LLM runtime | Uses `ollama` Docker volume; model pull/setup is separate. |
-| `cloudflared` | Optional tunnel profile | Disabled by default; requires `CLOUDFLARED_TUNNEL_TOKEN`. |
+| `cloudflared` | Optional tunnel profile | Disabled by default; quick tunnel needs no token. |
 
 Pending validation:
 

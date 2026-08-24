@@ -70,7 +70,7 @@ docker compose up -d --build
 Open:
 
 - App through Caddy: http://localhost:8080
-- Backend Swagger UI: http://localhost:8000/docs
+- Backend Swagger UI: http://localhost:18000/docs
 
 Demo login, when the seed admin values above are configured:
 
@@ -89,13 +89,16 @@ docker compose exec ollama ollama pull qwen2.5:7b-instruct
 
 Use `AI_PROVIDER=mock` in `.env` for fast local iteration without a model. Use `AI_PROVIDER=ollama` plus the default `OLLAMA_BASE_URL=http://ollama:11434` when smoke-testing real local parsing/generation.
 
-Use `curl http://localhost:8080/api/health` for liveness and `curl http://localhost:8080/api/health/ready` for database readiness. Cloudflare Tunnel is optional and disabled by default. Create a tunnel in Cloudflare Zero Trust, point its public hostname at `http://caddy:80`, set `CLOUDFLARED_TUNNEL_TOKEN` in `.env`, then start only the tunnel profile:
+Use `curl http://localhost:8080/api/health` for liveness and `curl http://localhost:8080/api/health/ready` for database readiness. Cloudflare Quick Tunnel is optional and disabled by default. It needs no Cloudflare login and prints a fresh shareable `trycloudflare.com` URL in the tunnel logs:
 
 ```bash
 docker compose --profile tunnel up -d cloudflared
+docker compose --profile tunnel logs --tail=80 cloudflared
 ```
 
-The normal `docker compose up -d --build` path remains local-only and does not require Cloudflare credentials.
+Set `COMPOSE_PROFILES=tunnel` in local `.env` when every normal `docker compose up -d --build` should also start the quick tunnel. Token-based named tunnels are still available through the `named-tunnel` profile when a fixed Cloudflare hostname is needed.
+
+Signup is invite-only by default. Set `PUBLIC_SIGNUP_ENABLED=true` only for intentionally shared sessions where anyone with the app link may create an account.
 
 ## Repository Layout
 

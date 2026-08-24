@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     # Seed admin (single-user/invite-only bootstrap)
     admin_email: str = ""
     admin_password: str = ""
+    public_signup_enabled: bool = False
 
     # CORS (dev only; production is same-origin behind Caddy)
     frontend_origin: str = "http://localhost:3000"
