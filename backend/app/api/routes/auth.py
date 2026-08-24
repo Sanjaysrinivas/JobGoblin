@@ -100,24 +100,29 @@ def register(
     response: Response,
     session: Annotated[Session, Depends(get_session)],
 ) -> User:
-    # Lock the invite row so two concurrent registrations can't both observe
-    # used_by is None and succeed against the same token.
-    invite = session.exec(
-        select(InviteToken)
-        .where(InviteToken.token == payload.invite_token)
-        .with_for_update()
-    ).first()
-    if (
-        invite is None
-        or invite.used_by is not None
-        or invite.expires_at <= datetime.now(UTC)
-    ):
-        raise _error(status.HTTP_400_BAD_REQUEST, "Invalid or expired invite", "invalid_invite")
-
+    current_settings = get_settings()
     email = payload.email.strip().lower()
     existing = session.exec(select(User).where(User.email == email)).first()
     if existing is not None:
         raise _error(status.HTTP_409_CONFLICT, "Email already registered", "email_taken")
+
+    invite: InviteToken | None = None
+    if not current_settings.public_signup_enabled:
+        # Lock the invite row so two concurrent registrations can't both observe
+        # used_by is None and succeed against the same token.
+        invite = session.exec(
+            select(InviteToken)
+            .where(InviteToken.token == payload.invite_token)
+            .with_for_update()
+        ).first()
+        if (
+            invite is None
+            or invite.used_by is not None
+            or invite.expires_at <= datetime.now(UTC)
+        ):
+            raise _error(
+                status.HTTP_400_BAD_REQUEST, "Invalid or expired invite", "invalid_invite"
+            )
 
     user = User(
         email=email,
@@ -127,8 +132,9 @@ def register(
     session.add(user)
     session.flush()  # assign user.id before marking the invite
 
-    invite.used_by = user.id
-    session.add(invite)
+    if invite is not None:
+        invite.used_by = user.id
+        session.add(invite)
     session.commit()
     session.refresh(user)
 

@@ -25,7 +25,7 @@ def _validate_email(value: str) -> str:
 class RegisterRequest(BaseModel):
     email: str
     password: str
-    invite_token: str
+    invite_token: str | None = None
 
     @field_validator("email")
     @classmethod
@@ -34,11 +34,8 @@ class RegisterRequest(BaseModel):
 
     @field_validator("invite_token")
     @classmethod
-    def _check_invite_token(cls, value: str) -> str:
-        value = value.strip()
-        if not value:
-            raise ValueError("invite token is required")
-        return value
+    def _check_invite_token(cls, value: str | None) -> str | None:
+        return value.strip() if value is not None else None
 
 
 class LoginRequest(BaseModel):

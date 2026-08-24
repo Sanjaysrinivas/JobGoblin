@@ -2,12 +2,12 @@
 # Services: db + ollama + backend (backend-foundation) and
 # frontend + caddy reverse proxy (frontend-foundation).
 # cloudflared is optional and disabled by default. Start it with the "tunnel"
-# profile after configuring Cloudflare credentials.
+# profile for a temporary shareable trycloudflare.com URL.
 #
 # Caddy is the single entry point on http://localhost:8080 - it routes
 # /api/* to the backend and everything else to the Next.js frontend, so the
 # browser always makes same-origin requests (clean session cookies, no CORS).
-# The backend's port 8000 is still published for direct API access / docs.
+# The backend is still published on host port 18000 for direct API access / docs.
 name: jobgoblin
 
 services:
@@ -52,7 +52,7 @@ services:
     volumes:
       - uploads:/data/uploads
     ports:
-      - "8000:8000"
+      - "18000:8000"
     depends_on:
       db:
         condition: service_healthy
@@ -75,6 +75,7 @@ services:
     environment:
       NODE_ENV: production
       INTERNAL_API_BASE_URL: ${INTERNAL_API_BASE_URL:-http://backend:8000}
+      PUBLIC_SIGNUP_ENABLED: ${PUBLIC_SIGNUP_ENABLED:-false}
     expose:
       - "3000"
     depends_on:
@@ -112,8 +113,19 @@ services:
   cloudflared:
     image: cloudflare/cloudflared:2026.6.1
     profiles: ["tunnel"]
-    # Token-based tunnel. Configure the public hostname in Cloudflare Zero Trust
-    # to point at http://caddy:80, then set CLOUDFLARED_TUNNEL_TOKEN in .env.
+    # Quick Tunnel mode: no Cloudflare login required. Each container start gets
+    # a fresh shareable trycloudflare.com URL in the cloudflared logs.
+    command: tunnel --no-autoupdate --url http://caddy:80
+    depends_on:
+      caddy:
+        condition: service_started
+    restart: unless-stopped
+
+  cloudflared-named:
+    image: cloudflare/cloudflared:2026.6.1
+    profiles: ["named-tunnel"]
+    # Token-based named tunnel. Configure the public hostname in Cloudflare Zero
+    # Trust to point at http://caddy:80, then set CLOUDFLARED_TUNNEL_TOKEN in .env.
     # For named-tunnel config-file mode, see infra/cloudflared-config.example.yml.
     # Named-tunnel mode requires mounting config and credentials files, e.g.:
     # volumes:
