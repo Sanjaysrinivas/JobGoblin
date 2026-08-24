@@ -156,6 +156,53 @@ def test_run_uses_profile_terms_when_preferences_are_sparse(client, session, use
     result = client.get("/api/discovery/results").json()[0]
     assert result["fit_score"] > 35
 
+
+def test_run_ignores_broad_region_location(client, monkeypatch):
+    import app.api.routes.discovery as discovery_routes
+    from app.services.job_discovery import DiscoveredJob
+
+    captured = {}
+
+    async def _search_jobs(**kwargs):
+        captured.update(kwargs)
+        return [
+            DiscoveredJob(
+                provider="mock",
+                source=JobSource.other,
+                source_url="https://example.com/jobs/data-analyst",
+                title="Data Analyst",
+                company_name="Example Analytics",
+                location="London",
+                work_mode=WorkMode.unknown,
+                description="Data analysis with SQL and dashboards.",
+            )
+        ]
+
+    async def _ranker(item, preferences, provider, **_kwargs):
+        assert preferences.target_locations == []
+        return 72, "Broad region was not used as a location blocker."
+
+    monkeypatch.setattr(discovery_routes, "search_jobs", _search_jobs)
+    monkeypatch.setattr(discovery_routes, "rank_result_with_ai", _ranker)
+    prefs = client.put(
+        "/api/discovery/preferences",
+        json={
+            "target_countries": ["gb"],
+            "target_locations": ["Europe"],
+            "desired_titles": ["Data Analyst"],
+        },
+    )
+    assert prefs.status_code == 200
+
+    run = client.post("/api/discovery/runs", json={"results_per_page": 10})
+    assert run.status_code == 201, run.text
+    body = run.json()
+    assert body["location"] is None
+    assert body["preferences_snapshot"]["target_locations"] == []
+    assert captured["location"] is None
+    assert body["result_count"] == 1
+
+
 def test_run_uses_current_resume_terms_when_preferences_are_sparse(client, session, user):
     resume = Resume(
         user_id=user.id,

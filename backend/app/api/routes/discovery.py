@@ -40,6 +40,7 @@ from app.services.ai_provider import get_ai_provider
 from app.services.job_discovery import (
     build_query,
     normalize_discovery_provider,
+    normalize_search_location,
     rank_result_with_ai,
     search_jobs,
     validate_discovery_country,
@@ -323,8 +324,12 @@ async def create_run(
     except ValueError as exc:
         code = "unsupported_provider" if "provider" in str(exc).lower() else "invalid_country"
         raise _error(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc), code) from exc
-    location = payload.location or (
+    requested_location = payload.location or (
         preferences.target_locations[0] if preferences.target_locations else None
+    )
+    location = normalize_search_location(country, requested_location)
+    ranking_preferences = preferences.model_copy(
+        update={"target_locations": [location] if location else []}
     )
     resume_context = _resume_context(session, current_user.id)
     resume_terms = _resume_search_terms(session, current_user.id)
@@ -345,6 +350,7 @@ async def create_run(
         query=query,
         preferences_snapshot={
             **preferences.model_dump(mode="json"),
+            "target_locations": ranking_preferences.target_locations,
             "profile_terms": profile_terms,
             "resume_terms": resume_terms,
             "saved_job_terms": saved_job_terms,
@@ -395,7 +401,7 @@ async def create_run(
         *(
             rank_result_with_ai(
                 item,
-                preferences,
+                ranking_preferences,
                 ai_provider,
                 profile_terms=profile_terms,
                 resume_context=resume_context,

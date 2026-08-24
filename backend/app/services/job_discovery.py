@@ -52,6 +52,40 @@ ADZUNA_COUNTRIES = {
     "us",
     "za",
 }
+COUNTRY_NAMES = {
+    "at": "austria",
+    "au": "australia",
+    "be": "belgium",
+    "br": "brazil",
+    "ca": "canada",
+    "ch": "switzerland",
+    "de": "germany",
+    "es": "spain",
+    "fr": "france",
+    "gb": "united kingdom",
+    "in": "india",
+    "it": "italy",
+    "mx": "mexico",
+    "nl": "netherlands",
+    "nz": "new zealand",
+    "pl": "poland",
+    "sg": "singapore",
+    "us": "united states",
+    "za": "south africa",
+}
+BROAD_LOCATION_TERMS = {
+    "africa",
+    "any",
+    "anywhere",
+    "asia",
+    "asia pacific",
+    "europe",
+    "global",
+    "north america",
+    "remote",
+    "south america",
+    "worldwide",
+}
 
 
 def normalize_discovery_provider(provider: str) -> str:
@@ -68,6 +102,19 @@ def validate_discovery_country(provider: str, country: str) -> str:
     if provider == "adzuna" and code not in ADZUNA_COUNTRIES:
         raise ValueError(f"Country '{code}' is not supported by Adzuna discovery")
     return code
+
+
+def normalize_search_location(country: str, location: str | None) -> str | None:
+    if location is None:
+        return None
+    text = location.strip()
+    if not text:
+        return None
+    key = re.sub(r"\s+", " ", text.lower())
+    country_code = normalize_country_code(country)
+    if key in BROAD_LOCATION_TERMS or key == country_code or key == COUNTRY_NAMES.get(country_code):
+        return None
+    return text
 
 
 def _contains_term(text: str, term: str) -> bool:
