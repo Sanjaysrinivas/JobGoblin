@@ -73,12 +73,17 @@ def test_create_get_update_delete_job(client, session, user):
         client,
         company_name="  TrimCo  ",
         title="  Platform Engineer  ",
+        source_url="https://example.com/jobs/2",
         currency=" usd ",
     )
     assert spaced.status_code == 201, spaced.text
     assert spaced.json()["company_name"] == "TrimCo"
     assert spaced.json()["title"] == "Platform Engineer"
     assert spaced.json()["currency"] == "USD"
+
+    duplicate = _create_job(client, source_url="https://example.com/jobs/1/?utm_source=test")
+    assert duplicate.status_code == 409
+    assert duplicate.json()["code"] == "job_exists"
 
     job_id = uuid.UUID(body["id"])
     stored = session.get(Job, job_id)
@@ -123,6 +128,15 @@ def test_list_returns_only_current_users_jobs(client, session, user, other_user)
     assert resp.status_code == 200
     companies = [job["company_name"] for job in resp.json()]
     assert companies == [mine["company_name"]]
+
+
+def test_duplicate_detection_handles_non_url_source_values(client):
+    first = _create_job(client, source_url="Internal board reference 42")
+    assert first.status_code == 201
+
+    duplicate = _create_job(client, source_url=" internal board reference 42 ")
+    assert duplicate.status_code == 409
+    assert duplicate.json()["code"] == "job_exists"
 
 
 def test_cross_user_detail_update_and_delete_are_404(client, session, other_user):

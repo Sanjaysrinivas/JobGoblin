@@ -328,14 +328,16 @@ def test_generate_outreach_creates_review_only_drafts(
     assert event.entity_id == stored.id
 
 
-def test_outreach_rejects_sent_status_without_sending(client, session):
+def test_outreach_allows_manual_sent_status_without_sending(client, session):
     create_resp = client.post("/api/outreach", json=_payload(status="sent"))
-    assert create_resp.status_code == 422
+    assert create_resp.status_code == 201
+    assert create_resp.json()["status"] == "sent"
 
-    created = client.post("/api/outreach", json=_payload()).json()
+    created = client.post("/api/outreach", json=_payload(content="Second draft")).json()
     patch_resp = client.patch(f"/api/outreach/{created['id']}", json={"status": "sent"})
-    assert patch_resp.status_code == 422
+    assert patch_resp.status_code == 200
+    assert patch_resp.json()["status"] == "sent"
 
     stored = session.get(OutreachMessage, uuid.UUID(created["id"]))
     assert stored is not None
-    assert stored.status.value == "draft"
+    assert stored.status.value == "sent"

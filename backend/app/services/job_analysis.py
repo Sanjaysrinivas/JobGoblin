@@ -1,9 +1,8 @@
 """Resume-to-job analysis service.
 
 The deterministic portion is intentionally simple and stable: extract job terms,
-match them against resume text and parsed skills, then compute weighted category
-contributions that add up to the persisted overall estimate. AI is used only for
-the explanatory narrative and recommendations.
+match them against resume text and parsed skills, then compute normalized weighted
+category contributions and grounded guidance.
 """
 
 import re
@@ -13,7 +12,6 @@ from typing import Any
 
 from rapidfuzz import fuzz
 
-from app.core.config import get_settings
 from app.models import Job, Resume
 from app.services.ai_provider import AIProvider
 from app.services.text_matching import (
@@ -35,21 +33,6 @@ FORMATTING_WEIGHT = 0
 
 MAX_KEYWORDS = 20
 FUZZY_THRESHOLD = 88
-
-ANALYSIS_NARRATIVE_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "explanation": {"type": "string"},
-        "recommendations": {"type": "array", "items": {"type": "string"}},
-    },
-    "required": ["explanation", "recommendations"],
-}
-
-_SYSTEM = (
-    "You explain resume-to-job fit. Do not fabricate experience, skills, "
-    "education, credentials, employers, or dates. Base recommendations only on "
-    "the provided resume text, job text, and deterministic score summary."
-)
 
 _STOPWORDS = {
     "a",
@@ -201,6 +184,7 @@ _EDUCATION_TERMS = {
     "education",
 }
 
+
 @dataclass(frozen=True)
 class DeterministicScores:
     keyword_score: int
@@ -209,12 +193,13 @@ class DeterministicScores:
     role_score: int
     education_score: int
     formatting_score: int
+    applicable_weight: int
     matched_keywords: list[str]
     missing_keywords: list[str]
 
     @property
     def overall_score(self) -> int:
-        return (
+        earned = (
             self.keyword_score
             + self.skills_score
             + self.experience_score
@@ -222,6 +207,9 @@ class DeterministicScores:
             + self.education_score
             + self.formatting_score
         )
+        if self.applicable_weight <= 0:
+            return 0
+        return round(100 * earned / self.applicable_weight)
 
 
 @dataclass(frozen=True)
@@ -395,8 +383,7 @@ def rewrite_suggestions(
                 "section": "ATS checklist",
                 "action": "Fill only truthful gaps.",
                 "prompt": (
-                    "Add missing terms only where the resume can prove them with real "
-                    "experience."
+                    "Add missing terms only where the resume can prove them with real experience."
                 ),
                 "verify_before_adding": missing_by_group[:5],
             }
@@ -498,8 +485,7 @@ def _matches_term(term: str, resume_text: str, candidates: set[str]) -> bool:
         return True
     variants = _term_variants(term)
     if any(
-        variant in candidates and not _contains_term(resume_text, variant)
-        for variant in variants
+        variant in candidates and not _contains_term(resume_text, variant) for variant in variants
     ):
         return True
     for variant in variants:
@@ -533,27 +519,26 @@ def _skills_in(text: str) -> list[str]:
 
 
 def _score_experience(job_text: str, resume_text: str, parsed_resume: dict | None) -> int:
-    has_parsed_experience = bool(parsed_resume and parsed_resume.get("experience"))
-    has_resume_experience = has_parsed_experience or bool(
-        re.search(r"\b(experience|developed|built|implemented|led|managed)\b", resume_text, re.I)
-    )
-    job_role_terms = (set(_meaningful_tokens(job_text)) & _ROLE_TERMS) | set(_skills_in(job_text))
+    job_role_terms = set(extract_job_keywords(job_text))
     if not job_role_terms:
         return 0
 
     candidates = _resume_candidates(resume_text, parsed_resume)
     matched = sum(1 for term in job_role_terms if _matches_term(term, resume_text, candidates))
     role_overlap = matched / len(job_role_terms)
-    base = 0.35 if has_resume_experience else 0.15
-    return round(EXPERIENCE_WEIGHT * min(1.0, base + (0.65 * role_overlap)))
+    return round(EXPERIENCE_WEIGHT * role_overlap)
 
 
-def _score_role(job_title: str, resume_text: str, parsed_resume: dict | None) -> int:
-    title_terms = [
+def _role_title_terms(job_title: str) -> list[str]:
+    return [
         term
         for term in _tokens(job_title)
         if term in _ROLE_TERMS or (len(term) >= 4 and term not in _STOPWORDS)
     ]
+
+
+def _score_role(job_title: str, resume_text: str, parsed_resume: dict | None) -> int:
+    title_terms = _role_title_terms(job_title)
     candidates = _resume_candidates(resume_text, parsed_resume)
     matched = sum(1 for term in title_terms if _matches_term(term, resume_text, candidates))
     return _weighted_score(ROLE_WEIGHT, matched, len(title_terms))
@@ -620,6 +605,14 @@ def score_resume_for_job(
         skill for skill in job_skills if _matches_term(skill, resume_text, candidates)
     ]
 
+    experience_terms = set(job_keywords)
+    education_applicable = any(_contains_term(job_text, term) for term in _EDUCATION_TERMS)
+    applicable_weight = KEYWORD_WEIGHT if job_keywords else 0
+    applicable_weight += SKILLS_WEIGHT if job_skills else 0
+    applicable_weight += EXPERIENCE_WEIGHT if experience_terms else 0
+    applicable_weight += ROLE_WEIGHT if _role_title_terms(job_title) else 0
+    applicable_weight += EDUCATION_WEIGHT if education_applicable else 0
+
     return DeterministicScores(
         keyword_score=_weighted_score(KEYWORD_WEIGHT, len(matched_keywords), len(job_keywords)),
         skills_score=_weighted_score(SKILLS_WEIGHT, len(matched_skills), len(job_skills)),
@@ -627,6 +620,7 @@ def score_resume_for_job(
         role_score=_score_role(job_title, resume_text, parsed_resume),
         education_score=_score_education(job_text, resume_text, parsed_resume),
         formatting_score=_score_formatting(resume_text, parsed_resume),
+        applicable_weight=applicable_weight,
         matched_keywords=matched_keywords,
         missing_keywords=missing_keywords,
     )
@@ -636,49 +630,21 @@ def _fallback_recommendations(missing_keywords: list[str]) -> list[str]:
     if not missing_keywords:
         return ["Keep the resume focused on the strongest matching experience."]
     shown = ", ".join(missing_keywords[:5])
-    return [f"Add truthful context for relevant missing job terms: {shown}."]
-
-
-def _clean_recommendations(value: Any) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    return [str(item).strip() for item in value if str(item).strip()]
-
-
-def _build_prompt(
-    resume_text: str,
-    job: Job,
-    scores: DeterministicScores,
-) -> str:
-    return (
-        "Explain this resume-to-job match as an estimate and provide concise, "
-        "truthful recommendations.\n\n"
-        f"Job title: {job.title}\n"
-        f"Company: {job.company_name}\n"
-        f"Overall estimate: {scores.overall_score}/100\n"
-        "Category contributions: "
-        f"keywords {scores.keyword_score}/{KEYWORD_WEIGHT}, "
-        f"skills {scores.skills_score}/{SKILLS_WEIGHT}, "
-        f"experience {scores.experience_score}/{EXPERIENCE_WEIGHT}, "
-        f"role {scores.role_score}/{ROLE_WEIGHT}, "
-        f"education {scores.education_score}/{EDUCATION_WEIGHT}, "
-        f"formatting {scores.formatting_score}/{FORMATTING_WEIGHT}.\n"
-        f"Matched keywords: {', '.join(scores.matched_keywords) or 'none'}\n"
-        f"Missing keywords: {', '.join(scores.missing_keywords) or 'none'}\n\n"
-        f"Resume text:\n{resume_text}\n\n"
-        f"Job description:\n{job.description}"
-    )
+    return [
+        "Only add these missing job terms when you can support them with truthful "
+        f"resume evidence: {shown}."
+    ]
 
 
 async def analyze_resume_for_job(
     resume: Resume,
     job: Job,
-    provider: AIProvider,
+    _provider: AIProvider,
     *,
     resume_text: str | None = None,
     parsed_resume: dict | None = None,
 ) -> JobAnalysisResult:
-    """Run deterministic scoring, then request AI explanation/recommendations."""
+    """Run evidence-based scoring and deterministic, grounded guidance."""
     text = resume_text if resume_text is not None else (resume.extracted_text or "")
     parsed = resume.parsed_json if parsed_resume is None else parsed_resume
     scores = score_resume_for_job(
@@ -687,24 +653,14 @@ async def analyze_resume_for_job(
         job.title,
         job.description,
     )
-    try:
-        narrative = await provider.generate_json(
-            _build_prompt(text, job, scores),
-            ANALYSIS_NARRATIVE_SCHEMA,
-            system=_SYSTEM,
-        )
-    except Exception:
-        narrative = {}
-    recommendations = _clean_recommendations(narrative.get("recommendations"))
-    explanation = str(narrative.get("explanation") or "").strip()
-
-    if not recommendations:
-        recommendations = _fallback_recommendations(scores.missing_keywords)
-    if not explanation:
-        explanation = (
-            f"Estimated match is {scores.overall_score}/100 based on deterministic "
-            "keyword, skill, experience, role, education, and formatting checks."
-        )
+    recommendations = _fallback_recommendations(scores.missing_keywords)
+    matched = ", ".join(scores.matched_keywords[:5]) or "no required terms"
+    missing = ", ".join(scores.missing_keywords[:5]) or "no required terms"
+    explanation = (
+        f"Estimated match is {scores.overall_score}/100 across the requirements "
+        f"that apply to this posting. Matched: {matched}. Missing: {missing}. "
+        "Categories not requested by the employer are not counted against the score."
+    )
 
     return JobAnalysisResult(
         overall_score=scores.overall_score,
@@ -721,10 +677,6 @@ async def analyze_resume_for_job(
     )
 
 
-def provider_metadata(provider: AIProvider) -> tuple[str, str]:
-    """Return stable provider/model metadata for persisted analysis rows."""
-    settings = get_settings()
-    provider_name = settings.ai_provider.lower()
-    if provider_name == "mock":
-        return "mock", "mock"
-    return provider_name, str(getattr(provider, "_model", settings.ollama_model))
+def provider_metadata(_provider: AIProvider) -> tuple[str, str]:
+    """Describe the deterministic engine persisted with new analyses."""
+    return "deterministic", "grounded-v2"

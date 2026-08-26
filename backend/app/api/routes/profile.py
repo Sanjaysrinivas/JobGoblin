@@ -14,6 +14,7 @@ from app.api.deps import get_current_user
 from app.core.database import get_session
 from app.models import Profile, Resume, User
 from app.schemas.profile import ProfileOut, ProfileSeedRequest, ProfileUpdate
+from app.services.resume_context import current_resume_content
 
 router = APIRouter(prefix="/profile", tags=["profile"])
 
@@ -147,7 +148,8 @@ def seed_profile_from_resume(
     session: Annotated[Session, Depends(get_session)],
 ) -> Profile:
     resume = _get_owned_resume(session, current_user, payload.resume_id)
-    if not isinstance(resume.parsed_json, dict):
+    _resume_text, parsed_resume = current_resume_content(session, resume)
+    if not isinstance(parsed_resume, dict):
         raise _error(
             status.HTTP_400_BAD_REQUEST,
             "Resume has no parsed profile sections.",
@@ -157,7 +159,7 @@ def seed_profile_from_resume(
     profile = _get_profile(session, current_user.id)
     if profile is None:
         profile = Profile(user_id=current_user.id)
-    _apply_parsed_sections(profile, resume.parsed_json)
+    _apply_parsed_sections(profile, parsed_resume)
     profile.source_resume_id = resume.id
     session.add(profile)
     session.commit()

@@ -155,7 +155,7 @@ Auth:
 - `GET /api/auth/me`
 - `GET /api/auth/google/login`
 - `GET /api/auth/google/callback`
-- `GET /api/auth/mfa/enroll`
+- `POST /api/auth/mfa/enroll`
 - `POST /api/auth/mfa/verify`
 - `POST /api/auth/mfa/challenge`
 

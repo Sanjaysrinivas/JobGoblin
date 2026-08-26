@@ -111,18 +111,10 @@ def register(
         # Lock the invite row so two concurrent registrations can't both observe
         # used_by is None and succeed against the same token.
         invite = session.exec(
-            select(InviteToken)
-            .where(InviteToken.token == payload.invite_token)
-            .with_for_update()
+            select(InviteToken).where(InviteToken.token == payload.invite_token).with_for_update()
         ).first()
-        if (
-            invite is None
-            or invite.used_by is not None
-            or invite.expires_at <= datetime.now(UTC)
-        ):
-            raise _error(
-                status.HTTP_400_BAD_REQUEST, "Invalid or expired invite", "invalid_invite"
-            )
+        if invite is None or invite.used_by is not None or invite.expires_at <= datetime.now(UTC):
+            raise _error(status.HTTP_400_BAD_REQUEST, "Invalid or expired invite", "invalid_invite")
 
     user = User(
         email=email,
@@ -253,7 +245,7 @@ async def google_callback(
 # ----------------------------------------------------------------- TOTP / MFA
 
 
-@router.get("/mfa/enroll", response_model=MfaEnrollResponse)
+@router.post("/mfa/enroll", response_model=MfaEnrollResponse)
 def mfa_enroll(
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_session)],
@@ -263,21 +255,19 @@ def mfa_enroll(
     Enrollment is only allowed while TOTP is not yet enabled.
     """
     if current_user.totp_enabled:
-        raise _error(
-            status.HTTP_409_CONFLICT, "MFA is already enabled", "mfa_already_enabled"
-        )
+        raise _error(status.HTTP_409_CONFLICT, "MFA is already enabled", "mfa_already_enabled")
 
-    secret = totp.generate_secret()
-    current_user.totp_secret = secret
-    session.add(current_user)
-    session.commit()
+    secret = current_user.totp_secret
+    if not secret:
+        secret = totp.generate_secret()
+        current_user.totp_secret = secret
+        session.add(current_user)
+        session.commit()
 
     uri = totp.provisioning_uri(
         secret, account_name=current_user.email, issuer=settings.totp_issuer
     )
-    return MfaEnrollResponse(
-        secret=secret, provisioning_uri=uri, qr_data_uri=totp.qr_data_uri(uri)
-    )
+    return MfaEnrollResponse(secret=secret, provisioning_uri=uri, qr_data_uri=totp.qr_data_uri(uri))
 
 
 @router.post("/mfa/verify", response_model=UserPublic)
@@ -290,9 +280,7 @@ def mfa_verify(
 ) -> User:
     """Confirm enrollment: validate the code and flip ``totp_enabled`` to True."""
     if not current_user.totp_secret:
-        raise _error(
-            status.HTTP_400_BAD_REQUEST, "Start enrollment first", "mfa_not_enrolled"
-        )
+        raise _error(status.HTTP_400_BAD_REQUEST, "Start enrollment first", "mfa_not_enrolled")
     step = totp.match_timestep(
         current_user.totp_secret, payload.code, last_timestep=current_user.last_totp_timestep
     )
