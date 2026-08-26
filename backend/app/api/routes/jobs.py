@@ -27,6 +27,7 @@ from app.schemas.analysis import JobAnalysisOut
 from app.schemas.job import JobCreate, JobImportRequest, JobOut, JobUpdate
 from app.schemas.resume import ResumeVersionOut, TailoredResumeDraftCreate
 from app.services.ai_provider import AIProvider, get_ai_provider
+from app.services.text_matching import contains_supported_term, contains_term
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -439,7 +440,11 @@ def _unique(values: list[str]) -> list[str]:
 
 
 def _contains(text: str, value: str) -> bool:
-    return value.casefold() in text.casefold()
+    return contains_term(text, value)
+
+
+def _contains_supported(text: str, value: str) -> bool:
+    return contains_supported_term(text, value)
 
 
 def _provider_name(provider: AIProvider) -> str:
@@ -602,13 +607,13 @@ async def _tailored_resume_json(
         [
             item
             for item in [*analysis_matches, *all_skills]
-            if _contains(job_text, item) and _contains(source_blob, item)
+            if _contains(job_text, item) and _contains_supported(source_blob, item)
         ]
     )[:10]
     missing = [
         item
         for item in _strings(analysis.missing_keywords if analysis else None)
-        if not _contains(source_blob, item)
+        if not _contains_supported(source_blob, item)
     ][:10]
 
     changes: list[dict] = []
@@ -653,7 +658,7 @@ async def _tailored_resume_json(
         matched_highlights = [
             highlight
             for highlight in highlights
-            if any(_contains(highlight, term) for term in matched)
+            if any(_contains_supported(highlight, term) for term in matched)
         ]
         if matched_highlights:
             highlight_matches.append(
