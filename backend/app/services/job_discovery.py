@@ -15,6 +15,7 @@ from app.core.observability import record_llm_fallback
 from app.models.enums import JobSource, WorkMode
 from app.schemas.discovery import JobSearchPreferencesPayload, normalize_country_code
 from app.services.ai_provider import AIProvider
+from app.services.text_matching import contains_supported_term, contains_term
 
 
 @dataclass
@@ -118,10 +119,7 @@ def normalize_search_location(country: str, location: str | None) -> str | None:
 
 
 def _contains_term(text: str, term: str) -> bool:
-    needle = term.strip().lower()
-    if not needle:
-        return False
-    return re.search(rf"(?<!\w){re.escape(needle)}(?!\w)", text.lower()) is not None
+    return contains_term(text, term)
 
 
 def _contains_any(text: str, terms: list[str]) -> bool:
@@ -180,8 +178,9 @@ def rank_result(
     ):
         return 0, "Blocked by work mode requirement."
 
-    if preferences.visa_sponsorship_required and not _contains_any(
-        haystack, ["visa", "sponsor", "sponsorship"]
+    if preferences.visa_sponsorship_required and not any(
+        contains_supported_term(haystack, term)
+        for term in ["visa", "sponsor", "sponsorship"]
     ):
         return 0, "Blocked by visa sponsorship requirement."
 

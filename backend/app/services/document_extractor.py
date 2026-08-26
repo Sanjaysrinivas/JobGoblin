@@ -41,10 +41,22 @@ def _extract_pdf(data: bytes) -> str:
 
 def _extract_docx(data: bytes) -> str:
     from docx import Document
+    from docx.table import Table
 
     try:
         document = Document(io.BytesIO(data))
-        return "\n".join(p.text for p in document.paragraphs).strip()
+        blocks: list[str] = []
+        for item in document.iter_inner_content():
+            if isinstance(item, Table):
+                blocks.extend(
+                    cell.text.strip()
+                    for row in item.rows
+                    for cell in row.cells
+                    if cell.text.strip()
+                )
+            elif item.text.strip():
+                blocks.append(item.text.strip())
+        return "\n".join(blocks).strip()
     except Exception as exc:  # PackageNotFoundError, BadZipFile, etc.
         raise ExtractionError("Could not read the DOCX file.") from exc
 

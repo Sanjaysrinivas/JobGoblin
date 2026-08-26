@@ -37,12 +37,11 @@ interface JobAnalysisPanelProps {
 }
 
 const scoreRows: Array<{ key: keyof JobAnalysis; label: string; max: number }> = [
-  { key: "keyword_score", label: "Keywords", max: 30 },
-  { key: "skills_score", label: "Skills", max: 25 },
+  { key: "keyword_score", label: "Keywords", max: 35 },
+  { key: "skills_score", label: "Skills", max: 30 },
   { key: "experience_score", label: "Experience", max: 20 },
   { key: "role_score", label: "Role fit", max: 10 },
   { key: "education_score", label: "Education", max: 5 },
-  { key: "formatting_score", label: "Formatting", max: 10 },
 ];
 
 function formatDate(value: string): string {

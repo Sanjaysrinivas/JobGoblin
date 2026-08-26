@@ -2,6 +2,7 @@ from app.models import Job, Resume
 from app.services.ai_provider import MockProvider
 from app.services.job_analysis import (
     analyze_resume_for_job,
+    extract_job_keywords,
     keyword_checklist,
     score_resume_for_job,
 )
@@ -174,3 +175,85 @@ def test_score_resume_for_job_handles_short_role_title_terms():
     )
 
     assert scores.role_score == 0
+
+
+def test_keyword_extraction_deduplicates_terms_and_drops_sentence_punctuation():
+    keywords = extract_job_keywords(
+        "Terraform. Terraform powers infrastructure. Build reliable data pipelines."
+    )
+
+    assert keywords.count("terraform") == 1
+    assert not any(keyword.endswith(".") for keyword in keywords)
+
+
+def test_unrecognized_job_skills_do_not_receive_free_skill_points():
+    scores = score_resume_for_job(
+        "Backend engineer with Python and Django experience.",
+        {"experience": [{"role": "Backend Engineer"}], "skills": ["Python", "Django"]},
+        "Backend Engineer",
+        "Build Java services with Spring Boot and Apache Kafka.",
+    )
+
+    assert scores.skills_score == 0
+    assert scores.overall_score < 50
+
+
+def test_unrelated_experience_does_not_create_a_high_fit_score():
+    scores = score_resume_for_job(
+        "Backend engineer who built Python APIs and PostgreSQL services.",
+        {"experience": [{"role": "Backend Engineer"}], "skills": ["Python", "PostgreSQL"]},
+        "Account Executive",
+        "Own enterprise sales, prospecting, negotiation, and revenue forecasting.",
+    )
+
+    assert scores.overall_score < 40
+    assert scores.skills_score == 0
+
+
+def test_optional_and_negated_job_terms_are_not_scored_as_requirements():
+    scores = score_resume_for_job(
+        "Python engineer who builds backend services.",
+        None,
+        "Backend Engineer",
+        "Python is required. Kubernetes is nice to have. No AWS experience required.",
+    )
+
+    assert "python" in scores.matched_keywords
+    assert "kubernetes" not in scores.missing_keywords
+    assert "aws" not in scores.missing_keywords
+
+
+def test_negated_or_aspirational_resume_mentions_are_not_evidence():
+    scores = score_resume_for_job(
+        "No Kubernetes experience. Interested in learning Terraform.",
+        None,
+        "Platform Engineer",
+        "Kubernetes and Terraform are required.",
+    )
+
+    assert "kubernetes" in scores.missing_keywords
+    assert "terraform" in scores.missing_keywords
+
+
+def test_aliases_match_singular_and_plural_api_forms():
+    scores = score_resume_for_job(
+        "Designed and maintained a public REST API.",
+        None,
+        "API Engineer",
+        "Design reliable APIs for partner integrations.",
+    )
+
+    assert "api" in scores.matched_keywords
+    assert "api" not in scores.missing_keywords
+
+
+def test_education_score_requires_the_requested_degree_level():
+    scores = score_resume_for_job(
+        "Backend engineer with a bachelor's degree in computer science.",
+        {"education": [{"degree": "Bachelor of Science", "field": "Computer Science"}]},
+        "Research Engineer",
+        "A PhD degree in computer science is required.",
+    )
+
+    assert scores.education_score == 0
+    assert scores.formatting_score == 0

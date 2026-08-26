@@ -1,5 +1,7 @@
 """Tests for plain-text extraction from PDF and DOCX (design.md §8)."""
 
+import io
+
 import pytest
 
 from app.services.document_extractor import (
@@ -28,6 +30,22 @@ def test_extract_docx_text():
     text = extract_text(data, DOCX_CONTENT_TYPE)
     assert "Hello DOCX" in text
     assert "Another line" in text
+
+
+def test_extract_docx_includes_table_cells():
+    from docx import Document
+
+    document = Document()
+    document.add_paragraph("Alice Example")
+    table = document.add_table(rows=1, cols=2)
+    table.cell(0, 0).text = "Skills"
+    table.cell(0, 1).text = "Python Kubernetes SQL"
+    buffer = io.BytesIO()
+    document.save(buffer)
+
+    text = extract_text(buffer.getvalue(), DOCX_CONTENT_TYPE)
+
+    assert text.splitlines() == ["Alice Example", "Skills", "Python Kubernetes SQL"]
 
 
 def test_unsupported_content_type_raises():
