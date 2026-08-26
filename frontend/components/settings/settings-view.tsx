@@ -90,9 +90,9 @@ export function SettingsView() {
         <CardContent className="space-y-3">
           <div className="flex items-center justify-between rounded-lg border p-3">
             <div>
-              <p className="text-sm font-medium">{title(runtime.ai_provider)}</p>
+              <p className="text-sm font-medium">AI provider</p>
               <p className="text-muted-foreground text-xs">
-                Model: {runtime.ai_model}
+                {title(runtime.ai_provider)} · Model: {runtime.ai_model}
                 {runtime.local_ai ? " · configured for local execution" : ""}
               </p>
             </div>
