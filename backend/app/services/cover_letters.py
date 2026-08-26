@@ -7,30 +7,20 @@ applications, send email, or perform any external action.
 from app.models import Job, Resume
 from app.models.enums import CoverLetterTone
 from app.services.ai_provider import AIProvider
+from app.services.grounding import normalized_phrase, source_excerpts
 
 _SYSTEM = (
-    "You write careful cover-letter drafts for job seekers. Never fabricate "
-    "skills, employers, credentials, dates, education, projects, or experience. "
-    "Use only facts present in the provided resume and job text. The output is "
-    "an editable draft only; do not claim the application was submitted or any "
-    "message was sent. Keep the language ATS-friendly and plain."
+    "Select verbatim evidence from a resume for a cover-letter draft. Return "
+    "only exact excerpts present in the supplied resume. Never rewrite or invent facts."
 )
 
-
-def _tone_instruction(tone: CoverLetterTone) -> str:
-    return {
-        CoverLetterTone.professional: "Use a polished professional tone.",
-        CoverLetterTone.friendly: "Use a warm, friendly tone while staying concise.",
-        CoverLetterTone.concise: "Use a concise tone and keep the draft brief.",
-        CoverLetterTone.enthusiastic: "Use an enthusiastic tone without exaggerating facts.",
-    }[tone]
-
-
-def _resume_context(resume: Resume) -> str:
-    parts = [resume.extracted_text or ""]
-    if resume.parsed_json:
-        parts.append(str(resume.parsed_json))
-    return "\n\n".join(part for part in parts if part.strip()).strip()
+_EVIDENCE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "evidence_quotes": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["evidence_quotes"],
+}
 
 
 async def generate_cover_letter(
@@ -42,21 +32,55 @@ async def generate_cover_letter(
     resume_text: str | None = None,
     parsed_resume: dict | None = None,
 ) -> str:
-    """Generate a grounded, editable draft for the owned resume/job pair."""
+    """Compose an editable draft from source-validated resume excerpts."""
     text = resume_text if resume_text is not None else (resume.extracted_text or "")
-    parsed = parsed_resume if parsed_resume is not None else resume.parsed_json
-    parts = [text]
-    if parsed:
-        parts.append(str(parsed))
-    context = "\n\n".join(part for part in parts if part.strip()).strip()
+    candidates = source_excerpts(text)
     prompt = (
-        "Create a cover-letter draft grounded only in the supplied resume and "
-        "job posting. If a qualification is not supported by the resume, omit "
-        "it or phrase it conservatively. Do not invent achievements or facts.\n\n"
-        f"Tone: {_tone_instruction(tone)}\n"
+        "Choose up to three exact, verbatim resume excerpts that are most relevant "
+        "to this job. Do not paraphrase.\n\n"
         f"Company: {job.company_name}\n"
         f"Job title: {job.title}\n"
         f"Job description:\n{job.description}\n\n"
-        f"Resume text and parsed context:\n{context}"
+        f"Resume text:\n{text}"
     )
-    return (await provider.generate_text(prompt, system=_SYSTEM)).strip()
+    try:
+        payload = await provider.generate_json(prompt, _EVIDENCE_SCHEMA, system=_SYSTEM)
+    except Exception:
+        payload = {}
+    requested = payload.get("evidence_quotes", []) if isinstance(payload, dict) else []
+    requested_keys = {normalized_phrase(item) for item in requested if isinstance(item, str)}
+    evidence = [item for item in candidates if normalized_phrase(item) in requested_keys][:3]
+    if not evidence:
+        evidence = candidates[:2]
+
+    greeting = "Hello Hiring Team," if tone == CoverLetterTone.friendly else "Dear Hiring Team,"
+    introduction = {
+        CoverLetterTone.professional: (
+            f"I am writing to apply for the {job.title} role at {job.company_name}."
+        ),
+        CoverLetterTone.friendly: (
+            f"I would be glad to be considered for the {job.title} role at {job.company_name}."
+        ),
+        CoverLetterTone.concise: f"I am applying for {job.title} at {job.company_name}.",
+        CoverLetterTone.enthusiastic: (
+            f"I am excited to apply for the {job.title} role at {job.company_name}."
+        ),
+    }[tone]
+    paragraphs = [greeting, introduction]
+    if evidence:
+        paragraphs.append(
+            "Relevant experience from my resume includes:\n"
+            + "\n".join(f"- {item}" for item in evidence)
+        )
+    if tone != CoverLetterTone.concise:
+        paragraphs.append(
+            "I would welcome the opportunity to discuss how this background "
+            "could support the role."
+        )
+    closing = (
+        "Best,\n[Your name]"
+        if tone == CoverLetterTone.friendly
+        else "Sincerely,\n[Your name]"
+    )
+    paragraphs.append(closing)
+    return "\n\n".join(paragraphs)

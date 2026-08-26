@@ -38,6 +38,7 @@ from app.schemas.application import (
     ApplicationWorkflowResumeOut,
     ApplicationWorkflowResumeVersionOut,
 )
+from app.services.application_workflow import sync_applied_at
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 
@@ -121,9 +122,10 @@ def _validate_cover_letter_reference(
     user: User,
     cover_letter_id: uuid.UUID | None,
     job_id: uuid.UUID,
-) -> None:
+    resume_id: uuid.UUID | None,
+) -> CoverLetter | None:
     if cover_letter_id is None:
-        return
+        return None
     cover_letter = session.exec(
         select(CoverLetter).where(
             CoverLetter.id == cover_letter_id,
@@ -142,6 +144,13 @@ def _validate_cover_letter_reference(
             "Cover letter must belong to the application's job",
             "cover_letter_job_mismatch",
         )
+    if resume_id is not None and cover_letter.resume_id != resume_id:
+        raise _error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "Cover letter and application must use the same resume",
+            "cover_letter_resume_mismatch",
+        )
+    return cover_letter
 
 
 def _workflow_resume(
@@ -373,7 +382,13 @@ def create_application(
 ) -> ApplicationOut:
     job = _get_owned_job(session, current_user, payload.job_id)
     _validate_resume_reference(session, current_user, payload.resume_id)
-    _validate_cover_letter_reference(session, current_user, payload.cover_letter_id, payload.job_id)
+    cover_letter = _validate_cover_letter_reference(
+        session,
+        current_user,
+        payload.cover_letter_id,
+        payload.job_id,
+        payload.resume_id,
+    )
 
     existing = session.exec(
         select(Application).where(
@@ -388,10 +403,11 @@ def create_application(
             "application_exists",
         )
 
-    application = Application(
-        user_id=current_user.id,
-        **_normalize_application_datetimes(payload.model_dump()),
-    )
+    values = _normalize_application_datetimes(payload.model_dump())
+    if values.get("resume_id") is None and cover_letter is not None:
+        values["resume_id"] = cover_letter.resume_id
+    application = Application(user_id=current_user.id, **values)
+    sync_applied_at(application)
     session.add(application)
     session.flush()
     _add_activity(
@@ -497,15 +513,24 @@ def update_application(
             "invalid_application_status",
         )
 
-    _validate_resume_reference(session, current_user, updates.get("resume_id"))
-    _validate_cover_letter_reference(
-        session, current_user, updates.get("cover_letter_id"), application.job_id
+    final_resume_id = updates.get("resume_id", application.resume_id)
+    final_cover_letter_id = updates.get("cover_letter_id", application.cover_letter_id)
+    _validate_resume_reference(session, current_user, final_resume_id)
+    cover_letter = _validate_cover_letter_reference(
+        session,
+        current_user,
+        final_cover_letter_id,
+        application.job_id,
+        final_resume_id,
     )
+    if final_resume_id is None and cover_letter is not None:
+        updates["resume_id"] = cover_letter.resume_id
 
     old_status: ApplicationStatus = application.status
     old_follow_up_at = _as_utc(application.follow_up_at)
     for field, value in updates.items():
         setattr(application, field, value)
+    sync_applied_at(application)
 
     if "status" in updates and application.status != old_status:
         _add_activity(

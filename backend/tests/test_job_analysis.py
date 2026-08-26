@@ -63,21 +63,12 @@ async def test_analyze_resume_for_job_scores_and_uses_mock_ai():
 
     result = await analyze_resume_for_job(resume, job, MockProvider())
 
-    assert result.overall_score == sum(
-        [
-            result.keyword_score,
-            result.skills_score,
-            result.experience_score,
-            result.role_score,
-            result.education_score,
-            result.formatting_score,
-        ]
-    )
+    assert 0 <= result.overall_score <= 100
     assert result.keyword_score > 20
     assert {"python", "fastapi", "postgresql", "docker"}.issubset(set(result.matched_keywords))
     assert "kubernetes" in result.missing_keywords
-    assert result.explanation == "sample"
-    assert result.recommendations == ["sample"]
+    assert result.explanation.startswith("Estimated match is ")
+    assert result.recommendations[0].startswith("Only add these missing job terms")
 
 
 def test_score_resume_for_job_matches_high_confidence_fuzzy_terms():
@@ -149,16 +140,7 @@ async def test_analyze_resume_for_job_falls_back_when_ai_provider_fails():
 
     assert result.explanation.startswith("Estimated match is ")
     assert result.recommendations
-    assert result.overall_score == sum(
-        [
-            result.keyword_score,
-            result.skills_score,
-            result.experience_score,
-            result.role_score,
-            result.education_score,
-            result.formatting_score,
-        ]
-    )
+    assert 0 <= result.overall_score <= 100
 
 
 async def test_analyze_resume_for_job_filters_ungrounded_ai_advice():
@@ -171,12 +153,8 @@ async def test_analyze_resume_for_job_filters_ungrounded_ai_advice():
 
     result = await analyze_resume_for_job(resume, job, UngroundedAdviceProvider())
 
-    assert {"java", "spring", "boot", "apache", "kafka"}.issubset(
-        result.missing_keywords
-    )
-    assert result.recommendations == [
-        "Prepare to address the lack of direct enterprise sales experience."
-    ]
+    assert {"java", "spring", "boot", "apache", "kafka"}.issubset(result.missing_keywords)
+    assert result.recommendations[0].startswith("Only add these missing job terms")
 
 
 def test_score_resume_for_job_uses_short_skills_for_experience_overlap():
@@ -287,3 +265,17 @@ def test_education_score_requires_the_requested_degree_level():
 
     assert scores.education_score == 0
     assert scores.formatting_score == 0
+
+
+def test_unrequested_categories_do_not_cap_a_perfect_match():
+    text = "Enterprise account executive. Own prospecting, negotiation, and revenue forecasting."
+    scores = score_resume_for_job(
+        text,
+        {"experience": [{"role": "Enterprise Account Executive"}]},
+        "Enterprise Account Executive",
+        "Own prospecting, negotiation, and revenue forecasting.",
+    )
+
+    assert scores.education_score == 0
+    assert scores.skills_score == 0
+    assert scores.overall_score == 100

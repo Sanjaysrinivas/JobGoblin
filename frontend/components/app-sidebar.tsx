@@ -59,9 +59,9 @@ export function AppSidebar() {
         <div className="bg-primary/8 ring-primary/15 flex items-start gap-3 rounded-lg p-3 ring-1 ring-inset">
           <Sparkles className="text-primary mt-0.5 size-4 shrink-0" />
           <div className="space-y-0.5">
-            <p className="text-sm font-medium">Local AI ready</p>
+            <p className="text-sm font-medium">Review-first workspace</p>
             <p className="text-muted-foreground text-xs leading-snug">
-              Analysis runs on your own Ollama models. Nothing leaves the box.
+              Generated drafts stay local until you choose to export them.
             </p>
           </div>
         </div>

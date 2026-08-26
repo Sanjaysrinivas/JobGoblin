@@ -13,7 +13,7 @@ class TailoringProvider(MockProvider):
     async def generate_json(self, prompt: str, schema: dict, *, system: str | None = None) -> dict:
         return {
             "summary": "API engineer focused on Python services and internal users.",
-            "skills": ["Python", "APIs", "SQL", "Kubernetes"],
+            "skills": ["APIs", "Python", "SQL", "Kubernetes"],
             "change_notes": ["Reframed summary around existing Python API evidence."],
         }
 
@@ -166,9 +166,7 @@ def test_create_and_list_tailored_resume_draft(client, session, user):
     assert [item["id"] for item in listed.json()] == [body["id"]]
 
 
-def test_tailored_resume_draft_applies_grounded_ai_edits(
-    client, session, user, monkeypatch
-):
+def test_tailored_resume_draft_applies_grounded_ai_edits(client, session, user, monkeypatch):
     import app.api.routes.jobs as job_routes
 
     job = _job(session, user)
@@ -201,15 +199,14 @@ def test_tailored_resume_draft_applies_grounded_ai_edits(
 
     assert created.status_code == 201, created.text
     body = created.json()
-    assert body["parsed_json"]["summary"] == (
-        "API engineer focused on Python services and internal users."
-    )
-    assert body["parsed_json"]["skills"] == ["Python", "APIs", "SQL"]
+    assert body["parsed_json"]["summary"].startswith("Current API engineer")
+    assert "internal users" not in body["parsed_json"]["summary"]
+    assert body["parsed_json"]["skills"] == ["APIs", "Python", "SQL"]
     tailoring = body["parsed_json"]["tailoring"]
     assert tailoring["ai"]["status"] == "applied"
     assert "Kubernetes" in tailoring["grounding"]["job_terms_not_added"]
     assert any(
-        change["action"] == "ai_rewrite"
+        change["action"] == "ai_reorder_existing_skills"
         for change in tailoring["suggested_changes"]
     )
 

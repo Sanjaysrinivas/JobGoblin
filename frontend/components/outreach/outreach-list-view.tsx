@@ -41,7 +41,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 const channels: OutreachChannel[] = ["email", "linkedin", "other"];
-const statuses: OutreachStatus[] = ["draft", "copied", "replied", "closed"];
+const statuses: OutreachStatus[] = ["draft", "copied", "sent", "replied", "closed"];
 const generatedMessageTypes: OutreachGeneratedType[] = [
   "recruiter_follow_up",
   "referral",
@@ -120,7 +120,7 @@ function contactLabel(contacts: Contact[], contactId: string | null): string {
 function statusVariant(
   status: OutreachStatus
 ): "info" | "success" | "outline" | "default" {
-  if (status === "copied") return "success";
+  if (status === "copied" || status === "sent") return "success";
   if (status === "draft") return "info";
   if (status === "closed") return "outline";
   return "default";

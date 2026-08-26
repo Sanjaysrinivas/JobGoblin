@@ -56,8 +56,7 @@ def _create_resume(session, user: User, **overrides) -> Resume:
         "content_type": "application/pdf",
         "file_size": 100,
         "extracted_text": (
-            "Backend engineer with Python, FastAPI, PostgreSQL, Docker, and REST "
-            "API experience."
+            "Backend engineer with Python, FastAPI, PostgreSQL, Docker, and REST API experience."
         ),
         "parsed_json": {
             "skills": ["Python", "FastAPI", "PostgreSQL", "Docker"],
@@ -103,21 +102,11 @@ def test_create_resume_job_analysis_persists_result(client, session, user):
     body = resp.json()
     assert body["resume_id"] == str(resume.id)
     assert body["job_id"] == str(job.id)
-    assert body["overall_score"] == sum(
-        body[field]
-        for field in (
-            "keyword_score",
-            "skills_score",
-            "experience_score",
-            "role_score",
-            "education_score",
-            "formatting_score",
-        )
-    )
-    assert body["provider"] == "mock"
-    assert body["model_used"] == "mock"
-    assert body["explanation"] == "sample"
-    assert body["recommendations"] == ["sample"]
+    assert 0 <= body["overall_score"] <= 100
+    assert body["provider"] == "deterministic"
+    assert body["model_used"] == "grounded-v2"
+    assert body["explanation"].startswith("Estimated match is ")
+    assert body["recommendations"]
     assert "python" in body["matched_keywords"]
     assert "kubernetes" in body["missing_keywords"]
     assert body["fit_label"] == "Strong match"
@@ -128,7 +117,7 @@ def test_create_resume_job_analysis_persists_result(client, session, user):
     stored = session.get(JobAnalysis, uuid.UUID(body["id"]))
     assert stored is not None
     assert stored.user_id == user.id
-    assert stored.provider == "mock"
+    assert stored.provider == "deterministic"
 
 
 def test_cross_user_resume_or_job_returns_404(client, session, user, other_user):
@@ -276,7 +265,6 @@ def test_list_job_analyses_is_owned_and_newest_first(client, session, user, othe
     cross_user_job = client.get(f"/api/jobs/{other_job.id}/analysis")
     assert cross_user_job.status_code == 404
     assert cross_user_job.json()["code"] == "job_not_found"
-
 
 
 def test_create_analysis_uses_current_resume_version(client, session, user):

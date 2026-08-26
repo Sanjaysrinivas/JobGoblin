@@ -24,7 +24,7 @@ def _validate_email(value: str) -> str:
 
 class RegisterRequest(BaseModel):
     email: str
-    password: str
+    password: str = Field(min_length=8, max_length=128)
     invite_token: str | None = None
 
     @field_validator("email")
@@ -40,7 +40,7 @@ class RegisterRequest(BaseModel):
 
 class LoginRequest(BaseModel):
     email: str
-    password: str
+    password: str = Field(min_length=1, max_length=128)
 
     @field_validator("email")
     @classmethod

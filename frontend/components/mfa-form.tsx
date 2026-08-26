@@ -86,7 +86,7 @@ export function MfaForm({
     let active = true;
     (async () => {
       try {
-        const data = await api.get<EnrollData>("/auth/mfa/enroll");
+        const data = await api.post<EnrollData>("/auth/mfa/enroll");
         if (active) setEnroll(data);
       } catch (err) {
         if (active) {
