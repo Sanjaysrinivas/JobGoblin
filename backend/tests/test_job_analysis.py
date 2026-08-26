@@ -13,6 +13,18 @@ class FailingProvider(MockProvider):
         raise RuntimeError("provider unavailable")
 
 
+class UngroundedAdviceProvider(MockProvider):
+    async def generate_json(self, prompt: str, schema: dict, *, system: str | None = None) -> dict:
+        return {
+            "explanation": "The resume does not show the role's core requirements.",
+            "recommendations": [
+                "Highlight experience with Java, Spring Boot, and Apache Kafka.",
+                "Consider adding relevant coursework or certifications in sales.",
+                "Prepare to address the lack of direct enterprise sales experience.",
+            ],
+        }
+
+
 def _resume(text: str, parsed_json: dict | None = None) -> Resume:
     return Resume(
         user_id="00000000-0000-0000-0000-000000000001",
@@ -147,6 +159,24 @@ async def test_analyze_resume_for_job_falls_back_when_ai_provider_fails():
             result.formatting_score,
         ]
     )
+
+
+async def test_analyze_resume_for_job_filters_ungrounded_ai_advice():
+    resume = _resume("Data scientist with Python and machine learning experience.")
+    job = _job(
+        "Lead enterprise sales and account management for Java, Spring Boot, and "
+        "Apache Kafka products.",
+        title="Account Executive",
+    )
+
+    result = await analyze_resume_for_job(resume, job, UngroundedAdviceProvider())
+
+    assert {"java", "spring", "boot", "apache", "kafka"}.issubset(
+        result.missing_keywords
+    )
+    assert result.recommendations == [
+        "Prepare to address the lack of direct enterprise sales experience."
+    ]
 
 
 def test_score_resume_for_job_uses_short_skills_for_experience_overlap():

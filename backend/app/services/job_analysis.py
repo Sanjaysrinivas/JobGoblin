@@ -51,6 +51,21 @@ _SYSTEM = (
     "the provided resume text, job text, and deterministic score summary."
 )
 
+_PRESENTATION_ACTION_RE = re.compile(
+    r"\b(?:add(?:ing)?|claim(?:ing)?|demonstrat(?:e|ing)|emphasi[sz](?:e|ing)|"
+    r"highlight(?:ing)?|include|mention|showcase)\b",
+    re.IGNORECASE,
+)
+_UNSUPPORTED_CREDENTIAL_RE = re.compile(
+    r"\b(?:add(?:ing)?|include|list)\b.{0,80}\b"
+    r"(?:certifications?|coursework|credentials?|degrees?)\b",
+    re.IGNORECASE,
+)
+_TRUTHFUL_CONDITION_RE = re.compile(
+    r"\b(?:if (?:accurate|applicable|true|you (?:have|did|used))|only if)\b",
+    re.IGNORECASE,
+)
+
 _STOPWORDS = {
     "a",
     "about",
@@ -636,13 +651,33 @@ def _fallback_recommendations(missing_keywords: list[str]) -> list[str]:
     if not missing_keywords:
         return ["Keep the resume focused on the strongest matching experience."]
     shown = ", ".join(missing_keywords[:5])
-    return [f"Add truthful context for relevant missing job terms: {shown}."]
+    return [
+        "Only add these missing job terms when you can support them with truthful "
+        f"resume evidence: {shown}."
+    ]
 
 
 def _clean_recommendations(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
     return [str(item).strip() for item in value if str(item).strip()]
+
+
+def _ground_recommendations(value: Any, missing_keywords: list[str]) -> list[str]:
+    """Drop AI advice that asks the user to present unsupported evidence."""
+    grounded: list[str] = []
+    for recommendation in _clean_recommendations(value):
+        conditional = bool(_TRUTHFUL_CONDITION_RE.search(recommendation))
+        presents_missing_term = bool(
+            _PRESENTATION_ACTION_RE.search(recommendation)
+        ) and any(contains_term(recommendation, term) for term in missing_keywords)
+        adds_unsupported_credential = bool(
+            _UNSUPPORTED_CREDENTIAL_RE.search(recommendation)
+        )
+        if not conditional and (presents_missing_term or adds_unsupported_credential):
+            continue
+        grounded.append(recommendation)
+    return grounded
 
 
 def _build_prompt(
@@ -695,7 +730,9 @@ async def analyze_resume_for_job(
         )
     except Exception:
         narrative = {}
-    recommendations = _clean_recommendations(narrative.get("recommendations"))
+    recommendations = _ground_recommendations(
+        narrative.get("recommendations"), scores.missing_keywords
+    )
     explanation = str(narrative.get("explanation") or "").strip()
 
     if not recommendations:
