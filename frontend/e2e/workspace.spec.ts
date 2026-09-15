@@ -56,7 +56,7 @@ test.describe("workspace workflows", () => {
       location: "Remote",
       work_mode: "remote",
       source: "company_site",
-      source_url: "https://example.com/e2e-role",
+      source_url: `https://example.com/e2e-role-${suffix}`,
       description: "Build Python, FastAPI, PostgreSQL, Docker, and Kubernetes services.",
       priority: "high",
     });

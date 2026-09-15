@@ -13,9 +13,10 @@ from sqlmodel import Session, select
 from app.api.deps import get_current_user
 from app.core.database import get_session
 from app.models import ActivityEvent, CoverLetter, Job, Resume, User
-from app.models.enums import CoverLetterStatus
+from app.models.enums import ApplicationStatus, CoverLetterStatus
 from app.schemas.cover_letter import CoverLetterCreate, CoverLetterOut, CoverLetterUpdate
 from app.services.ai_provider import get_ai_provider
+from app.services.application_workflow import link_application_material
 from app.services.cover_letters import generate_cover_letter
 from app.services.resume_context import current_resume_content
 
@@ -136,6 +137,14 @@ async def create_cover_letter(
     )
     session.add(cover_letter)
     session.flush()
+    link_application_material(
+        session,
+        user_id=current_user.id,
+        job_id=job.id,
+        resume_id=resume.id,
+        cover_letter_id=cover_letter.id,
+        material_status=ApplicationStatus.cover_letter_created,
+    )
     _add_activity(
         session,
         current_user,

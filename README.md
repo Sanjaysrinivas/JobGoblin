@@ -14,14 +14,15 @@ It is not an auto-apply or spam tool. External actions such as sending email, co
 
 ## Current Status
 
-MVP build in progress. Phase 0 local-login fixes and Phase 1 delivery foundation are complete, and the merged `dev` branch now includes the core MVP workflow plus the first job discovery slice.
+The core private job-search workflow is implemented across resumes, discovery,
+saved jobs, application materials, tracking, follow-ups, outreach, and interview prep.
 
 Phase status:
 
 - Phase 2 core resource modules are implemented: jobs, contacts, applications, dashboard, cover-letter drafts, and outreach drafts.
-- Phase 3 resume-to-job analysis is implemented and needs integrated post-merge validation.
-- Phase 4 runtime tooling and the optional Cloudflare Tunnel profile are implemented; real Ollama, OAuth, and tunnel smoke testing are still required.
-- Phase 5 has the profile builder, follow-up reminders, resume versions, Job Discovery MVP, and AI-assisted discovery ranking merged. Tailored resume drafts, email draft/export integration, interview prep, and LLM observability are still ahead.
+- Phase 3 resume-to-job analysis uses deterministic, requirement-normalized scoring and grounded guidance.
+- Phase 4 runtime tooling and the optional Cloudflare Tunnel profile are implemented; OAuth and tunnel validation remain operator-specific.
+- Phase 5 includes the profile builder, follow-up reminders, resume versions, job discovery, tailored resume drafts, email export, interview prep, and LLM observability.
 
 Implemented:
 

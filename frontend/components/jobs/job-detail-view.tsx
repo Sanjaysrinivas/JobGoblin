@@ -4,6 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
+  ClipboardList,
   ExternalLink,
   Loader2,
   Pencil,
@@ -12,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { ApiError } from "@/lib/api";
+import { createApplication, listApplications } from "@/lib/applications";
 import { deleteJob, getJob, updateJob } from "@/lib/jobs";
 import type { Job, JobCreatePayload, Priority, WorkMode } from "@/lib/types";
 import { JobForm } from "@/components/jobs/job-form";
@@ -29,7 +31,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-type Busy = "save" | "delete" | null;
+type Busy = "save" | "delete" | "track" | null;
 
 function label(value: string): string {
   return value
@@ -77,14 +79,19 @@ export function JobDetailView({ jobId }: { jobId: string }) {
   const [busy, setBusy] = React.useState<Busy>(null);
   const [editing, setEditing] = React.useState(false);
   const [confirmingDelete, setConfirmingDelete] = React.useState(false);
+  const [tracked, setTracked] = React.useState(false);
 
   React.useEffect(() => {
     let active = true;
     (async () => {
       try {
-        const data = await getJob(jobId);
+        const [data, applications] = await Promise.all([
+          getJob(jobId),
+          listApplications(),
+        ]);
         if (!active) return;
         setJob(data);
+        setTracked(applications.some((application) => application.job_id === jobId));
       } catch (err) {
         if (!active) return;
         setLoadError(
@@ -126,6 +133,17 @@ export function JobDetailView({ jobId }: { jobId: string }) {
       await deleteJob(jobId);
       router.push("/jobs");
       router.refresh();
+    });
+  }
+
+  function onTrack() {
+    if (tracked) {
+      router.push("/applications");
+      return;
+    }
+    return run("track", async () => {
+      await createApplication({ job_id: jobId });
+      setTracked(true);
     });
   }
 
@@ -189,6 +207,19 @@ export function JobDetailView({ jobId }: { jobId: string }) {
           </div>
 
           <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <Button
+              variant={tracked ? "secondary" : "default"}
+              size="sm"
+              onClick={() => void onTrack()}
+              disabled={busy !== null}
+            >
+              {busy === "track" ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <ClipboardList className="size-4" />
+              )}
+              {tracked ? "View tracker" : "Track application"}
+            </Button>
             <Button
               variant={editing ? "secondary" : "outline"}
               size="sm"

@@ -29,7 +29,14 @@ import {
   type TrackedApplication,
 } from "@/lib/applications";
 import { listJobs } from "@/lib/jobs";
-import type { ApplicationStatus, ApplicationWorkflow, Job } from "@/lib/types";
+import { listCoverLetters } from "@/lib/cover-letters";
+import { listResumes, type ResumeDetail } from "@/lib/resumes";
+import type {
+  ApplicationStatus,
+  ApplicationWorkflow,
+  CoverLetter,
+  Job,
+} from "@/lib/types";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/empty-state";
 import { Badge } from "@/components/ui/badge";
@@ -68,6 +75,8 @@ type Draft = {
   status: ApplicationStatus;
   followUpDate: string;
   notes: string;
+  resumeId: string;
+  coverLetterId: string;
 };
 
 type StatusFilter = "all" | "active" | "interviewing" | "outcome" | "archived";
@@ -155,6 +164,8 @@ function draftFromApplication(app: TrackedApplication): Draft {
     status: app.status,
     followUpDate: dateInputValue(app.follow_up_at),
     notes: app.notes ?? "",
+    resumeId: app.resume_id ?? "",
+    coverLetterId: app.cover_letter_id ?? "",
   };
 }
 
@@ -166,6 +177,8 @@ export default function ApplicationsPage() {
     null
   );
   const [jobs, setJobs] = React.useState<Job[]>([]);
+  const [resumes, setResumes] = React.useState<ResumeDetail[]>([]);
+  const [coverLetters, setCoverLetters] = React.useState<CoverLetter[]>([]);
   const [drafts, setDrafts] = React.useState<Record<string, Draft>>({});
   const [showCreate, setShowCreate] = React.useState(false);
   const [statusFilter, setStatusFilter] = React.useState<StatusFilter>("all");
@@ -175,6 +188,8 @@ export default function ApplicationsPage() {
     React.useState<ApplicationStatus>("saved");
   const [newFollowUpDate, setNewFollowUpDate] = React.useState("");
   const [newNotes, setNewNotes] = React.useState("");
+  const [newResumeId, setNewResumeId] = React.useState("");
+  const [newCoverLetterId, setNewCoverLetterId] = React.useState("");
   const [savingId, setSavingId] = React.useState<string | null>(null);
   const [expandedId, setExpandedId] = React.useState<string | null>(null);
   const [workflowLoadingId, setWorkflowLoadingId] = React.useState<string | null>(null);
@@ -192,15 +207,19 @@ export default function ApplicationsPage() {
     let active = true;
     (async () => {
       try {
-        const [applicationData, jobData, followUpData] = await Promise.all([
+        const [applicationData, jobData, followUpData, resumeData, letterData] = await Promise.all([
           listApplications(),
           listJobs(),
           loadFollowUps(),
+          listResumes(),
+          listCoverLetters(),
         ]);
         if (!active) return;
         setApplications(applicationData);
         setFollowUps(followUpData);
         setJobs(jobData);
+        setResumes(resumeData);
+        setCoverLetters(letterData);
         setDrafts(
           Object.fromEntries(
             applicationData.map((app) => [app.id, draftFromApplication(app)])
@@ -233,6 +252,14 @@ export default function ApplicationsPage() {
   const selectedNewJobId = availableJobs.some((job) => job.id === newJobId)
     ? newJobId
     : availableJobs[0]?.id ?? "";
+  const availableNewLetters = coverLetters.filter(
+    (letter) => letter.job_id === selectedNewJobId
+  );
+  const selectedNewLetterId = availableNewLetters.some(
+    (letter) => letter.id === newCoverLetterId
+  )
+    ? newCoverLetterId
+    : "";
   const filteredApplications = (applications ?? []).filter((app) => {
     const statusMatch =
       statusFilter === "all" ||
@@ -263,6 +290,8 @@ export default function ApplicationsPage() {
     try {
       const created = await createApplication({
         job_id: selectedNewJobId,
+        resume_id: newResumeId || null,
+        cover_letter_id: selectedNewLetterId || null,
         status: newStatus,
         follow_up_at: dateToIso(newFollowUpDate),
         notes: newNotes,
@@ -277,6 +306,8 @@ export default function ApplicationsPage() {
       setNewStatus("saved");
       setNewFollowUpDate("");
       setNewNotes("");
+      setNewResumeId("");
+      setNewCoverLetterId("");
     } catch (err) {
       setFormError(
         err instanceof ApiError
@@ -295,6 +326,8 @@ export default function ApplicationsPage() {
     try {
       const updated = await updateApplication(app.id, {
         status: draft.status,
+        resume_id: draft.resumeId || null,
+        cover_letter_id: draft.coverLetterId || null,
         follow_up_at: dateToIso(draft.followUpDate),
         notes: draft.notes,
       });
@@ -506,7 +539,10 @@ export default function ApplicationsPage() {
                   id="application-job"
                   className={selectClass}
                   value={selectedNewJobId}
-                  onChange={(event) => setNewJobId(event.target.value)}
+                  onChange={(event) => {
+                    setNewJobId(event.target.value);
+                    setNewCoverLetterId("");
+                  }}
                   disabled={savingId === "new"}
                 >
                   {availableJobs.map((job) => (
@@ -543,6 +579,54 @@ export default function ApplicationsPage() {
                   onChange={(event) => setNewFollowUpDate(event.target.value)}
                   disabled={savingId === "new"}
                 />
+              </div>
+              <div className="space-y-1.5 md:col-span-4">
+                <Label htmlFor="application-resume">Resume</Label>
+                <select
+                  id="application-resume"
+                  className={selectClass}
+                  value={newResumeId}
+                  onChange={(event) => {
+                    const resumeId = event.target.value;
+                    setNewResumeId(resumeId);
+                    const letter = coverLetters.find(
+                      (item) => item.id === selectedNewLetterId
+                    );
+                    if (letter && letter.resume_id !== resumeId) {
+                      setNewCoverLetterId("");
+                    }
+                  }}
+                  disabled={savingId === "new"}
+                >
+                  <option value="">No linked resume</option>
+                  {resumes.map((resume) => (
+                    <option key={resume.id} value={resume.id}>
+                      {resume.title}{resume.is_default ? " (default)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5 md:col-span-4">
+                <Label htmlFor="application-cover-letter">Cover letter</Label>
+                <select
+                  id="application-cover-letter"
+                  className={selectClass}
+                  value={selectedNewLetterId}
+                  onChange={(event) => {
+                    const id = event.target.value;
+                    setNewCoverLetterId(id);
+                    const letter = availableNewLetters.find((item) => item.id === id);
+                    if (letter) setNewResumeId(letter.resume_id);
+                  }}
+                  disabled={savingId === "new"}
+                >
+                  <option value="">No linked cover letter</option>
+                  {availableNewLetters.map((letter) => (
+                    <option key={letter.id} value={letter.id}>
+                      {label(letter.tone)} · {label(letter.status)}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="space-y-1.5 md:col-span-4">
                 <Label htmlFor="application-notes">Notes</Label>
@@ -720,6 +804,64 @@ export default function ApplicationsPage() {
                         )}
                         Save
                       </Button>
+                    </div>
+
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="space-y-1.5">
+                        <Label htmlFor={`resume-${app.id}`}>Linked resume</Label>
+                        <select
+                          id={`resume-${app.id}`}
+                          className={selectClass}
+                          value={draft.resumeId}
+                          onChange={(event) => {
+                            const resumeId = event.target.value;
+                            const letter = coverLetters.find(
+                              (item) => item.id === draft.coverLetterId
+                            );
+                            updateDraft(app.id, {
+                              resumeId,
+                              coverLetterId:
+                                letter && letter.resume_id !== resumeId
+                                  ? ""
+                                  : draft.coverLetterId,
+                            });
+                          }}
+                          disabled={saving}
+                        >
+                          <option value="">No linked resume</option>
+                          {resumes.map((resume) => (
+                            <option key={resume.id} value={resume.id}>
+                              {resume.title}{resume.is_default ? " (default)" : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor={`cover-letter-${app.id}`}>Linked cover letter</Label>
+                        <select
+                          id={`cover-letter-${app.id}`}
+                          className={selectClass}
+                          value={draft.coverLetterId}
+                          onChange={(event) => {
+                            const id = event.target.value;
+                            const letter = coverLetters.find((item) => item.id === id);
+                            updateDraft(app.id, {
+                              coverLetterId: id,
+                              resumeId: letter?.resume_id ?? draft.resumeId,
+                            });
+                          }}
+                          disabled={saving}
+                        >
+                          <option value="">No linked cover letter</option>
+                          {coverLetters
+                            .filter((letter) => letter.job_id === app.job_id)
+                            .map((letter) => (
+                              <option key={letter.id} value={letter.id}>
+                                {label(letter.tone)} · {label(letter.status)}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
                     </div>
 
                     {expanded && (

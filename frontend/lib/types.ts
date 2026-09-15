@@ -50,7 +50,7 @@ export type CoverLetterStatus =
 
 export type OutreachChannel = "email" | "linkedin" | "other";
 
-export type OutreachStatus = "draft" | "copied" | "replied" | "closed";
+export type OutreachStatus = "draft" | "copied" | "sent" | "replied" | "closed";
 
 export type DiscoveryRunStatus = "pending" | "completed" | "failed";
 

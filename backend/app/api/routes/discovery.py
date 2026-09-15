@@ -45,6 +45,7 @@ from app.services.job_discovery import (
     search_jobs,
     validate_discovery_country,
 )
+from app.services.job_identity import job_dedupe_key
 
 router = APIRouter(prefix="/discovery", tags=["discovery"])
 
@@ -149,6 +150,7 @@ def _resume_context(session: Session, user_id: uuid.UUID) -> str:
     text = version.extracted_text if version else resume.extracted_text
     return (text or "").strip()
 
+
 def _resume_search_terms(session: Session, user_id: uuid.UUID) -> list[str]:
     resume = session.exec(
         select(Resume)
@@ -192,6 +194,7 @@ def _resume_search_terms(session: Session, user_id: uuid.UUID) -> list[str]:
             cleaned.append(text)
             seen.add(key)
     return cleaned[:10]
+
 
 def _saved_job_terms(session: Session, user_id: uuid.UUID) -> list[str]:
     jobs = session.exec(
@@ -513,6 +516,22 @@ def save_result_as_job(
             "result_not_saveable",
         )
 
+    main_dedupe = job_dedupe_key(
+        result.source_url, result.company_name, result.title, result.location
+    )
+    existing_job = session.exec(
+        select(Job).where(
+            Job.user_id == current_user.id,
+            Job.dedupe_key == main_dedupe,
+        )
+    ).first()
+    if existing_job is not None:
+        result.status = DiscoveryResultStatus.saved
+        result.saved_job_id = existing_job.id
+        session.add(result)
+        session.commit()
+        return existing_job
+
     job = Job(
         user_id=current_user.id,
         company_name=result.company_name,
@@ -521,6 +540,7 @@ def save_result_as_job(
         work_mode=result.work_mode,
         source=result.source,
         source_url=result.source_url,
+        dedupe_key=main_dedupe,
         description=result.description,
     )
     session.add(job)

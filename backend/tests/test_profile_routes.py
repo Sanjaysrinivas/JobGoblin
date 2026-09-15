@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.api.deps import get_current_user
 from app.core.database import get_session
-from app.models import Profile, Resume, User
+from app.models import Profile, Resume, ResumeVersion, User
 
 
 @pytest.fixture
@@ -171,6 +171,25 @@ def test_seed_rejects_unparsed_resume(client, session, user):
     assert resp.json()["code"] == "resume_not_parsed"
 
 
+def test_seed_uses_current_resume_version(client, session, user):
+    resume = _resume(session, user, parsed_json={"summary": "Stale", "skills": ["Old"]})
+    session.add(
+        ResumeVersion(
+            resume_id=resume.id,
+            title="Current",
+            parsed_json={"summary": "Current", "skills": ["Python"]},
+            is_current=True,
+        )
+    )
+    session.commit()
+
+    resp = client.post("/api/profile/seed", json={"resume_id": str(resume.id)})
+
+    assert resp.status_code == 200
+    assert resp.json()["summary"] == "Current"
+    assert resp.json()["skills"] == ["Python"]
+
+
 def test_seed_other_users_resume_is_404(client, session):
     other = User(email="other-profile@example.com", password_hash="x", display_name="Other")
     session.add(other)
@@ -192,6 +211,7 @@ def test_delete_profile(client):
     assert deleted.status_code == 204
 
     assert client.get("/api/profile").status_code == 404
+
 
 def test_profile_update_rejects_unbounded_fields(client):
     summary_resp = client.put("/api/profile", json={"summary": "x" * 5001})

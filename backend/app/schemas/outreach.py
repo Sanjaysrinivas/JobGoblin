@@ -6,9 +6,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.models.enums import OutreachChannel, OutreachStatus
 
-OutreachGeneratedType = Literal[
-    "recruiter_follow_up", "referral", "thank_you", "status_check"
-]
+OutreachGeneratedType = Literal["recruiter_follow_up", "referral", "thank_you", "status_check"]
 
 
 class OutreachBase(BaseModel):
@@ -31,13 +29,6 @@ class OutreachBase(BaseModel):
     def reject_blank_strings(cls, value: str) -> str:
         if not value:
             raise ValueError("Value cannot be blank")
-        return value
-
-    @field_validator("status")
-    @classmethod
-    def reject_sent_status(cls, value: OutreachStatus) -> OutreachStatus:
-        if value == OutreachStatus.sent:
-            raise ValueError("Outreach drafts cannot be marked sent")
         return value
 
 
@@ -104,8 +95,6 @@ class OutreachUpdate(BaseModel):
     def reject_null_status(cls, value: OutreachStatus | None) -> OutreachStatus | None:
         if value is None:
             raise ValueError("Status cannot be null")
-        if value == OutreachStatus.sent:
-            raise ValueError("Outreach drafts cannot be marked sent")
         return value
 
 

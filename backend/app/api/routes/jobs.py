@@ -16,6 +16,7 @@ from urllib.parse import urljoin, urlparse
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import Response
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.api.deps import get_current_user
@@ -23,10 +24,13 @@ from app.api.routes.analysis import analysis_response
 from app.core.database import get_session
 from app.core.observability import record_llm_fallback
 from app.models import Job, JobAnalysis, Profile, Resume, ResumeVersion, User
+from app.models.enums import ApplicationStatus
 from app.schemas.analysis import JobAnalysisOut
 from app.schemas.job import JobCreate, JobImportRequest, JobOut, JobUpdate
 from app.schemas.resume import ResumeVersionOut, TailoredResumeDraftCreate
 from app.services.ai_provider import AIProvider, get_ai_provider
+from app.services.application_workflow import link_application_material
+from app.services.job_identity import job_dedupe_key
 from app.services.text_matching import contains_supported_term, contains_term
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -232,7 +236,7 @@ def _trim_job_text(text: str) -> str:
             default=-1,
         )
     if start >= 0 and end > start:
-        prelude = text[max(0, start - 800):start]
+        prelude = text[max(0, start - 800) : start]
         marker = prelude.lower().rfind("find a job")
         if marker >= 0:
             prelude = prelude[marker:]
@@ -525,27 +529,6 @@ def _apply_ai_tailoring(
     if not payload:
         return False
     applied = False
-    current_summary = source_json.get("summary")
-    summary = str(payload.get("summary") or "").strip()
-    if (
-        summary
-        and summary.casefold() != "sample"
-        and isinstance(current_summary, str)
-        and summary != current_summary
-        and not any(_contains(summary, term) for term in missing)
-    ):
-        source_json["summary"] = summary
-        changes.append(
-            {
-                "section": "summary",
-                "action": "ai_rewrite",
-                "why": "AI rewrote the summary using existing resume evidence.",
-                "evidence": matched[:5],
-            }
-        )
-        diff.append({"section": "summary", "before": current_summary, "after": summary})
-        applied = True
-
     current_skills = _strings(source_json.get("skills"))
     by_key = {skill.casefold(): skill for skill in current_skills}
     ai_skills = [
@@ -741,6 +724,7 @@ async def _tailored_resume_json(
         notes.extend(f"- {item}" for item in missing[:8])
     return source_json, source_text + "\n".join(notes)
 
+
 def _validate_salary_range(salary_min: int | None, salary_max: int | None) -> None:
     if salary_min is not None and salary_max is not None and salary_min > salary_max:
         raise _error(
@@ -748,6 +732,15 @@ def _validate_salary_range(salary_min: int | None, salary_max: int | None) -> No
             "salary_min must be less than or equal to salary_max",
             "invalid_salary_range",
         )
+
+
+def _duplicate_job(
+    session: Session, user: User, dedupe_key: str, *, exclude_id: uuid.UUID | None = None
+) -> Job | None:
+    query = select(Job).where(Job.user_id == user.id, Job.dedupe_key == dedupe_key)
+    if exclude_id is not None:
+        query = query.where(Job.id != exclude_id)
+    return session.exec(query).first()
 
 
 @router.get("", response_model=list[JobOut])
@@ -769,9 +762,18 @@ def create_job(
     session: Annotated[Session, Depends(get_session)],
 ) -> Job:
     _validate_salary_range(payload.salary_min, payload.salary_max)
-    job = Job(user_id=current_user.id, **payload.model_dump())
+    dedupe_key = job_dedupe_key(
+        payload.source_url, payload.company_name, payload.title, payload.location
+    )
+    if _duplicate_job(session, current_user, dedupe_key):
+        raise _error(status.HTTP_409_CONFLICT, "This job is already saved", "job_exists")
+    job = Job(user_id=current_user.id, dedupe_key=dedupe_key, **payload.model_dump())
     session.add(job)
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        raise _error(status.HTTP_409_CONFLICT, "This job is already saved", "job_exists") from exc
     session.refresh(job)
     return job
 
@@ -817,6 +819,14 @@ async def create_resume_draft(
         is_current=False,
     )
     session.add(draft)
+    session.flush()
+    link_application_material(
+        session,
+        user_id=current_user.id,
+        job_id=job.id,
+        resume_id=resume.id,
+        material_status=ApplicationStatus.resume_tailored,
+    )
     session.commit()
     session.refresh(draft)
     return draft
@@ -879,11 +889,25 @@ def update_job(
         updates.get("salary_min", job.salary_min),
         updates.get("salary_max", job.salary_max),
     )
+    identity = {
+        "source_url": updates.get("source_url", job.source_url),
+        "company_name": updates.get("company_name", job.company_name),
+        "title": updates.get("title", job.title),
+        "location": updates.get("location", job.location),
+    }
+    dedupe_key = job_dedupe_key(**identity)
+    if _duplicate_job(session, current_user, dedupe_key, exclude_id=job.id):
+        raise _error(status.HTTP_409_CONFLICT, "This job is already saved", "job_exists")
     for field, value in updates.items():
         setattr(job, field, value)
+    job.dedupe_key = dedupe_key
 
     session.add(job)
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        raise _error(status.HTTP_409_CONFLICT, "This job is already saved", "job_exists") from exc
     session.refresh(job)
     return job
 

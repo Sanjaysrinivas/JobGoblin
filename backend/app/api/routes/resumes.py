@@ -78,9 +78,7 @@ def _get_owned_resume(session: Session, user: User, resume_id: uuid.UUID) -> Res
     return resume
 
 
-def _get_owned_version(
-    session: Session, resume: Resume, version_id: uuid.UUID
-) -> ResumeVersion:
+def _get_owned_version(session: Session, resume: Resume, version_id: uuid.UUID) -> ResumeVersion:
     version = session.get(ResumeVersion, version_id)
     if version is None or version.resume_id != resume.id:
         raise _version_not_found()
@@ -116,9 +114,7 @@ def _current_version_or_source(session: Session, resume: Resume) -> ResumeVersio
     return version
 
 
-def _resume_payload(
-    session: Session, resume: Resume, version: ResumeVersion | None = None
-) -> dict:
+def _resume_payload(session: Session, resume: Resume, version: ResumeVersion | None = None) -> dict:
     current = version or _get_current_version(session, resume)
     version_count = session.exec(
         select(func.count()).select_from(ResumeVersion).where(ResumeVersion.resume_id == resume.id)
@@ -152,6 +148,8 @@ def _clear_other_defaults(session: Session, user_id: uuid.UUID, keep_id: uuid.UU
     for other in others:
         other.is_default = False
         session.add(other)
+    if others:
+        session.flush()
 
 
 def _clear_current_versions(session: Session, resume_id: uuid.UUID, keep_id: uuid.UUID) -> None:
@@ -165,6 +163,8 @@ def _clear_current_versions(session: Session, resume_id: uuid.UUID, keep_id: uui
     for version in versions:
         version.is_current = False
         session.add(version)
+    if versions:
+        session.flush()
 
 
 @router.post("/upload", response_model=ResumeOut, status_code=status.HTTP_201_CREATED)
@@ -204,13 +204,9 @@ async def upload_resume(
     try:
         text = extract_text(data, content_type)
     except UnsupportedDocumentError as exc:
-        raise _error(
-            status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, str(exc), "unsupported_type"
-        ) from exc
+        raise _error(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, str(exc), "unsupported_type") from exc
     except ExtractionError as exc:
-        raise _error(
-            status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc), "unprocessable_file"
-        ) from exc
+        raise _error(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc), "unprocessable_file") from exc
 
     ext = _EXT_BY_TYPE.get(content_type, "")
     key = f"{current_user.id}/{uuid.uuid4()}{ext}"
@@ -255,9 +251,7 @@ def list_resumes(
     session: Annotated[Session, Depends(get_session)],
 ) -> list[dict]:
     resumes = session.exec(
-        select(Resume)
-        .where(Resume.user_id == current_user.id)
-        .order_by(Resume.created_at.desc())
+        select(Resume).where(Resume.user_id == current_user.id).order_by(Resume.created_at.desc())
     ).all()
     return [_resume_payload(session, resume) for resume in resumes]
 
@@ -416,9 +410,9 @@ def update_resume(
         session.add(version)
 
     if payload.is_default is not None:
-        resume.is_default = payload.is_default
         if payload.is_default:
             _clear_other_defaults(session, current_user.id, resume.id)
+        resume.is_default = payload.is_default
         session.add(resume)
 
     session.commit()
@@ -467,7 +461,6 @@ async def reparse_resume(
     return _resume_payload(session, resume, version)
 
 
-
 @router.get("/{resume_id}/versions/{version_id}/export.pdf")
 def export_resume_version_pdf(
     resume_id: uuid.UUID,
@@ -484,6 +477,7 @@ def export_resume_version_pdf(
         media_type="application/pdf",
         headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )
+
 
 @router.get("/{resume_id}/export.pdf")
 def export_resume_pdf(
