@@ -309,6 +309,7 @@ export interface JobAnalysis {
   keyword_checklist: KeywordChecklistGroup[] | null;
   rewrite_suggestions: RewriteSuggestion[] | null;
   score_breakdown: ScoreBreakdownEntry[] | null;
+  is_legacy: boolean | null;
   provider: string;
   model_used: string;
   created_at: string;

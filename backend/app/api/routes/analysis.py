@@ -12,6 +12,7 @@ from app.models import Job, JobAnalysis, Resume, User
 from app.schemas.analysis import JobAnalysisOut, ResumeJobAnalysisCreate
 from app.services.ai_provider import get_ai_provider
 from app.services.job_analysis import (
+    ANALYSIS_VERSION,
     CATEGORY_WEIGHTS,
     analyze_resume_for_job,
     applicable_categories,
@@ -120,6 +121,7 @@ def analysis_response(session: Session, analysis: JobAnalysis) -> dict:
         "keyword_checklist": checklist,
         "rewrite_suggestions": rewrite_suggestions(checklist, matched, missing),
         "score_breakdown": score_breakdown,
+        "is_legacy": analysis.model_used != ANALYSIS_VERSION,
     }
 
 

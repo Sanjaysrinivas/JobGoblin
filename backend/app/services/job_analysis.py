@@ -31,6 +31,10 @@ ROLE_WEIGHT = 10
 EDUCATION_WEIGHT = 5
 FORMATTING_WEIGHT = 0
 
+# Version stamped on every new analysis; results with a different model_used
+# predate grounded scoring and are flagged legacy in responses.
+ANALYSIS_VERSION = "grounded-v2"
+
 MAX_KEYWORDS = 20
 FUZZY_THRESHOLD = 88
 
@@ -705,4 +709,4 @@ async def analyze_resume_for_job(
 
 def provider_metadata(_provider: AIProvider) -> tuple[str, str]:
     """Describe the deterministic engine persisted with new analyses."""
-    return "deterministic", "grounded-v2"
+    return "deterministic", ANALYSIS_VERSION

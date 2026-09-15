@@ -51,6 +51,7 @@ class JobAnalysisOut(BaseModel):
     keyword_checklist: list[KeywordChecklistGroup] | None = None
     rewrite_suggestions: list[RewriteSuggestion] | None = None
     score_breakdown: list[ScoreBreakdownEntry] | None = None
+    is_legacy: bool = False
     provider: str
     model_used: str
     created_at: datetime

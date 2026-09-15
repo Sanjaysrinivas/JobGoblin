@@ -256,6 +256,7 @@ export function JobAnalysisPanel({ jobId }: JobAnalysisPanelProps) {
                 analyses.map((analysis) => (
                   <option key={analysis.id} value={analysis.id}>
                     {Math.round(analysis.overall_score)}% - {resumeLabel(analysis.resume_id, resumes)} - {formatDate(analysis.created_at)}
+                    {analysis.is_legacy ? " (legacy)" : ""}
                   </option>
                 ))
               )}
@@ -323,6 +324,24 @@ export function JobAnalysisPanel({ jobId }: JobAnalysisPanelProps) {
         {selectedAnalysis ? (
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
             <div className="space-y-4 lg:col-span-2">
+              {selectedAnalysis.is_legacy && (
+                <div className="border-warning/40 bg-warning/10 flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
+                  <p className="text-warning-foreground text-sm">
+                    Created under the previous scoring model. Scores and
+                    recommendations may not reflect grounded guidance.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={runAnalysis}
+                    disabled={running || !selectedResumeId}
+                  >
+                    <Play className="size-4" />
+                    Run updated analysis
+                  </Button>
+                </div>
+              )}
               <div className="rounded-lg border p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>

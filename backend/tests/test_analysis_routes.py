@@ -315,6 +315,50 @@ def test_analysis_marks_education_applicable_when_required(client, session, user
     assert breakdown["education"]["earned"] == resp.json()["education_score"]
 
 
+def test_analysis_flags_legacy_results(client, session, user):
+    resume = _create_resume(session, user)
+    job = _create_job(session, user)
+
+    legacy = JobAnalysis(
+        user_id=user.id,
+        resume_id=resume.id,
+        job_id=job.id,
+        overall_score=80,
+        keyword_score=28,
+        skills_score=24,
+        experience_score=16,
+        role_score=8,
+        education_score=4,
+        formatting_score=8,
+        matched_keywords=["python"],
+        missing_keywords=[],
+        recommendations=["Mention your Kubernetes exposure."],
+        explanation="Old model explanation.",
+        provider="ollama",
+        model_used="qwen2.5:7b-instruct",
+    )
+    session.add(legacy)
+    session.commit()
+    session.refresh(legacy)
+
+    legacy_resp = client.get(f"/api/analysis/{legacy.id}")
+    assert legacy_resp.status_code == 200
+    assert legacy_resp.json()["is_legacy"] is True
+
+    fresh_resp = client.post(
+        "/api/analysis/resume-job",
+        json={"resume_id": str(resume.id), "job_id": str(job.id)},
+    )
+    assert fresh_resp.status_code == 201
+    assert fresh_resp.json()["is_legacy"] is False
+
+    # Historical record is untouched by the new run.
+    stored = session.get(JobAnalysis, legacy.id)
+    assert stored is not None
+    assert stored.model_used == "qwen2.5:7b-instruct"
+    assert stored.recommendations == ["Mention your Kubernetes exposure."]
+
+
 def test_create_analysis_uses_current_resume_version(client, session, user):
     resume = _create_resume(
         session,
