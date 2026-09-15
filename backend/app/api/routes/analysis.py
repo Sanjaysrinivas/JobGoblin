@@ -12,7 +12,9 @@ from app.models import Job, JobAnalysis, Resume, User
 from app.schemas.analysis import JobAnalysisOut, ResumeJobAnalysisCreate
 from app.services.ai_provider import get_ai_provider
 from app.services.job_analysis import (
+    CATEGORY_WEIGHTS,
     analyze_resume_for_job,
+    applicable_categories,
     application_readiness,
     fit_label,
     keyword_checklist,
@@ -72,6 +74,15 @@ def _string_list(value: object) -> list[str]:
     return [str(item) for item in value if str(item).strip()]
 
 
+_SCORE_CATEGORY_LABELS: tuple[tuple[str, str], ...] = (
+    ("keyword", "Keywords"),
+    ("skills", "Skills"),
+    ("experience", "Experience"),
+    ("role", "Role fit"),
+    ("education", "Education"),
+)
+
+
 def analysis_response(session: Session, analysis: JobAnalysis) -> dict:
     job = session.get(Job, analysis.job_id)
     resume = session.get(Resume, analysis.resume_id)
@@ -85,6 +96,20 @@ def analysis_response(session: Session, analysis: JobAnalysis) -> dict:
         job.title if job else "",
         job.description if job else "",
     )
+    applicable = applicable_categories(
+        job.title if job else "",
+        job.description if job else "",
+    )
+    score_breakdown = [
+        {
+            "key": key,
+            "label": label,
+            "earned": getattr(analysis, f"{key}_score"),
+            "maximum": CATEGORY_WEIGHTS[key],
+            "applicable": applicable[key],
+        }
+        for key, label in _SCORE_CATEGORY_LABELS
+    ]
     missing = _string_list(analysis.missing_keywords)
     matched = _string_list(analysis.matched_keywords)
     return {
@@ -94,6 +119,7 @@ def analysis_response(session: Session, analysis: JobAnalysis) -> dict:
         "readiness_steps": readiness_steps(analysis.overall_score, checklist),
         "keyword_checklist": checklist,
         "rewrite_suggestions": rewrite_suggestions(checklist, matched, missing),
+        "score_breakdown": score_breakdown,
     }
 
 

@@ -267,6 +267,54 @@ def test_list_job_analyses_is_owned_and_newest_first(client, session, user, othe
     assert cross_user_job.json()["code"] == "job_not_found"
 
 
+def test_analysis_reports_category_applicability(client, session, user):
+    resume = _create_resume(session, user)
+    job = _create_job(session, user)  # description has no education requirement
+
+    resp = client.post(
+        "/api/analysis/resume-job",
+        json={"resume_id": str(resume.id), "job_id": str(job.id)},
+    )
+
+    assert resp.status_code == 201, resp.text
+    breakdown = {row["key"]: row for row in resp.json()["score_breakdown"]}
+    assert set(breakdown) == {"keyword", "skills", "experience", "role", "education"}
+
+    education = breakdown["education"]
+    assert education["applicable"] is False
+    assert education["maximum"] == 5
+
+    keyword = breakdown["keyword"]
+    assert keyword["applicable"] is True
+    assert keyword["maximum"] == 35
+    assert keyword["earned"] == resp.json()["keyword_score"]
+
+    applicable_maxima = sum(row["maximum"] for row in breakdown.values() if row["applicable"])
+    assert applicable_maxima > 0
+
+
+def test_analysis_marks_education_applicable_when_required(client, session, user):
+    resume = _create_resume(session, user)
+    job = _create_job(
+        session,
+        user,
+        description=(
+            "Build backend services with Python, FastAPI, PostgreSQL, Docker, "
+            "REST APIs, and Kubernetes. Bachelor degree in Computer Science required."
+        ),
+    )
+
+    resp = client.post(
+        "/api/analysis/resume-job",
+        json={"resume_id": str(resume.id), "job_id": str(job.id)},
+    )
+
+    assert resp.status_code == 201, resp.text
+    breakdown = {row["key"]: row for row in resp.json()["score_breakdown"]}
+    assert breakdown["education"]["applicable"] is True
+    assert breakdown["education"]["earned"] == resp.json()["education_score"]
+
+
 def test_create_analysis_uses_current_resume_version(client, session, user):
     resume = _create_resume(
         session,

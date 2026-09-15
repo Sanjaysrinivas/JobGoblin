@@ -44,6 +44,28 @@ const scoreRows: Array<{ key: keyof JobAnalysis; label: string; max: number }> =
   { key: "education_score", label: "Education", max: 5 },
 ];
 
+type BreakdownRow = {
+  key: string;
+  label: string;
+  earned: number;
+  maximum: number;
+  applicable: boolean;
+};
+
+function breakdownRows(analysis: JobAnalysis): BreakdownRow[] {
+  if (analysis.score_breakdown && analysis.score_breakdown.length > 0) {
+    return analysis.score_breakdown;
+  }
+  // ponytail: fallback for payloads predating score_breakdown
+  return scoreRows.map((row) => ({
+    key: String(row.key),
+    label: row.label,
+    earned: Number(analysis[row.key] ?? 0),
+    maximum: row.max,
+    applicable: true,
+  }));
+}
+
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
@@ -351,26 +373,35 @@ export function JobAnalysisPanel({ jobId }: JobAnalysisPanelProps) {
                   <BarChart3 className="text-primary size-4" />
                   Score breakdown
                 </div>
+                <p className="text-muted-foreground text-xs">
+                  The overall percentage is normalized across the requirements this
+                  posting actually asks for. Categories marked N/A are not counted.
+                </p>
                 <div className="space-y-3">
-                  {scoreRows.map((row) => {
-                    const value = Number(selectedAnalysis[row.key] ?? 0);
-                    return (
-                      <div key={row.key} className="space-y-1.5">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-muted-foreground">{row.label}</span>
+                  {breakdownRows(selectedAnalysis).map((row) => (
+                    <div key={row.key} className="space-y-1.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground">{row.label}</span>
+                        {row.applicable ? (
                           <span className="font-mono font-medium tabular-nums">
-                            {Math.round(value)}/{row.max}
+                            {Math.round(row.earned)}/{row.maximum}
                           </span>
-                        </div>
+                        ) : (
+                          <span className="text-muted-foreground font-mono font-medium">
+                            N/A
+                          </span>
+                        )}
+                      </div>
+                      {row.applicable && (
                         <div className="bg-secondary h-2 overflow-hidden rounded-full">
                           <div
-                            className={`${scoreTone(value)} h-full rounded-full`}
-                            style={{ width: `${Math.max(0, Math.min((value / row.max) * 100, 100))}%` }}
+                            className={`${scoreTone(row.earned / row.maximum * 100)} h-full rounded-full`}
+                            style={{ width: `${Math.max(0, Math.min((row.earned / row.maximum) * 100, 100))}%` }}
                           />
                         </div>
-                      </div>
-                    );
-                  })}
+                      )}
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>

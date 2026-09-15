@@ -626,6 +626,32 @@ def score_resume_for_job(
     )
 
 
+CATEGORY_WEIGHTS: dict[str, int] = {
+    "keyword": KEYWORD_WEIGHT,
+    "skills": SKILLS_WEIGHT,
+    "experience": EXPERIENCE_WEIGHT,
+    "role": ROLE_WEIGHT,
+    "education": EDUCATION_WEIGHT,
+}
+
+
+def applicable_categories(job_title: str, job_description: str) -> dict[str, bool]:
+    """Report which score categories a posting actually asks for.
+
+    Pure function of the job text so the response can explain applicability
+    without storing it per analysis (mirrors score_resume_for_job's weights).
+    """
+    job_text = _core_job_text(job_title, job_description)
+    has_job_terms = bool(extract_job_keywords(job_text))
+    return {
+        "keyword": has_job_terms,
+        "skills": bool(_skills_in(job_text)),
+        "experience": has_job_terms,
+        "role": bool(_role_title_terms(job_title)),
+        "education": any(_contains_term(job_text, term) for term in _EDUCATION_TERMS),
+    }
+
+
 def _fallback_recommendations(missing_keywords: list[str]) -> list[str]:
     if not missing_keywords:
         return ["Keep the resume focused on the strongest matching experience."]

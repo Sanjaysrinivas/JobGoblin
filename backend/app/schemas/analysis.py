@@ -22,6 +22,14 @@ class RewriteSuggestion(BaseModel):
     verify_before_adding: list[str]
 
 
+class ScoreBreakdownEntry(BaseModel):
+    key: str
+    label: str
+    earned: int
+    maximum: int
+    applicable: bool
+
+
 class JobAnalysisOut(BaseModel):
     id: uuid.UUID
     resume_id: uuid.UUID
@@ -42,6 +50,7 @@ class JobAnalysisOut(BaseModel):
     readiness_steps: list[str] | None = None
     keyword_checklist: list[KeywordChecklistGroup] | None = None
     rewrite_suggestions: list[RewriteSuggestion] | None = None
+    score_breakdown: list[ScoreBreakdownEntry] | None = None
     provider: str
     model_used: str
     created_at: datetime
