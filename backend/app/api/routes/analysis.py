@@ -10,7 +10,6 @@ from app.api.deps import get_current_user
 from app.core.database import get_session
 from app.models import Job, JobAnalysis, Resume, User
 from app.schemas.analysis import JobAnalysisOut, ResumeJobAnalysisCreate
-from app.services.ai_provider import get_ai_provider
 from app.services.job_analysis import (
     ANALYSIS_VERSION,
     CATEGORY_WEIGHTS,
@@ -130,7 +129,7 @@ def analysis_response(session: Session, analysis: JobAnalysis) -> dict:
     response_model=JobAnalysisOut,
     status_code=status.HTTP_201_CREATED,
 )
-async def create_resume_job_analysis(
+def create_resume_job_analysis(
     payload: ResumeJobAnalysisCreate,
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_session)],
@@ -144,15 +143,13 @@ async def create_resume_job_analysis(
             "no_extracted_text",
         )
 
-    provider = get_ai_provider()
-    result = await analyze_resume_for_job(
+    result = analyze_resume_for_job(
         resume,
         job,
-        provider,
         resume_text=resume_text,
         parsed_resume=parsed_resume,
     )
-    provider_name, model_used = provider_metadata(provider)
+    provider_name, model_used = provider_metadata()
 
     analysis = JobAnalysis(
         user_id=current_user.id,

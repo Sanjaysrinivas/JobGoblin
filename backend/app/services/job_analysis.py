@@ -13,7 +13,6 @@ from typing import Any
 from rapidfuzz import fuzz
 
 from app.models import Job, Resume
-from app.services.ai_provider import AIProvider
 from app.services.text_matching import (
     canonical_term,
     contains_supported_term,
@@ -666,10 +665,9 @@ def _fallback_recommendations(missing_keywords: list[str]) -> list[str]:
     ]
 
 
-async def analyze_resume_for_job(
+def analyze_resume_for_job(
     resume: Resume,
     job: Job,
-    _provider: AIProvider,
     *,
     resume_text: str | None = None,
     parsed_resume: dict | None = None,
@@ -707,6 +705,6 @@ async def analyze_resume_for_job(
     )
 
 
-def provider_metadata(_provider: AIProvider) -> tuple[str, str]:
+def provider_metadata() -> tuple[str, str]:
     """Describe the deterministic engine persisted with new analyses."""
     return "deterministic", ANALYSIS_VERSION
