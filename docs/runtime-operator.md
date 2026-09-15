@@ -438,3 +438,32 @@ python scripts/cloudflare_tunnel_check.py --public-url https://jobs.example.com
 After checks pass, merge `dev` to `main` through a PR or fast-forward policy used
 by the repo. Do not promote `main` based on unrun Cloudflare, OAuth, Ollama, or
 Adzuna checks; leave those explicitly marked pending.
+
+## 16. Container Image Publication (GHCR)
+
+Publishing images from `main` is part of the release process. The
+`Build, Verify & Publish` workflow (`.github/workflows/ci.yml`) publishes after
+backend, frontend, and Playwright E2E checks pass on every push to `main`:
+
+- `ghcr.io/<owner>/jobgoblin-backend` and `ghcr.io/<owner>/jobgoblin-frontend`
+- Tags: mutable `main` (latest release) and immutable `sha-<full-commit>` per build
+- Permissions: the publish jobs use the workflow-scoped `packages: write` grant;
+  all other jobs stay `contents: read`
+
+Rollback:
+
+```bash
+docker pull ghcr.io/<owner>/jobgoblin-backend:sha-<known-good-commit>
+docker tag ghcr.io/<owner>/jobgoblin-backend:sha-<known-good-commit> ghcr.io/<owner>/jobgoblin-backend:main
+docker push ghcr.io/<owner>/jobgoblin-backend:main
+# repeat for jobgoblin-frontend
+```
+
+Always roll back backend and frontend to the same `sha-` commit so API and UI
+stay in lockstep.
+
+Retention: GHCR keeps every `sha-` tag as a rollback point. Periodically prune
+old `sha-` tags from the package settings when they exceed the rollback window
+you care about (the mutable `main` tag is always the current release); keep at
+least the last few known-good releases. `dev` builds never publish — only
+`main` does.
