@@ -13,7 +13,7 @@ from sqlmodel import Session, select
 from app.core.observability import record_llm_fallback
 from app.models import Job, JobAnalysis, Profile, Resume, ResumeVersion, User
 from app.models.enums import ApplicationStatus
-from app.services.ai_provider import AIProvider
+from app.services.ai_provider import AIProvider, provider_name
 from app.services.application_workflow import link_application_material
 from app.services.text_matching import contains_supported_term, contains_term
 
@@ -64,10 +64,6 @@ def _contains(text: str, value: str) -> bool:
 
 def _contains_supported(text: str, value: str) -> bool:
     return contains_supported_term(text, value)
-
-
-def provider_name(provider: AIProvider) -> str:
-    return provider.__class__.__name__.replace("Provider", "").lower()
 
 
 def _latest_analysis(

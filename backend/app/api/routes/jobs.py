@@ -26,9 +26,9 @@ from app.models import Job, JobAnalysis, Resume, ResumeVersion, User
 from app.schemas.analysis import JobAnalysisOut
 from app.schemas.job import JobCreate, JobImportRequest, JobOut, JobUpdate
 from app.schemas.resume import ResumeVersionOut, TailoredResumeDraftCreate
-from app.services.ai_provider import AIProvider, get_ai_provider
+from app.services.ai_provider import AIProvider, get_ai_provider, provider_name
 from app.services.job_identity import job_dedupe_key
-from app.services.tailored_resumes import create_tailored_draft, provider_name
+from app.services.tailored_resumes import create_tailored_draft
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
