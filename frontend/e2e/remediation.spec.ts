@@ -1,4 +1,6 @@
-import { expect, test, type APIResponse, type Page } from "@playwright/test";
+import type { APIResponse, Page } from "@playwright/test";
+
+import { expect, test } from "./helpers/console-gate";
 
 import { loginAsAdmin } from "./helpers/auth";
 import { type Cleanup, withCleanup } from "./helpers/cleanup";
@@ -287,17 +289,32 @@ test.describe("remediated business workflows", () => {
   test("settings shows the account and configured providers", async ({ page }) => {
     await loginAsAdmin(page);
 
+    // Truthfulness: compare the UI against the actual API responses rather
+    // than trusting labels.
+    const me = await get(page, "/api/auth/me");
+    const runtime = await get(page, "/api/runtime/configuration");
+
     await page.goto("/settings");
     await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
-    const email = process.env.E2E_ADMIN_EMAIL ?? "admin@jobgoblin.local";
-    await expect(page.getByLabel("Email")).toHaveValue(email);
-    await expect(page.getByText("AI provider", { exact: true })).toBeVisible();
-    await expect(page.getByText(/Provider:/).first()).toBeVisible();
+    await expect(page.getByLabel("Email")).toHaveValue(me.email as string);
+    const provider = String(runtime.ai_provider);
+    await expect(page.getByText(new RegExp(provider, "i")).first()).toBeVisible();
+    if (runtime.discovery_provider) {
+      await expect(
+        page.getByText(new RegExp(runtime.discovery_provider as string, "i")).first()
+      ).toBeVisible();
+    }
+    if (runtime.ai_model) {
+      await expect(
+        page.getByText(new RegExp(`Model: ${runtime.ai_model}`, "i")).first()
+      ).toBeVisible();
+    }
   });
 
   test("run analysis analyzes the selected resume and records its breakdown", async ({
     page,
   }) => {
+    test.setTimeout(90_000);
     await loginAsAdmin(page);
     const suffix = suffixFor("analysis");
 
@@ -324,6 +341,34 @@ test.describe("remediated business workflows", () => {
         .first()
         .textContent();
       expect(history).toContain(`Other Resume ${suffix}`);
+
+      // F5: non-applicable education renders N/A, and the panel explains
+      // that the overall percentage counts only applicable categories.
+      // This job description has no education requirement.
+      await expect(
+        page.getByText("Education").locator("..").getByText("N/A")
+      ).toBeVisible();
+      await expect(
+        page.getByText(/normalized across the requirements/i)
+      ).toBeVisible();
+
+      // Required-but-missing categories show their zero, not N/A: the
+      // resume evidences none of this job's skills and no degree.
+      const strictJob = await createJob(page, cleanup, `${suffix}-strict`, {
+        // Terraform and a degree are the only detectable requirements and the
+        // fixture resume (Python/FastAPI/PostgreSQL/Docker/Kubernetes)
+        // evidences neither.
+        description:
+          "Bachelor degree required. Must have Terraform experience for this infrastructure team.",
+      });
+      await page.goto(`/jobs/${strictJob.id}`);
+      await page.locator("#analysis-resume").selectOption(resumeB.id as string);
+      await page.getByRole("button", { name: "Run analysis" }).click();
+      await expect(page.getByText("0/30", { exact: true })).toBeVisible();
+      await expect(page.getByText("0/5", { exact: true })).toBeVisible();
+      await expect(
+        page.getByText("Education").locator("..").getByText("N/A")
+      ).toHaveCount(0);
     });
   });
 });

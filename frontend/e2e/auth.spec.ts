@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./helpers/console-gate";
 
 import { loginAsAdmin } from "./helpers/auth";
 
@@ -23,8 +23,13 @@ test.describe("authentication", () => {
   test("admin can sign in and see the application shell", async ({ page }) => {
     await loginAsAdmin(page);
 
-    await expect(page.getByRole("link", { name: /Jobs/ })).toBeVisible();
-    await expect(page.getByRole("link", { name: /Outreach/ })).toBeVisible();
-    await expect(page.getByText("Pipeline", { exact: true })).toBeVisible();
+    // On mobile the nav links live in a drawer; open it when present.
+    const navButton = page.getByRole("button", { name: "Open navigation" });
+    if (await navButton.isVisible()) {
+      await navButton.click();
+    }
+    await expect(page.getByRole("link", { name: "Jobs" }).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: "Outreach" }).first()).toBeVisible();
+    await expect(page.getByText("Pipeline", { exact: true }).first()).toBeVisible();
   });
 });

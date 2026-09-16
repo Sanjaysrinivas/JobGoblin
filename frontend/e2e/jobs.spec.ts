@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./helpers/console-gate";
 
 import { loginAsAdmin } from "./helpers/auth";
 import { type Cleanup, withCleanup } from "./helpers/cleanup";
@@ -11,7 +11,12 @@ test.describe("jobs", () => {
     await loginAsAdmin(page);
 
     await withCleanup(page, async (cleanup: Cleanup) => {
-      await page.getByRole("link", { name: /Jobs/ }).click();
+      // On mobile the nav links live in a drawer; open it when present.
+      const navButton = page.getByRole("button", { name: "Open navigation" });
+      if (await navButton.isVisible()) {
+        await navButton.click();
+      }
+      await page.getByRole("link", { name: "Jobs" }).first().click();
       await expect(page.getByRole("heading", { name: "Jobs", exact: true })).toBeVisible();
 
       await page.getByRole("button", { name: "Add a job", exact: true }).click();
