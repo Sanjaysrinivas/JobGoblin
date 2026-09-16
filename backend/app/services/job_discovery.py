@@ -14,7 +14,7 @@ from app.core.config import get_settings
 from app.core.observability import record_llm_fallback
 from app.models.enums import JobSource, WorkMode
 from app.schemas.discovery import JobSearchPreferencesPayload, normalize_country_code
-from app.services.ai_provider import AIProvider
+from app.services.ai_provider import AIProvider, provider_name
 from app.services.text_matching import contains_supported_term, contains_term
 
 
@@ -284,15 +284,11 @@ def _build_ai_ranking_prompt(
     )
 
 
-def _ai_provider_name(provider: AIProvider) -> str:
-    return provider.__class__.__name__.replace("Provider", "").lower()
-
-
 def _record_ranking_fallback(provider: AIProvider, reason: str) -> None:
-    provider_name = _ai_provider_name(provider)
+    name = provider_name(provider)
     record_llm_fallback(
-        provider=provider_name,
-        model=str(getattr(provider, "_model", provider_name)),
+        provider=name,
+        model=str(getattr(provider, "_model", name)),
         operation="discovery.rank_json",
         reason=reason,
     )
