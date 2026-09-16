@@ -1,10 +1,38 @@
 # PR #45 Detailed Remediation And Merge-Readiness Plan
 
-Status: implementation required before PR #45 is merged  
+Status: **implemented** — correction series on `feature/post-merge-remediation`, 2026-09-16  
 Prepared: 2026-09-16  
 PR: `feature/post-merge-remediation` -> `dev`  
 Reviewed head: `016f8cd01ca56705cf38aaee1c4a0ef58f556d60`  
 Fixed baseline: `a961a254100a3d939e89af04777f0fef278bd410` (PR #44 merge)
+
+## Resolution record
+
+| Finding | Resolution |
+| --- | --- |
+| F1 technical token identity | `548fb43` — asymmetric technical-token boundaries; full section 4.5 matrix in `tests/test_grounding.py` |
+| F2 immutable stored breakdowns | `4317bd1` — nullable snapshot columns (migration `b8c9d0e1f2a3`), stored breakdown serialization, `inputs_changed` |
+| F3 legacy rerun resume | `9de3ab8` — `runAnalysis(resumeId)`; legacy button uses the analysis's resume, disabled when deleted. E2E covers the shared parameterized path; the legacy banner itself cannot be seeded through the API anymore (every new row stores a snapshot) |
+| F4 failure-safe E2E | `fcf13e5` — Cleanup registry + finally teardown, `E2E_ALLOW_MUTATION` guard (CI sets it), profile save/restore, `scripts/e2e_artifact_report.py` dry-run report with exact-ID deletion |
+| F5 presentation coverage | `ec62ac4` — N/A, 0/30, 0/5, normalization note asserted in-browser |
+| F6 mobile + console gates | `ec62ac4` — Pixel 7 project (all specs, drawer-aware nav), console/page-error gate with one documented allowlist entry (pre-auth 401s), settings compared to `/api/runtime/configuration` and `/api/auth/me` |
+| F7 stale remediation doc | `docs/post-merge-remediation.md` marked completed with per-item commits and verification summary |
+| F8 applicability produced once | `4317bd1` — computed in `score_resume_for_job`, persisted from the single result; frontend fallback removed |
+| F9 identity coordination | `af78fa2` — `find_duplicate_job`/`persist_job`/`JobIdentityConflict` in the service; threaded race test leaves exactly one job |
+| F10 provider metadata | `8db686b` — `provider_name` moved to `ai_provider` |
+| F11 hard-coded fallback | removed in `4317bd1`; results without a stored breakdown say so explicitly |
+
+### Accepted deviations
+
+- **Discovery cleanup (section 7.3)**: option 1 policy, not option 2 — no
+  test-only backend endpoint was added. CI databases are ephemeral; local runs
+  are explicit opt-ins via `E2E_ALLOW_MUTATION`, and the duplicate-save test
+  cleans the saved job itself. Discovery runs/results rows persist only in
+  opt-in local runs.
+- **Legacy-banner E2E (section 6.4)**: rows without snapshots can no longer be
+  created through the public API, so the banner's own click path is covered by
+  the shared `runAnalysis(resumeId)` code path and type checks rather than a
+  seeded legacy row.
 
 ## 1. Executive Summary
 

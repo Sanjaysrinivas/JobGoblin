@@ -1,8 +1,32 @@
 # Post-Merge Remediation Plan
 
-Status: open follow-up work after PR #44  
-Last verified: 2026-09-15  
+Status: **completed** — delivered on `feature/post-merge-remediation` (PR #45), 2026-09-16  
+Last verified: 2026-09-16  
 Baseline: `dev` at merge commit `a961a254100a3d939e89af04777f0fef278bd410`
+
+## Completion record
+
+| Item | Implementing commit |
+| --- | --- |
+| 1. Boundary-aware grounding | `ef74918`, hardened by `548fb43` |
+| 2. Current-version deletion fix | `66e96b9` |
+| 3. Dependency upgrades (audit clean) | `147dc50` |
+| 4. Score applicability + N/A UI | `cca0c05`, superseded by `4317bd1` (persisted breakdowns) |
+| 5. Legacy analysis labeling/rerun | `eaba80f`, `4317bd1`, `9de3ab8` |
+| 6. E2E coverage | `4c228bf`, `fcf13e5`, `ec62ac4` |
+| 7. Docs synchronized | `b421358`, `016f8cd` |
+| 8. Migration/runtime equivalence | `c69303a` |
+| 9. Synchronous deterministic analysis | `c791685` |
+| 10. Shared material selection | `d6ffb8b` |
+| 11. Jobs route thinning | `d6ffb8b`, `af78fa2` |
+| 12. GHCR policy confirmed (keep) | `016f8cd` (runbook section 16) |
+
+Final verification on the branch head: 343 backend tests + Ruff, frontend
+tsc/ESLint/build + `npm audit --omit=dev` clean, 26 Playwright tests
+(13 specs × desktop + Pixel 7 mobile) with console-error gates, Alembic
+upgrade/downgrade/re-upgrade + drift checks, fresh Docker Compose build
+with all services healthy. Follow-up findings from the detailed review
+are tracked in [pr-45-detailed-remediation.md](pr-45-detailed-remediation.md).
 
 ## Purpose
 
