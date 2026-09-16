@@ -549,4 +549,5 @@ def save_result_as_job(
     result.saved_job_id = existing_job.id
     session.add(result)
     session.commit()
+    session.refresh(existing_job)
     return existing_job

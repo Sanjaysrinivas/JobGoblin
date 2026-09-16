@@ -60,6 +60,18 @@ def test_persist_job_translates_uniqueness_violation(session, user):
         persist_job(session, _job(user.id, key, "Second"))
 
 
+def test_persist_job_leaves_commit_to_its_caller(engine, user):
+    key = job_dedupe_key("https://example.com/staged", "Acme", "Eng", "Remote")
+    with Session(engine) as writer:
+        persist_job(writer, _job(user.id, key, "Staged"))
+        with Session(engine) as reader:
+            assert reader.exec(select(Job).where(Job.dedupe_key == key)).first() is None
+        writer.commit()
+
+    with Session(engine) as reader:
+        assert reader.exec(select(Job).where(Job.dedupe_key == key)).first() is not None
+
+
 def test_concurrent_identity_writes_leave_one_job(engine, session, user):
     """Two connections race the same identity: exactly one job survives and
     the loser gets JobIdentityConflict instead of a leaked IntegrityError."""
@@ -72,6 +84,7 @@ def test_concurrent_identity_writes_leave_one_job(engine, session, user):
             barrier.wait(timeout=30)
             try:
                 persist_job(own, _job(user.id, key, f"Racer {name}"))
+                own.commit()
                 outcomes.append(f"ok-{name}")
             except JobIdentityConflict:
                 outcomes.append(f"conflict-{name}")

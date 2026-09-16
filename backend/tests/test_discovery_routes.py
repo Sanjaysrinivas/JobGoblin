@@ -2,6 +2,7 @@ import uuid
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlmodel import select
 
 from app.api.deps import get_current_user
 from app.core.config import get_settings
@@ -113,6 +114,32 @@ def test_run_creates_ranked_results_and_save_to_job(client, session):
     stored = session.get(JobSearchResult, uuid.UUID(result["id"]))
     assert stored.status == DiscoveryResultStatus.saved
     assert stored.saved_job_id == uuid.UUID(job["id"])
+
+
+def test_discovery_save_keeps_job_and_result_in_one_transaction(
+    client, session, monkeypatch
+):
+    from app.api.routes import discovery as discovery_routes
+
+    run = client.post("/api/discovery/runs", json={"country": "us", "query": "python"})
+    assert run.status_code == 201
+    result = client.get("/api/discovery/results").json()[0]
+    real_persist = discovery_routes.persist_job
+
+    def fail_after_job_flush(db_session, job):
+        real_persist(db_session, job)
+        raise RuntimeError("fail before discovery result update")
+
+    monkeypatch.setattr(discovery_routes, "persist_job", fail_after_job_flush)
+    with pytest.raises(RuntimeError, match="fail before discovery result update"):
+        client.post(f"/api/discovery/results/{result['id']}/save")
+    session.rollback()
+
+    stored = session.get(JobSearchResult, uuid.UUID(result["id"]))
+    assert stored is not None
+    assert stored.status == DiscoveryResultStatus.new
+    assert stored.saved_job_id is None
+    assert session.exec(select(Job).where(Job.title == result["title"])).first() is None
 
 
 def test_dismiss_and_cross_user_result_access(client, session, other_user):

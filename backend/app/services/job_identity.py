@@ -31,18 +31,18 @@ def find_duplicate_job(
 
 
 def persist_job(session: Session, job: Job) -> Job:
-    """Commit an identity-bearing job write.
+    """Flush an identity-bearing job write without owning the transaction.
 
     Translates uniqueness races (two writers passing the pre-check) into
-    JobIdentityConflict instead of leaking an IntegrityError.
+    JobIdentityConflict instead of leaking an IntegrityError. The caller
+    commits only after every related domain change is staged.
     """
     session.add(job)
     try:
-        session.commit()
+        session.flush()
     except IntegrityError as exc:
         session.rollback()
         raise JobIdentityConflict("A job with this identity already exists") from exc
-    session.refresh(job)
     return job
 
 

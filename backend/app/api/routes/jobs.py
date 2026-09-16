@@ -440,9 +440,12 @@ def create_job(
         raise _error(status.HTTP_409_CONFLICT, "This job is already saved", "job_exists")
     job = Job(user_id=current_user.id, dedupe_key=dedupe_key, **payload.model_dump())
     try:
-        return persist_job(session, job)
+        persist_job(session, job)
     except JobIdentityConflict as exc:
         raise _error(status.HTTP_409_CONFLICT, "This job is already saved", "job_exists") from exc
+    session.commit()
+    session.refresh(job)
+    return job
 
 
 @router.post("/import", response_model=JobCreate)
@@ -554,9 +557,12 @@ def update_job(
     job.dedupe_key = dedupe_key
 
     try:
-        return persist_job(session, job)
+        persist_job(session, job)
     except JobIdentityConflict as exc:
         raise _error(status.HTTP_409_CONFLICT, "This job is already saved", "job_exists") from exc
+    session.commit()
+    session.refresh(job)
+    return job
 
 
 @router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
