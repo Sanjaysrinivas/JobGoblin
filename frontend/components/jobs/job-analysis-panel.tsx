@@ -36,14 +36,6 @@ interface JobAnalysisPanelProps {
   jobId: string;
 }
 
-type BreakdownRow = {
-  key: string;
-  label: string;
-  earned: number;
-  maximum: number;
-  applicable: boolean;
-};
-
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
