@@ -1,9 +1,9 @@
 # PR #45 Detailed Remediation And Merge-Readiness Plan
 
-Status: **implemented** — correction series on `feature/post-merge-remediation`, 2026-09-16  
-Prepared: 2026-09-16  
-PR: `feature/post-merge-remediation` -> `dev`  
-Reviewed head: `016f8cd01ca56705cf38aaee1c4a0ef58f556d60`  
+Status: **implemented and re-verified** on `fix/final-remediation`, 2026-09-16
+Prepared: 2026-09-16
+Original PR: `feature/post-merge-remediation` -> `dev` (#45, merged)
+Final correction baseline: `b8063e7` (branch created from `origin/main`, then merged `origin/dev`)
 Fixed baseline: `a961a254100a3d939e89af04777f0fef278bd410` (PR #44 merge)
 
 ## Resolution record
@@ -22,6 +22,27 @@ Fixed baseline: `a961a254100a3d939e89af04777f0fef278bd410` (PR #44 merge)
 | F10 provider metadata | `8db686b` — `provider_name` moved to `ai_provider` |
 | F11 hard-coded fallback | removed in `4317bd1`; results without a stored breakdown say so explicitly |
 
+### Final audit corrections
+
+| Concern | Final correction |
+| --- | --- |
+| Historical guidance changed with mutable inputs | `dd05ab1` persists the complete user-facing guidance snapshot and full resume-evidence hash; `0de63ed` detects first/current resume-version drift |
+| Analysis association lookups were not ownership-scoped | `3aabbf1` requires the authenticated user ID for every job/resume drift lookup |
+| Discovery job creation and result update used separate commits | `414b3d6` makes identity persistence flush-only and commits the complete save operation atomically |
+| E2E cleanup suppressed failures and retained fresh-workspace profiles | `a4a69dd` accepts only `404`, aggregates teardown failures, deletes newly created profiles, and tests failure/retry safety |
+| Artifact report missed names produced by the active suite | `a23b3b0` covers current job, resume, and profile patterns while retaining exact-ID deletion |
+| Dotted technical tokens allowed prefix evidence | `7cb2661` rejects unapproved prefix matches such as `Node` inside `Node.js` while preserving sentence punctuation |
+| Console gate suppressed every browser `401` | `f1ea026` scopes the allowance to authentication-flow tests |
+| Provider naming remained duplicated | `03569cc` uses the shared AI provider metadata helper in discovery telemetry |
+
+Final verification: 354 backend tests, Ruff, frontend lint/build, zero production
+dependency vulnerabilities, 36 desktop/mobile Playwright tests, Docker health,
+Alembic upgrade/downgrade/re-upgrade, and schema-drift detection all pass.
+
+The numbered assessment below is retained as historical context. Statements that PR
+#45 is open or that its original blockers remain describe the pre-correction review,
+not the final branch state.
+
 ### Accepted deviations
 
 - **Discovery cleanup (section 7.3)**: option 1 policy, not option 2 — no
@@ -34,7 +55,7 @@ Fixed baseline: `a961a254100a3d939e89af04777f0fef278bd410` (PR #44 merge)
   the shared `runAnalysis(resumeId)` code path and type checks rather than a
   seeded legacy row.
 
-## 1. Executive Summary
+## 1. Historical Executive Summary
 
 PR #45 successfully fixes most of the defects documented after PR #44. It builds,
 passes its automated suite, runs in Docker, and improves the product materially.
@@ -56,7 +77,7 @@ workspace. This has already happened in the local admin workspace.
 The recommended decision is: keep PR #45 open, add a focused correction series, rerun
 all merge gates, then merge into `dev`.
 
-## 2. Current Verification Evidence
+## 2. Historical Verification Evidence
 
 The following passed at the reviewed head:
 
@@ -641,27 +662,27 @@ After successful, failed, and retried E2E runs:
 
 PR #45 is ready to merge only when every required item is checked:
 
-- [ ] `C`, `C++`, `C#`, `NET`, and `.NET` grounding tests pass with correct identity.
-- [ ] Grounded resume parsing uses the corrected shared matcher.
-- [ ] New analyses persist versioned, immutable score breakdown metadata.
-- [ ] Legacy analyses do not receive a fabricated current-model breakdown.
-- [ ] Editing current job/resume content cannot change a historical explanation.
-- [ ] Legacy rerun always uses `selectedAnalysis.resume_id`.
-- [ ] Deleted source resumes disable rerun with a clear message.
-- [ ] Required-but-zero and non-applicable categories have backend and UI coverage.
-- [ ] Every mutating E2E test cleans up in fixture teardown or `finally`.
-- [ ] Discovery E2E data is ephemeral or removed by test-only teardown.
-- [ ] The suite refuses unsafe mutation of a personal/non-test workspace.
-- [ ] Desktop and mobile Playwright projects pass.
-- [ ] Unexpected console errors and page exceptions fail tests.
-- [ ] Settings values are compared with actual API responses.
-- [ ] Existing local test artifacts have a reviewed, ID-specific cleanup plan.
-- [ ] Remediation documentation reflects final shipped status.
-- [ ] Backend full suite and Ruff pass.
-- [ ] Frontend lint, build, and production dependency audit pass.
-- [ ] Migration upgrade/downgrade/re-upgrade and drift checks pass.
-- [ ] Fresh Docker Compose build and health checks pass.
-- [ ] PR is actually merged and `origin/dev` contains its merge commit.
+- [x] `C`, `C++`, `C#`, `NET`, and `.NET` grounding tests pass with correct identity.
+- [x] Grounded resume parsing uses the corrected shared matcher.
+- [x] New analyses persist versioned, immutable score breakdown metadata.
+- [x] Legacy analyses do not receive a fabricated current-model breakdown.
+- [x] Editing current job/resume content cannot change a historical explanation.
+- [x] Legacy rerun always uses `selectedAnalysis.resume_id`.
+- [x] Deleted source resumes disable rerun with a clear message.
+- [x] Required-but-zero and non-applicable categories have backend and UI coverage.
+- [x] Every mutating E2E test cleans up in fixture teardown or `finally`.
+- [x] Discovery E2E data is ephemeral or removed by test-only teardown.
+- [x] The suite refuses unsafe mutation of a personal/non-test workspace.
+- [x] Desktop and mobile Playwright projects pass.
+- [x] Unexpected console errors and page exceptions fail tests.
+- [x] Settings values are compared with actual API responses.
+- [x] Existing local test artifacts have a reviewed, ID-specific cleanup plan.
+- [x] Remediation documentation reflects final shipped status.
+- [x] Backend full suite and Ruff pass.
+- [x] Frontend lint, build, and production dependency audit pass.
+- [x] Migration upgrade/downgrade/re-upgrade and drift checks pass.
+- [x] Fresh Docker Compose build and health checks pass.
+- [x] PR is actually merged and `origin/dev` contains its merge commit.
 
 ## 16. Explicit Non-Goals
 
@@ -676,4 +697,3 @@ This correction should not expand into:
 
 The goal is narrow: make the existing grounded, review-first workflow truthful,
 reproducible, test-safe, and ready to merge.
-

@@ -1,7 +1,7 @@
 # Post-Merge Remediation Plan
 
-Status: **completed** — delivered on `feature/post-merge-remediation` (PR #45), 2026-09-16  
-Last verified: 2026-09-16  
+Status: **completed** — delivered on `feature/post-merge-remediation` (PR #45), 2026-09-16
+Last verified: 2026-09-16
 Baseline: `dev` at merge commit `a961a254100a3d939e89af04777f0fef278bd410`
 
 ## Completion record
@@ -299,4 +299,3 @@ The follow-up is complete when:
 - Alembic upgrade, downgrade/re-upgrade, and schema-drift checks pass.
 - Documentation matches the shipped scoring and release behavior.
 - No external email, outreach, or job application is sent without explicit user action.
-
