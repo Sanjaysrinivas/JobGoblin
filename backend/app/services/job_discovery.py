@@ -14,7 +14,8 @@ from app.core.config import get_settings
 from app.core.observability import record_llm_fallback
 from app.models.enums import JobSource, WorkMode
 from app.schemas.discovery import JobSearchPreferencesPayload, normalize_country_code
-from app.services.ai_provider import AIProvider
+from app.services.ai_provider import AIProvider, provider_name
+from app.services.text_matching import contains_supported_term, contains_term
 
 
 @dataclass
@@ -52,6 +53,40 @@ ADZUNA_COUNTRIES = {
     "us",
     "za",
 }
+COUNTRY_NAMES = {
+    "at": "austria",
+    "au": "australia",
+    "be": "belgium",
+    "br": "brazil",
+    "ca": "canada",
+    "ch": "switzerland",
+    "de": "germany",
+    "es": "spain",
+    "fr": "france",
+    "gb": "united kingdom",
+    "in": "india",
+    "it": "italy",
+    "mx": "mexico",
+    "nl": "netherlands",
+    "nz": "new zealand",
+    "pl": "poland",
+    "sg": "singapore",
+    "us": "united states",
+    "za": "south africa",
+}
+BROAD_LOCATION_TERMS = {
+    "africa",
+    "any",
+    "anywhere",
+    "asia",
+    "asia pacific",
+    "europe",
+    "global",
+    "north america",
+    "remote",
+    "south america",
+    "worldwide",
+}
 
 
 def normalize_discovery_provider(provider: str) -> str:
@@ -70,11 +105,21 @@ def validate_discovery_country(provider: str, country: str) -> str:
     return code
 
 
+def normalize_search_location(country: str, location: str | None) -> str | None:
+    if location is None:
+        return None
+    text = location.strip()
+    if not text:
+        return None
+    key = re.sub(r"\s+", " ", text.lower())
+    country_code = normalize_country_code(country)
+    if key in BROAD_LOCATION_TERMS or key == country_code or key == COUNTRY_NAMES.get(country_code):
+        return None
+    return text
+
+
 def _contains_term(text: str, term: str) -> bool:
-    needle = term.strip().lower()
-    if not needle:
-        return False
-    return re.search(rf"(?<!\w){re.escape(needle)}(?!\w)", text.lower()) is not None
+    return contains_term(text, term)
 
 
 def _contains_any(text: str, terms: list[str]) -> bool:
@@ -133,8 +178,9 @@ def rank_result(
     ):
         return 0, "Blocked by work mode requirement."
 
-    if preferences.visa_sponsorship_required and not _contains_any(
-        haystack, ["visa", "sponsor", "sponsorship"]
+    if preferences.visa_sponsorship_required and not any(
+        contains_supported_term(haystack, term)
+        for term in ["visa", "sponsor", "sponsorship"]
     ):
         return 0, "Blocked by visa sponsorship requirement."
 
@@ -238,15 +284,11 @@ def _build_ai_ranking_prompt(
     )
 
 
-def _ai_provider_name(provider: AIProvider) -> str:
-    return provider.__class__.__name__.replace("Provider", "").lower()
-
-
 def _record_ranking_fallback(provider: AIProvider, reason: str) -> None:
-    provider_name = _ai_provider_name(provider)
+    name = provider_name(provider)
     record_llm_fallback(
-        provider=provider_name,
-        model=str(getattr(provider, "_model", provider_name)),
+        provider=name,
+        model=str(getattr(provider, "_model", name)),
         operation="discovery.rank_json",
         reason=reason,
     )

@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -49,6 +50,16 @@ class JobBase(BaseModel):
 
 class JobCreate(JobBase):
     pass
+
+
+class JobImportRequest(BaseModel):
+    mode: Literal["text", "url"]
+    content: str = Field(min_length=1, max_length=50000)
+
+    @field_validator("content")
+    @classmethod
+    def strip_content(cls, value: str) -> str:
+        return value.strip()
 
 
 class JobUpdate(BaseModel):

@@ -130,6 +130,7 @@ def test_create_list_update_and_delete_application(client, session, user):
     )
     assert updated.status_code == 200, updated.text
     assert updated.json()["status"] == "applied"
+    assert updated.json()["applied_at"] is not None
 
     events = session.exec(select(ActivityEvent).order_by(ActivityEvent.created_at)).all()
     assert [event.event_type for event in events] == [
@@ -247,6 +248,31 @@ def test_patch_rejects_null_status(client, session, user):
     resp = client.patch(f"/api/applications/{created['id']}", json={"status": None})
     assert resp.status_code == 422
     assert resp.json()["code"] == "invalid_application_status"
+
+
+def test_cover_letter_derives_and_enforces_linked_resume(client, session, user):
+    job = _job(session, user)
+    letter_resume = _resume(session, user)
+    other_resume = _resume(session, user)
+    cover_letter = _cover_letter(session, user, job, letter_resume)
+
+    mismatch = client.post(
+        "/api/applications",
+        json={
+            "job_id": str(job.id),
+            "resume_id": str(other_resume.id),
+            "cover_letter_id": str(cover_letter.id),
+        },
+    )
+    assert mismatch.status_code == 422
+    assert mismatch.json()["code"] == "cover_letter_resume_mismatch"
+
+    created = client.post(
+        "/api/applications",
+        json={"job_id": str(job.id), "cover_letter_id": str(cover_letter.id)},
+    )
+    assert created.status_code == 201
+    assert created.json()["resume_id"] == str(letter_resume.id)
 
 
 def test_requires_authentication(session):

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 import time
@@ -18,6 +19,7 @@ from pathlib import Path
 DEFAULT_PUBLIC_HEALTH_RETRIES = 6
 DEFAULT_RETRY_INTERVAL = 5
 TUNNEL_RUNNING_TIMEOUT = 60
+QUICK_TUNNEL_URL_PATTERN = re.compile(r"https://[a-zA-Z0-9-]+\.trycloudflare\.com")
 
 
 class HealthCheckError(Exception):
@@ -132,16 +134,42 @@ def wait_for_cloudflared_running(
     raise SystemExit(f"ERROR: cloudflared did not become running within {timeout}s.")
 
 
+def cloudflared_logs(tail: int) -> subprocess.CompletedProcess[str]:
+    return run(["docker", "compose", "--profile", "tunnel", "logs", f"--tail={tail}", "cloudflared"])
+
+
+def find_quick_tunnel_url(log_text: str) -> str:
+    matches = QUICK_TUNNEL_URL_PATTERN.findall(log_text)
+    return matches[-1] if matches else ""
+
+
+def wait_for_quick_tunnel_url(*, tail: int, timeout: int, interval: int) -> tuple[str, str]:
+    deadline = time.monotonic() + timeout
+    last_text = ""
+    while time.monotonic() < deadline:
+        logs = cloudflared_logs(tail)
+        require_ok(logs, "failed to read cloudflared logs")
+        last_text = f"{logs.stdout}\n{logs.stderr}"
+        public_url = find_quick_tunnel_url(last_text)
+        if public_url:
+            return public_url, last_text
+        print(f"quick tunnel URL is not in logs yet; retrying in {interval}s...")
+        time.sleep(interval)
+    return "", last_text
+
+
 def main() -> int:
     dotenv = read_dotenv(repo_root() / ".env")
-    token = os.getenv("CLOUDFLARED_TUNNEL_TOKEN") or dotenv.get("CLOUDFLARED_TUNNEL_TOKEN", "")
 
     parser = argparse.ArgumentParser(description="Verify Cloudflare Tunnel runtime wiring.")
     parser.add_argument(
         "--start", action="store_true", help="Start cloudflared through the Compose tunnel profile."
     )
     parser.add_argument("--local-health", default="http://localhost:8080/api/health")
-    parser.add_argument("--public-url", default=os.getenv("CLOUDFLARED_PUBLIC_URL", ""))
+    parser.add_argument(
+        "--public-url",
+        default=os.getenv("CLOUDFLARED_PUBLIC_URL") or dotenv.get("CLOUDFLARED_PUBLIC_URL", ""),
+    )
     parser.add_argument("--timeout", type=int, default=30)
     parser.add_argument(
         "--public-retries",
@@ -172,10 +200,6 @@ def main() -> int:
     print(get_json(args.local_health, args.timeout).strip())
 
     if args.start:
-        if not token:
-            raise SystemExit(
-                "ERROR: CLOUDFLARED_TUNNEL_TOKEN is empty; refusing to start cloudflared."
-            )
         require_ok(
             run(
                 ["docker", "compose", "--profile", "tunnel", "up", "-d", "cloudflared"], timeout=180
@@ -184,23 +208,23 @@ def main() -> int:
         )
         wait_for_cloudflared_running(interval=args.retry_interval)
     else:
-        if not token:
-            print("WARN: CLOUDFLARED_TUNNEL_TOKEN is empty; checking existing cloudflared state only.")
         if not cloudflared_running():
             raise SystemExit(
                 "ERROR: cloudflared service is not running. Start the tunnel or rerun with --start."
             )
 
-    logs = run(
-        ["docker", "compose", "--profile", "tunnel", "logs", f"--tail={args.tail}", "cloudflared"]
+    quick_url, log_text = wait_for_quick_tunnel_url(
+        tail=args.tail,
+        timeout=args.timeout,
+        interval=args.retry_interval,
     )
-    require_ok(logs, "failed to read cloudflared logs")
-    log_text = f"{logs.stdout}\n{logs.stderr}".lower()
-    if args.start and "error" in log_text and "no such service" not in log_text:
+    if args.start and "error" in log_text.lower() and "no such service" not in log_text.lower():
         raise SystemExit("ERROR: cloudflared logs contain 'error'; inspect the output above.")
 
-    if args.public_url:
-        public_health = args.public_url.rstrip("/") + "/api/health"
+    public_url = args.public_url or quick_url
+    if public_url:
+        print(f"Shareable tunnel URL: {public_url}")
+        public_health = public_url.rstrip("/") + "/api/health"
         print(f"Checking public tunnel health: {public_health}")
         print(
             get_json_with_retries(
@@ -210,6 +234,8 @@ def main() -> int:
                 interval=args.retry_interval,
             ).strip()
         )
+    else:
+        print("WARN: no trycloudflare.com URL found in cloudflared logs.")
 
     print("OK: Cloudflare tunnel check completed.")
     return 0

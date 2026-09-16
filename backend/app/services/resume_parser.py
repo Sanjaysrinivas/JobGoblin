@@ -9,6 +9,7 @@ The shape mirrors the frontend contract in ``frontend/lib/types.ts``.
 """
 
 from app.services.ai_provider import AIProvider
+from app.services.grounding import ground_parsed_resume
 
 # JSON Schema for the structured parse. Kept flat and explicit so Ollama's
 # structured-output ``format`` argument can enforce it.
@@ -70,6 +71,5 @@ def _build_prompt(text: str) -> str:
 
 async def parse_resume(text: str, provider: AIProvider) -> dict:
     """Parse ``text`` into structured resume sections via ``provider``."""
-    return await provider.generate_json(
-        _build_prompt(text), PARSED_RESUME_SCHEMA, system=_SYSTEM
-    )
+    parsed = await provider.generate_json(_build_prompt(text), PARSED_RESUME_SCHEMA, system=_SYSTEM)
+    return ground_parsed_resume(parsed, text)

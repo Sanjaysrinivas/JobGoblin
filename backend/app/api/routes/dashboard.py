@@ -66,7 +66,7 @@ def get_dashboard_summary(
             .select_from(Application)
             .where(
                 Application.user_id == current_user.id,
-                Application.status == ApplicationStatus.applied,
+                Application.applied_at.is_not(None),
             ),
         ),
         interviewing=_count(

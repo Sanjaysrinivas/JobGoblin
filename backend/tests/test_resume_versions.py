@@ -2,6 +2,7 @@ import uuid
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlmodel import select
 
 from app.api.deps import get_current_user
 from app.core.config import get_settings
@@ -157,6 +158,53 @@ def test_delete_last_version_is_rejected(client):
     )
     assert resp.status_code == 409
     assert resp.json()["code"] == "last_resume_version"
+
+
+def _current_versions(session, resume_id) -> list[ResumeVersion]:
+    return list(
+        session.exec(
+            select(ResumeVersion).where(
+                ResumeVersion.resume_id == resume_id, ResumeVersion.is_current == True  # noqa: E712
+            )
+        )
+    )
+
+
+def test_delete_non_current_version_keeps_existing_current(client, session):
+    uploaded = _upload(client, "Source\nPython").json()
+    resume_id = uuid.UUID(uploaded["id"])
+    duplicate = client.post(
+        f"/api/resumes/{uploaded['id']}/versions", json={"title": "Edited"}
+    ).json()
+
+    resp = client.delete(f"/api/resumes/{uploaded['id']}/versions/{duplicate['id']}")
+
+    assert resp.status_code == 204, resp.text
+    current = _current_versions(session, resume_id)
+    assert len(current) == 1
+    assert str(current[0].id) == uploaded["current_version_id"]
+
+
+def test_delete_current_version_promotes_newest_remaining(client, session):
+    uploaded = _upload(client, "Source\nPython").json()
+    resume_id = uuid.UUID(uploaded["id"])
+    duplicate = client.post(
+        f"/api/resumes/{uploaded['id']}/versions", json={"title": "Edited"}
+    ).json()
+    made_current = client.post(
+        f"/api/resumes/{uploaded['id']}/versions/{duplicate['id']}/make-current"
+    )
+    assert made_current.status_code == 200
+
+    resp = client.delete(f"/api/resumes/{uploaded['id']}/versions/{duplicate['id']}")
+
+    assert resp.status_code == 204, resp.text
+    current = _current_versions(session, resume_id)
+    assert len(current) == 1
+    assert str(current[0].id) == uploaded["current_version_id"]
+    detail = client.get(f"/api/resumes/{uploaded['id']}").json()
+    assert detail["current_version_id"] == uploaded["current_version_id"]
+    assert detail["version_count"] == 1
 
 
 def test_cross_user_version_access_returns_404(client, session):

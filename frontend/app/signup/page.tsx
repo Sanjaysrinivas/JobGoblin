@@ -6,10 +6,14 @@ import { SignupForm } from "@/components/signup-form";
 
 export const metadata: Metadata = {
   title: "Create account",
-  description: "Create your invite-only JobGoblin account.",
+  description: "Create your JobGoblin account.",
 };
 
+export const dynamic = "force-dynamic";
+
 export default function SignupPage() {
+  const publicSignupEnabled = process.env.PUBLIC_SIGNUP_ENABLED === "true";
+
   return (
     <main className="relative flex min-h-svh items-center justify-center overflow-hidden px-4 py-12">
       <div
@@ -27,13 +31,15 @@ export default function SignupPage() {
           <div className="space-y-1">
             <GoblinWordmark className="text-2xl" />
             <p className="text-muted-foreground text-sm">
-              Invite-only access for your job-search workspace.
+              {publicSignupEnabled
+                ? "Create your job-search workspace."
+                : "Invite-only access for your job-search workspace."}
             </p>
           </div>
         </div>
 
         <Suspense fallback={null}>
-          <SignupForm />
+          <SignupForm publicSignupEnabled={publicSignupEnabled} />
         </Suspense>
 
         <p className="text-muted-foreground mt-6 text-center text-xs leading-relaxed">

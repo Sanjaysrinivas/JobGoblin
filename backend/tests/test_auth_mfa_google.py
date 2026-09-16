@@ -54,6 +54,7 @@ def _make_user(session, email, *, password="rightpw1", totp_secret=None, totp_en
 
 # ------------------------------------------------------------------ allowlist
 
+
 def _configure_google():
     get_settings().google_client_id = "test-client-id"
     get_settings().google_client_secret = "test-secret"
@@ -136,9 +137,7 @@ def test_google_login_redirects(client, monkeypatch):
     from app.core import google_oauth
 
     async def fake_redirect(request):
-        return RedirectResponse(
-            "https://accounts.google.com/o/oauth2/v2/auth?client_id=test"
-        )
+        return RedirectResponse("https://accounts.google.com/o/oauth2/v2/auth?client_id=test")
 
     monkeypatch.setattr(google_oauth, "build_authorization_redirect", fake_redirect)
 
@@ -149,12 +148,13 @@ def test_google_login_redirects(client, monkeypatch):
 
 # ------------------------------------------------------------------ MFA enroll
 
+
 def test_mfa_enroll_returns_secret_and_qr(client, session):
     user = _make_user(session, "enroll@example.com")
     token = security.create_access_token(str(user.id))
     client.cookies.set(SESSION_COOKIE, token)
 
-    resp = client.get("/api/auth/mfa/enroll")
+    resp = client.post("/api/auth/mfa/enroll")
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert "secret" in body and len(body["secret"]) > 10
@@ -164,6 +164,7 @@ def test_mfa_enroll_returns_secret_and_qr(client, session):
     session.refresh(user)
     assert user.totp_secret == body["secret"]
     assert user.totp_enabled is False
+    assert client.post("/api/auth/mfa/enroll").json()["secret"] == body["secret"]
 
 
 def test_mfa_enroll_conflict_when_already_enabled(client, session):
@@ -172,7 +173,7 @@ def test_mfa_enroll_conflict_when_already_enabled(client, session):
     token = security.create_access_token(str(user.id))
     client.cookies.set(SESSION_COOKIE, token)
 
-    resp = client.get("/api/auth/mfa/enroll")
+    resp = client.post("/api/auth/mfa/enroll")
     assert resp.status_code == 409
     assert resp.json()["code"] == "mfa_already_enabled"
 
@@ -207,6 +208,7 @@ def test_mfa_verify_rejects_wrong_code(client, session):
 
 # ------------------------------------------------------------------ login + MFA gate
 
+
 def test_password_login_with_totp_enabled_returns_mfa_pending(client, session):
     secret = pyotp.random_base32()
     _make_user(session, "pwmfa@example.com", totp_secret=secret, totp_enabled=True)
@@ -221,7 +223,6 @@ def test_password_login_with_totp_enabled_returns_mfa_pending(client, session):
     assert MFA_COOKIE in set_cookie
     assert SESSION_COOKIE not in set_cookie
     assert "secure" not in set_cookie
-
 
 
 def test_password_login_without_totp_sets_session_and_flags_enrollment(client, session):
@@ -294,6 +295,7 @@ def test_session_cookie_not_accepted_as_mfa_pending(client, session):
 
 # ----------------------------------------------- google_sub conflict (review #5)
 
+
 def test_google_callback_rejects_conflicting_google_sub(client, session, monkeypatch):
     """An email already linked to a DIFFERENT google_sub must not be re-linked."""
     _configure_google()
@@ -339,6 +341,7 @@ def test_google_callback_links_unset_google_sub(client, session, monkeypatch):
 
 
 # -------------------------------------------- TOTP replay protection (review #6)
+
 
 def test_mfa_challenge_rejects_replayed_code(client, session):
     """A code consumed by a successful challenge cannot be reused."""
@@ -391,6 +394,7 @@ def test_mfa_verify_then_challenge_rejects_same_code(client, session):
 
 
 # --------------------------------------------------- rate limiting (review #1)
+
 
 def test_login_rate_limited(client, session):
     """Exceeding the per-IP login limit yields a 429 with the standard envelope."""

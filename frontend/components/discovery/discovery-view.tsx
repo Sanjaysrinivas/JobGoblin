@@ -340,6 +340,23 @@ function countryName(country: string): string {
   return continents.flatMap((group) => group.countries).find((item) => item.code === country)?.label ?? country;
 }
 
+function normalizeLocation(state: FormState): string {
+  const location = state.location.trim();
+  const broadLocations = new Set([
+    ...continents.map((continent) => continent.label.toLowerCase()),
+    "any",
+    "anywhere",
+    "global",
+    "remote",
+    "worldwide",
+  ]);
+  const key = location.toLowerCase().replace(/\s+/g, " ");
+  if (!location || broadLocations.has(key) || key === countryName(state.country).toLowerCase()) {
+    return "";
+  }
+  return location;
+}
+
 
 function fromPreferences(preferences: JobSearchPreferences | null): FormState {
   if (!preferences) return defaultState;
@@ -361,7 +378,7 @@ function toPreferences(
   state: FormState,
   previous: JobSearchPreferences | null
 ): JobSearchPreferencesPayload {
-  const location = state.location.trim();
+  const location = normalizeLocation(state);
   return {
     target_countries: [state.country],
     target_locations: location ? [location] : [],

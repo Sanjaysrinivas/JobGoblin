@@ -7,7 +7,8 @@ from sqlmodel import select
 from app.api.deps import get_current_user
 from app.core.config import get_settings
 from app.core.database import get_session
-from app.models import ActivityEvent, CoverLetter, Job, Resume, ResumeVersion, User
+from app.models import ActivityEvent, Application, CoverLetter, Job, Resume, ResumeVersion, User
+from app.models.enums import ApplicationStatus
 
 
 @pytest.fixture(autouse=True)
@@ -99,7 +100,8 @@ def test_create_list_get_and_update_cover_letter(client, session, user):
     assert body["resume_id"] == str(resume.id)
     assert body["tone"] == "concise"
     assert body["status"] == "draft"
-    assert body["content"] == "This is a mock AI response."
+    assert body["content"].startswith("Dear Hiring Team,")
+    assert "Backend engineer with Python and PostgreSQL experience." in body["content"]
 
     stored = session.get(CoverLetter, uuid.UUID(body["id"]))
     assert stored is not None
@@ -265,6 +267,7 @@ def test_create_cover_letter_uses_current_resume_version(client, session, user, 
             return "Draft from captured provider"
 
         async def generate_json(self, prompt, schema, *, system=None):
+            prompts.append(prompt)
             return {}
 
     import app.api.routes.cover_letters as cover_letter_routes
@@ -289,6 +292,25 @@ def test_create_cover_letter_uses_current_resume_version(client, session, user, 
     )
 
     assert resp.status_code == 201, resp.text
-    assert resp.json()["content"] == "Draft from captured provider"
+    assert "Current resume version text" in resp.json()["content"]
     assert "Current resume version text" in prompts[0]
     assert "Base resume text" not in prompts[0]
+
+
+def test_create_cover_letter_links_existing_application(client, session, user):
+    job = _job(session, user)
+    resume = _resume(session, user)
+    application = Application(user_id=user.id, job_id=job.id)
+    session.add(application)
+    session.commit()
+
+    response = client.post(
+        "/api/cover-letters",
+        json={"job_id": str(job.id), "resume_id": str(resume.id)},
+    )
+
+    assert response.status_code == 201
+    session.refresh(application)
+    assert application.resume_id == resume.id
+    assert application.cover_letter_id == uuid.UUID(response.json()["id"])
+    assert application.status == ApplicationStatus.cover_letter_created

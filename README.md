@@ -14,14 +14,15 @@ It is not an auto-apply or spam tool. External actions such as sending email, co
 
 ## Current Status
 
-MVP build in progress. Phase 0 local-login fixes and Phase 1 delivery foundation are complete, and the merged `dev` branch now includes the core MVP workflow plus the first job discovery slice.
+The core private job-search workflow is implemented across resumes, discovery,
+saved jobs, application materials, tracking, follow-ups, outreach, and interview prep.
 
 Phase status:
 
 - Phase 2 core resource modules are implemented: jobs, contacts, applications, dashboard, cover-letter drafts, and outreach drafts.
-- Phase 3 resume-to-job analysis is implemented and needs integrated post-merge validation.
-- Phase 4 runtime tooling and the optional Cloudflare Tunnel profile are implemented; real Ollama, OAuth, and tunnel smoke testing are still required.
-- Phase 5 has the profile builder, follow-up reminders, resume versions, Job Discovery MVP, and AI-assisted discovery ranking merged. Tailored resume drafts, email draft/export integration, interview prep, and LLM observability are still ahead.
+- Phase 3 resume-to-job analysis uses deterministic, requirement-normalized scoring and grounded guidance.
+- Phase 4 runtime tooling and the optional Cloudflare Tunnel profile are implemented; OAuth and tunnel validation remain operator-specific.
+- Phase 5 includes the profile builder, follow-up reminders, resume versions, job discovery, tailored resume drafts, email export, interview prep, and LLM observability.
 
 Implemented:
 
@@ -70,7 +71,7 @@ docker compose up -d --build
 Open:
 
 - App through Caddy: http://localhost:8080
-- Backend Swagger UI: http://localhost:8000/docs
+- Backend Swagger UI: http://localhost:18000/docs
 
 Demo login, when the seed admin values above are configured:
 
@@ -89,13 +90,16 @@ docker compose exec ollama ollama pull qwen2.5:7b-instruct
 
 Use `AI_PROVIDER=mock` in `.env` for fast local iteration without a model. Use `AI_PROVIDER=ollama` plus the default `OLLAMA_BASE_URL=http://ollama:11434` when smoke-testing real local parsing/generation.
 
-Use `curl http://localhost:8080/api/health` for liveness and `curl http://localhost:8080/api/health/ready` for database readiness. Cloudflare Tunnel is optional and disabled by default. Create a tunnel in Cloudflare Zero Trust, point its public hostname at `http://caddy:80`, set `CLOUDFLARED_TUNNEL_TOKEN` in `.env`, then start only the tunnel profile:
+Use `curl http://localhost:8080/api/health` for liveness and `curl http://localhost:8080/api/health/ready` for database readiness. Cloudflare Quick Tunnel is optional and disabled by default. It needs no Cloudflare login and prints a fresh shareable `trycloudflare.com` URL in the tunnel logs:
 
 ```bash
 docker compose --profile tunnel up -d cloudflared
+docker compose --profile tunnel logs --tail=80 cloudflared
 ```
 
-The normal `docker compose up -d --build` path remains local-only and does not require Cloudflare credentials.
+Set `COMPOSE_PROFILES=tunnel` in local `.env` when every normal `docker compose up -d --build` should also start the quick tunnel. Token-based named tunnels are still available through the `named-tunnel` profile when a fixed Cloudflare hostname is needed.
+
+Signup is invite-only by default. Set `PUBLIC_SIGNUP_ENABLED=true` only for intentionally shared sessions where anyone with the app link may create an account.
 
 ## Repository Layout
 
@@ -134,6 +138,8 @@ GitHub Actions runs the same backend and frontend checks for pull requests.
 - [Architecture](docs/architecture.md)
 - [Detailed design](docs/design.md)
 - [Roadmap](docs/roadmap.md)
+- [Post-merge remediation plan](docs/post-merge-remediation.md)
+- [PR #45 detailed remediation and merge-readiness plan](docs/pr-45-detailed-remediation.md)
 - [Frontend notes](frontend/README.md)
 
 Branch flow: `main -> dev -> feature/*`. Keep `main` release-ready, integrate through `dev`, and use focused PRs for feature work. See [Runtime operator runbook](docs/runtime-operator.md) for operator-run Ollama, Cloudflare/OAuth, Adzuna, backup/restore, migration/rollback, secrets, and dev-to-main release checks.

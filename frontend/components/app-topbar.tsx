@@ -2,19 +2,49 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Menu, Search, X } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { LogOut, Menu, X } from "lucide-react";
 
-import { cn } from "@/lib/utils";
+import { getCurrentUser, logout } from "@/lib/auth";
 import { navItems } from "@/lib/nav";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { cn } from "@/lib/utils";
 import { GoblinMark, GoblinWordmark } from "@/components/goblin-mark";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { Button } from "@/components/ui/button";
 
 export function AppTopbar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [mobileOpen, setMobileOpen] = React.useState(false);
+  const [initials, setInitials] = React.useState("JG");
+
+  React.useEffect(() => {
+    let active = true;
+    getCurrentUser()
+      .then((user) => {
+        if (!active || !user) return;
+        const value = user.display_name
+          .split(/\s+/)
+          .map((part) => part[0])
+          .join("")
+          .slice(0, 2)
+          .toUpperCase();
+        setInitials(value || user.email.slice(0, 2).toUpperCase());
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function signOut() {
+    try {
+      await logout();
+    } finally {
+      router.push("/login");
+      router.refresh();
+    }
+  }
 
   return (
     <header className="bg-background/80 sticky top-0 z-30 flex h-16 items-center gap-3 border-b px-4 backdrop-blur-md md:px-6">
@@ -24,32 +54,32 @@ export function AppTopbar() {
         className="md:hidden"
         aria-label="Open navigation"
         aria-expanded={mobileOpen}
-        onClick={() => setMobileOpen((v) => !v)}
+        onClick={() => setMobileOpen((value) => !value)}
       >
         {mobileOpen ? <X className="size-5" /> : <Menu className="size-5" />}
       </Button>
 
-      <div className="relative hidden max-w-sm flex-1 sm:block">
-        <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
-        <Input
-          placeholder="Search jobs, resumes, contacts…"
-          className="bg-secondary/60 h-9 border-transparent pl-9"
-          aria-label="Search"
-        />
-      </div>
-
       <div className="ml-auto flex items-center gap-1.5">
         <ThemeToggle />
-        <div
+        <Link
+          href="/settings"
           className="bg-primary/12 text-primary ring-primary/20 flex size-8 items-center justify-center rounded-full text-sm font-semibold ring-1 ring-inset"
-          aria-label="Account"
-          title="Account"
+          aria-label="Account settings"
+          title="Account settings"
         >
-          JG
-        </div>
+          {initials}
+        </Link>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Sign out"
+          title="Sign out"
+          onClick={() => void signOut()}
+        >
+          <LogOut className="size-4" />
+        </Button>
       </div>
 
-      {/* Mobile drawer */}
       {mobileOpen && (
         <div className="fixed inset-0 top-16 z-40 md:hidden">
           <button

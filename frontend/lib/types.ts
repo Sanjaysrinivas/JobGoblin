@@ -50,7 +50,7 @@ export type CoverLetterStatus =
 
 export type OutreachChannel = "email" | "linkedin" | "other";
 
-export type OutreachStatus = "draft" | "copied" | "replied" | "closed";
+export type OutreachStatus = "draft" | "copied" | "sent" | "replied" | "closed";
 
 export type DiscoveryRunStatus = "pending" | "completed" | "failed";
 
@@ -211,6 +211,11 @@ export interface JobCreatePayload {
 
 export type JobUpdatePayload = Partial<JobCreatePayload>;
 
+export interface JobImportPayload {
+  mode: "text" | "url";
+  content: string;
+}
+
 export interface JobSearchPreferences {
   id?: string;
   target_countries: string[];
@@ -275,6 +280,14 @@ export interface JobSearchResult {
   updated_at: string;
 }
 
+export interface ScoreBreakdownEntry {
+  key: string;
+  label: string;
+  earned: number;
+  maximum: number;
+  applicable: boolean;
+}
+
 export interface JobAnalysis {
   id: string;
   job_id: string;
@@ -295,6 +308,9 @@ export interface JobAnalysis {
   readiness_steps: string[] | null;
   keyword_checklist: KeywordChecklistGroup[] | null;
   rewrite_suggestions: RewriteSuggestion[] | null;
+  score_breakdown: ScoreBreakdownEntry[] | null;
+  is_legacy: boolean | null;
+  inputs_changed: boolean | null;
   provider: string;
   model_used: string;
   created_at: string;
@@ -539,7 +555,7 @@ export interface LoginPayload {
 }
 
 export interface RegisterPayload extends LoginPayload {
-  invite_token: string;
+  invite_token?: string;
 }
 
 // ---------------------------------------------------------------------------

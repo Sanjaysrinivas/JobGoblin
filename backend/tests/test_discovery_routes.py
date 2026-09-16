@@ -2,6 +2,7 @@ import uuid
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlmodel import select
 
 from app.api.deps import get_current_user
 from app.core.config import get_settings
@@ -115,6 +116,32 @@ def test_run_creates_ranked_results_and_save_to_job(client, session):
     assert stored.saved_job_id == uuid.UUID(job["id"])
 
 
+def test_discovery_save_keeps_job_and_result_in_one_transaction(
+    client, session, monkeypatch
+):
+    from app.api.routes import discovery as discovery_routes
+
+    run = client.post("/api/discovery/runs", json={"country": "us", "query": "python"})
+    assert run.status_code == 201
+    result = client.get("/api/discovery/results").json()[0]
+    real_persist = discovery_routes.persist_job
+
+    def fail_after_job_flush(db_session, job):
+        real_persist(db_session, job)
+        raise RuntimeError("fail before discovery result update")
+
+    monkeypatch.setattr(discovery_routes, "persist_job", fail_after_job_flush)
+    with pytest.raises(RuntimeError, match="fail before discovery result update"):
+        client.post(f"/api/discovery/results/{result['id']}/save")
+    session.rollback()
+
+    stored = session.get(JobSearchResult, uuid.UUID(result["id"]))
+    assert stored is not None
+    assert stored.status == DiscoveryResultStatus.new
+    assert stored.saved_job_id is None
+    assert session.exec(select(Job).where(Job.title == result["title"])).first() is None
+
+
 def test_dismiss_and_cross_user_result_access(client, session, other_user):
     run = client.post("/api/discovery/runs", json={"country": "us", "query": "python"})
     assert run.status_code == 201
@@ -155,6 +182,53 @@ def test_run_uses_profile_terms_when_preferences_are_sparse(client, session, use
 
     result = client.get("/api/discovery/results").json()[0]
     assert result["fit_score"] > 35
+
+
+def test_run_ignores_broad_region_location(client, monkeypatch):
+    import app.api.routes.discovery as discovery_routes
+    from app.services.job_discovery import DiscoveredJob
+
+    captured = {}
+
+    async def _search_jobs(**kwargs):
+        captured.update(kwargs)
+        return [
+            DiscoveredJob(
+                provider="mock",
+                source=JobSource.other,
+                source_url="https://example.com/jobs/data-analyst",
+                title="Data Analyst",
+                company_name="Example Analytics",
+                location="London",
+                work_mode=WorkMode.unknown,
+                description="Data analysis with SQL and dashboards.",
+            )
+        ]
+
+    async def _ranker(item, preferences, provider, **_kwargs):
+        assert preferences.target_locations == []
+        return 72, "Broad region was not used as a location blocker."
+
+    monkeypatch.setattr(discovery_routes, "search_jobs", _search_jobs)
+    monkeypatch.setattr(discovery_routes, "rank_result_with_ai", _ranker)
+    prefs = client.put(
+        "/api/discovery/preferences",
+        json={
+            "target_countries": ["gb"],
+            "target_locations": ["Europe"],
+            "desired_titles": ["Data Analyst"],
+        },
+    )
+    assert prefs.status_code == 200
+
+    run = client.post("/api/discovery/runs", json={"results_per_page": 10})
+    assert run.status_code == 201, run.text
+    body = run.json()
+    assert body["location"] is None
+    assert body["preferences_snapshot"]["target_locations"] == []
+    assert captured["location"] is None
+    assert body["result_count"] == 1
+
 
 def test_run_uses_current_resume_terms_when_preferences_are_sparse(client, session, user):
     resume = Resume(

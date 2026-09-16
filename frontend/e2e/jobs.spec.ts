@@ -1,6 +1,7 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./helpers/console-gate";
 
 import { loginAsAdmin } from "./helpers/auth";
+import { type Cleanup, withCleanup } from "./helpers/cleanup";
 
 test.describe("jobs", () => {
   test("admin can create and open a saved job", async ({ page }) => {
@@ -8,27 +9,44 @@ test.describe("jobs", () => {
     const title = `Senior Platform Engineer ${suffix}`;
     const company = `E2E Systems ${suffix}`;
     await loginAsAdmin(page);
-    await page.getByRole("link", { name: /Jobs/ }).click();
-    await expect(page.getByRole("heading", { name: "Jobs", exact: true })).toBeVisible();
 
-    await page.getByRole("button", { name: "Add a job", exact: true }).click();
-    await page.getByLabel("Role title").fill(title);
-    await page.getByLabel("Company").fill(company);
-    await page.getByLabel("Location").fill("Remote");
-    await page.getByLabel("Work mode").selectOption("remote");
-    await page.getByLabel("Priority").selectOption("high");
-    await page.getByLabel("Source", { exact: true }).selectOption("company_site");
-    await page
-      .getByLabel("Job description")
-      .fill("Build FastAPI services, PostgreSQL data flows, and production dashboards.");
-    await page.getByRole("button", { name: "Save job" }).click();
+    await withCleanup(page, async (cleanup: Cleanup) => {
+      // On mobile the nav links live in a drawer; open it when present.
+      const navButton = page.getByRole("button", { name: "Open navigation" });
+      if (await navButton.isVisible()) {
+        await navButton.click();
+      }
+      await page.getByRole("link", { name: "Jobs" }).first().click();
+      await expect(page.getByRole("heading", { name: "Jobs", exact: true })).toBeVisible();
 
-    await expect(page.getByText(title)).toBeVisible();
-    await expect(page.getByText(company)).toBeVisible();
+      await page.getByRole("button", { name: "Add a job", exact: true }).click();
+      await page.getByLabel("Role title").fill(title);
+      await page.getByLabel("Company").fill(company);
+      await page.getByLabel("Location").fill("Remote");
+      await page.getByLabel("Work mode").selectOption("remote");
+      await page.getByLabel("Priority").selectOption("high");
+      await page.getByLabel("Source", { exact: true }).selectOption("company_site");
+      await page
+        .getByLabel("Job description")
+        .fill("Build FastAPI services, PostgreSQL data flows, and production dashboards.");
+      await page.getByRole("button", { name: "Save job" }).click();
 
-    await page.getByRole("link", { name: new RegExp(title) }).click();
-    await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
-    await expect(page.getByText("Build FastAPI services")).toBeVisible();
-    await expect(page.getByText("Resume analysis")).toBeVisible();
+      await expect(page.getByText(title)).toBeVisible();
+      await expect(page.getByText(company)).toBeVisible();
+
+      // The job was created through the UI; register it for teardown by id.
+      const created = await page.request.get("/api/jobs");
+      expect(created.ok(), await created.text()).toBeTruthy();
+      const mine = ((await created.json()) as Array<{ id: string; title: string }>).find(
+        (job) => job.title === title
+      );
+      expect(mine).toBeTruthy();
+      cleanup.add(`/api/jobs/${mine!.id}`);
+
+      await page.getByRole("link", { name: new RegExp(title) }).click();
+      await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
+      await expect(page.getByText("Build FastAPI services")).toBeVisible();
+      await expect(page.getByText("Resume analysis")).toBeVisible();
+    });
   });
 });
