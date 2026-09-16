@@ -29,12 +29,16 @@ PATTERNS = [
     re.compile(r"^E2E Resume "),
     re.compile(r"^e2e-resume-"),
     re.compile(r"^E2E Co "),
+    re.compile(r"^E2E Systems [a-z0-9]+$"),
     re.compile(r"^Platform Engineer (mu|[a-z0-9]{6,}-)"),
+    re.compile(r"^Senior Platform Engineer [a-z0-9]+$"),
     re.compile(r"^Remediation Engineer "),
     re.compile(r"^Remediation Co "),
     re.compile(r"^Resume [AB] letters-"),
     re.compile(r"^Stage Resume stages-"),
+    re.compile(r"^(?:Primary|Other) Resume analysis-"),
     re.compile(r"^Taylor Recruiter "),
+    re.compile(r"^E2E User [a-z0-9]+$"),
     re.compile(r"^example\.com/(e2e-role|remediation)-"),
 ]
 
@@ -45,7 +49,10 @@ KINDS = {
     "contact": ("/api/contacts", ["name", "company", "email"]),
     "cover-letter": ("/api/cover-letters", ["tone", "status"]),
     "outreach": ("/api/outreach", ["content"]),
+    "profile": ("/api/profile", ["full_name", "headline"]),
 }
+
+SINGLETON_KINDS = {"profile"}
 
 
 class Client:
@@ -97,14 +104,24 @@ def main() -> int:
                 print(f"unknown kind in {target!r}; expected one of {list(KINDS)}")
                 return 2
             path = KINDS[kind][0]
-            status, _ = client.request("DELETE", f"{path}/{resource_id}")
+            if kind in SINGLETON_KINDS:
+                _, text = client.request("GET", path)
+                current = json.loads(text)
+                if str(current.get("id")) != resource_id:
+                    print(f"refusing {target!r}; current {kind} ID does not match")
+                    return 2
+                delete_path = path
+            else:
+                delete_path = f"{path}/{resource_id}"
+            status, _ = client.request("DELETE", delete_path)
             print(f"deleted {target}: HTTP {status}")
         return 0
 
     found_any = False
     for kind, (path, fields) in KINDS.items():
         _, text = client.request("GET", path)
-        rows = json.loads(text)
+        payload = json.loads(text)
+        rows = payload if isinstance(payload, list) else [payload]
         hits = [row for row in rows if _matches(*[row.get(f) for f in fields])]
         if not hits:
             continue
