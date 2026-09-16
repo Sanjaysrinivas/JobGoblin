@@ -49,10 +49,10 @@ def term_variants(term: str) -> frozenset[str]:
 
 # Characters that extend a technical token beyond plain word characters. The
 # left boundary includes "." so `net` cannot match inside `.net` (or `js`
-# inside `node.js`); the right boundary omits "." so terms still match at
-# sentence ends (`Python.`), while `C` still cannot match inside `C++`/`C#`.
+# inside `node.js`). On the right, a dot continues a technical token only when
+# another word character follows it, while sentence-ending dots stay valid.
 _LEFT_BOUNDARY = r"(?<![\w+#.\-])"
-_RIGHT_BOUNDARY = r"(?![\w+#\-])"
+_RIGHT_BOUNDARY = r"(?![\w+#\-]|\.\w)"
 
 
 def _term_pattern(variant: str) -> re.Pattern[str]:
