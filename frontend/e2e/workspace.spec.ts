@@ -1,4 +1,6 @@
-import { expect, test, type APIResponse, type Page } from "@playwright/test";
+import type { APIResponse, Page } from "@playwright/test";
+
+import { expect, test } from "./helpers/console-gate";
 import { loginAsAdmin } from "./helpers/auth";
 import { type Cleanup, withCleanup } from "./helpers/cleanup";
 import { RESUME_PDF } from "./helpers/fixtures";
@@ -10,10 +12,6 @@ async function expectOk<T>(response: APIResponse): Promise<T> {
 
 async function post<T>(page: Page, url: string, data: unknown): Promise<T> {
   return expectOk<T>(await page.request.post(url, { data }));
-}
-
-async function get<T>(page: Page, url: string): Promise<T> {
-  return expectOk<T>(await page.request.get(url));
 }
 
 
@@ -42,8 +40,14 @@ test.describe("workspace workflows", () => {
       }));
 
       // The profile belongs to the shared admin account: restore it afterwards.
-      const profileBefore = await get<Record<string, unknown>>(page, "/api/profile");
+      // On a fresh database the admin has no profile row yet (404) — then
+      // there is nothing to restore.
+      const profileResp = await page.request.get("/api/profile");
+      const profileBefore = profileResp.ok()
+        ? ((await profileResp.json()) as Record<string, unknown>)
+        : null;
       cleanup.add(async () => {
+        if (!profileBefore) return;
         const fields = [
           "full_name", "headline", "location", "summary",
           "skills", "experience", "education", "projects", "certifications",
