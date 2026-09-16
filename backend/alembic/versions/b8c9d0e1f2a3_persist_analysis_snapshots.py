@@ -36,6 +36,14 @@ def upgrade() -> None:
         "job_analyses",
         sa.Column("resume_version_id", UUID(as_uuid=True), nullable=True),
     )
+    op.create_foreign_key(
+        "fk_job_analyses_resume_version_id",
+        "job_analyses",
+        "resume_versions",
+        ["resume_version_id"],
+        ["id"],
+        ondelete="SET NULL",
+    )
     op.add_column(
         "job_analyses",
         sa.Column("resume_text_hash", sa.String(), nullable=True),
@@ -45,6 +53,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     # Drop only the snapshot metadata; analyses themselves are never deleted.
     op.drop_column("job_analyses", "resume_text_hash")
+    op.drop_constraint("fk_job_analyses_resume_version_id", "job_analyses", type_="foreignkey")
     op.drop_column("job_analyses", "resume_version_id")
     op.drop_column("job_analyses", "job_text_hash")
     op.drop_column("job_analyses", "score_breakdown")
