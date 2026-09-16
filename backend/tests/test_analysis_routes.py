@@ -359,6 +359,93 @@ def test_analysis_flags_legacy_results(client, session, user):
     assert stored.recommendations == ["Mention your Kubernetes exposure."]
 
 
+def test_stored_breakdown_is_immutable_and_reproducible(client, session, user):
+    resume = _create_resume(session, user)
+    job = _create_job(session, user)
+
+    created = client.post(
+        "/api/analysis/resume-job",
+        json={"resume_id": str(resume.id), "job_id": str(job.id)},
+    ).json()
+    original_breakdown = created["score_breakdown"]
+    assert original_breakdown
+    assert created["inputs_changed"] is False
+
+    # Editing the job must not rewrite the stored explanation.
+    job.description = "Completely different role requiring Rust and embedded C."
+    session.add(job)
+    session.commit()
+
+    refetched = client.get(f"/api/analysis/{created['id']}").json()
+    assert refetched["score_breakdown"] == original_breakdown
+    assert refetched["inputs_changed"] is True
+
+    # A non-legacy overall score is reproducible from its stored breakdown.
+    earned = sum(r["earned"] for r in refetched["score_breakdown"])
+    maximum = sum(r["maximum"] for r in refetched["score_breakdown"] if r["applicable"])
+    if maximum > 0:
+        assert abs(refetched["overall_score"] - round(100 * earned / maximum)) <= 1
+
+
+def test_legacy_row_without_snapshot_has_no_fabricated_breakdown(client, session, user):
+    resume = _create_resume(session, user)
+    job = _create_job(session, user)
+    legacy = JobAnalysis(
+        user_id=user.id,
+        resume_id=resume.id,
+        job_id=job.id,
+        overall_score=84,
+        keyword_score=28,
+        skills_score=24,
+        experience_score=16,
+        role_score=8,
+        education_score=4,
+        formatting_score=8,
+        matched_keywords=[],
+        missing_keywords=[],
+        recommendations=["Old advice."],
+        explanation="Old explanation.",
+        provider="deterministic",
+        model_used="grounded-v2",  # version matches, but no persisted snapshot
+    )
+    session.add(legacy)
+    session.commit()
+    session.refresh(legacy)
+
+    resp = client.get(f"/api/analysis/{legacy.id}").json()
+    assert resp["is_legacy"] is True
+    assert resp["score_breakdown"] is None
+
+
+def test_required_but_zero_and_not_applicable_categories(client, session, user):
+    resume = _create_resume(
+        session,
+        user,
+        extracted_text="Sales account manager with retail experience.",
+        parsed_json={"skills": ["Excel"], "experience": []},
+    )
+    job = _create_job(
+        session,
+        user,
+        description=(
+            "Bachelor degree required. Must have Kubernetes, Docker, and "
+            "Terraform skills."
+        ),
+    )
+
+    resp = client.post(
+        "/api/analysis/resume-job",
+        json={"resume_id": str(resume.id), "job_id": str(job.id)},
+    ).json()
+    breakdown = {row["key"]: row for row in resp["score_breakdown"]}
+    assert breakdown["education"]["applicable"] is True
+    assert breakdown["education"]["earned"] == 0  # required but no evidence
+    assert breakdown["skills"]["applicable"] is True
+    assert breakdown["skills"]["earned"] == 0
+    assert breakdown["education"]["maximum"] == 5
+    assert breakdown["skills"]["maximum"] == 30
+
+
 def test_create_analysis_uses_current_resume_version(client, session, user):
     resume = _create_resume(
         session,

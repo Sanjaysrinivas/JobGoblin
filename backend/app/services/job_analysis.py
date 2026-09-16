@@ -5,6 +5,7 @@ match them against resume text and parsed skills, then compute normalized weight
 category contributions and grounded guidance.
 """
 
+import hashlib
 import re
 from collections import Counter
 from dataclasses import dataclass
@@ -196,6 +197,7 @@ class DeterministicScores:
     role_score: int
     education_score: int
     formatting_score: int
+    applicable_categories: dict[str, bool]
     applicable_weight: int
     matched_keywords: list[str]
     missing_keywords: list[str]
@@ -214,6 +216,19 @@ class DeterministicScores:
             return 0
         return round(100 * earned / self.applicable_weight)
 
+    def category_breakdown(self) -> list[dict[str, object]]:
+        """The human explanation of this score; persist it with the result."""
+        return [
+            {
+                "key": key,
+                "label": label,
+                "earned": getattr(self, f"{key}_score"),
+                "maximum": CATEGORY_WEIGHTS[key],
+                "applicable": self.applicable_categories[key],
+            }
+            for key, label in CATEGORY_LABELS
+        ]
+
 
 @dataclass(frozen=True)
 class JobAnalysisResult:
@@ -224,6 +239,7 @@ class JobAnalysisResult:
     role_score: int
     education_score: int
     formatting_score: int
+    score_breakdown: list[dict[str, object]]
     matched_keywords: list[str]
     missing_keywords: list[str]
     recommendations: list[str]
@@ -609,12 +625,16 @@ def score_resume_for_job(
     ]
 
     experience_terms = set(job_keywords)
-    education_applicable = any(_contains_term(job_text, term) for term in _EDUCATION_TERMS)
-    applicable_weight = KEYWORD_WEIGHT if job_keywords else 0
-    applicable_weight += SKILLS_WEIGHT if job_skills else 0
-    applicable_weight += EXPERIENCE_WEIGHT if experience_terms else 0
-    applicable_weight += ROLE_WEIGHT if _role_title_terms(job_title) else 0
-    applicable_weight += EDUCATION_WEIGHT if education_applicable else 0
+    applicable = {
+        "keyword": bool(job_keywords),
+        "skills": bool(job_skills),
+        "experience": bool(experience_terms),
+        "role": bool(_role_title_terms(job_title)),
+        "education": any(_contains_term(job_text, term) for term in _EDUCATION_TERMS),
+    }
+    applicable_weight = sum(
+        CATEGORY_WEIGHTS[key] for key, is_applicable in applicable.items() if is_applicable
+    )
 
     return DeterministicScores(
         keyword_score=_weighted_score(KEYWORD_WEIGHT, len(matched_keywords), len(job_keywords)),
@@ -623,6 +643,7 @@ def score_resume_for_job(
         role_score=_score_role(job_title, resume_text, parsed_resume),
         education_score=_score_education(job_text, resume_text, parsed_resume),
         formatting_score=_score_formatting(resume_text, parsed_resume),
+        applicable_categories=applicable,
         applicable_weight=applicable_weight,
         matched_keywords=matched_keywords,
         missing_keywords=missing_keywords,
@@ -637,22 +658,19 @@ CATEGORY_WEIGHTS: dict[str, int] = {
     "education": EDUCATION_WEIGHT,
 }
 
+CATEGORY_LABELS: tuple[tuple[str, str], ...] = (
+    ("keyword", "Keywords"),
+    ("skills", "Skills"),
+    ("experience", "Experience"),
+    ("role", "Role fit"),
+    ("education", "Education"),
+)
 
-def applicable_categories(job_title: str, job_description: str) -> dict[str, bool]:
-    """Report which score categories a posting actually asks for.
 
-    Pure function of the job text so the response can explain applicability
-    without storing it per analysis (mirrors score_resume_for_job's weights).
-    """
-    job_text = _core_job_text(job_title, job_description)
-    has_job_terms = bool(extract_job_keywords(job_text))
-    return {
-        "keyword": has_job_terms,
-        "skills": bool(_skills_in(job_text)),
-        "experience": has_job_terms,
-        "role": bool(_role_title_terms(job_title)),
-        "education": any(_contains_term(job_text, term) for term in _EDUCATION_TERMS),
-    }
+def analysis_input_hash(*parts: str) -> str:
+    """Hash normalized analysis inputs so stored results can detect drift."""
+    blob = "\n".join(normalize_text(part) for part in parts if part)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
 def _fallback_recommendations(missing_keywords: list[str]) -> list[str]:
@@ -698,6 +716,7 @@ def analyze_resume_for_job(
         role_score=scores.role_score,
         education_score=scores.education_score,
         formatting_score=scores.formatting_score,
+        score_breakdown=scores.category_breakdown(),
         matched_keywords=scores.matched_keywords,
         missing_keywords=scores.missing_keywords,
         recommendations=recommendations,

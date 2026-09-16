@@ -36,14 +36,6 @@ interface JobAnalysisPanelProps {
   jobId: string;
 }
 
-const scoreRows: Array<{ key: keyof JobAnalysis; label: string; max: number }> = [
-  { key: "keyword_score", label: "Keywords", max: 35 },
-  { key: "skills_score", label: "Skills", max: 30 },
-  { key: "experience_score", label: "Experience", max: 20 },
-  { key: "role_score", label: "Role fit", max: 10 },
-  { key: "education_score", label: "Education", max: 5 },
-];
-
 type BreakdownRow = {
   key: string;
   label: string;
@@ -51,20 +43,6 @@ type BreakdownRow = {
   maximum: number;
   applicable: boolean;
 };
-
-function breakdownRows(analysis: JobAnalysis): BreakdownRow[] {
-  if (analysis.score_breakdown && analysis.score_breakdown.length > 0) {
-    return analysis.score_breakdown;
-  }
-  // ponytail: fallback for payloads predating score_breakdown
-  return scoreRows.map((row) => ({
-    key: String(row.key),
-    label: row.label,
-    earned: Number(analysis[row.key] ?? 0),
-    maximum: row.max,
-    applicable: true,
-  }));
-}
 
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat(undefined, {
@@ -371,6 +349,11 @@ export function JobAnalysisPanel({ jobId }: JobAnalysisPanelProps) {
                 <p className="text-muted-foreground mt-3 text-xs">
                   {selectedAnalysis.provider} / {selectedAnalysis.model_used} - {formatDate(selectedAnalysis.created_at)}
                 </p>
+                {selectedAnalysis.inputs_changed && (
+                  <p className="text-warning-foreground mt-2 text-xs">
+                    The job or resume content has changed since this analysis was run.
+                  </p>
+                )}
               </div>
 
               {selectedAnalysis.readiness_steps && selectedAnalysis.readiness_steps.length > 0 && (
@@ -396,32 +379,40 @@ export function JobAnalysisPanel({ jobId }: JobAnalysisPanelProps) {
                   The overall percentage is normalized across the requirements this
                   posting actually asks for. Categories marked N/A are not counted.
                 </p>
-                <div className="space-y-3">
-                  {breakdownRows(selectedAnalysis).map((row) => (
-                    <div key={row.key} className="space-y-1.5">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground">{row.label}</span>
-                        {row.applicable ? (
-                          <span className="font-mono font-medium tabular-nums">
-                            {Math.round(row.earned)}/{row.maximum}
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground font-mono font-medium">
-                            N/A
-                          </span>
+                {selectedAnalysis.score_breakdown ? (
+                  <div className="space-y-3">
+                    {selectedAnalysis.score_breakdown.map((row) => (
+                      <div key={row.key} className="space-y-1.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-muted-foreground">{row.label}</span>
+                          {row.applicable ? (
+                            <span className="font-mono font-medium tabular-nums">
+                              {Math.round(row.earned)}/{row.maximum}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground font-mono font-medium">
+                              N/A
+                            </span>
+                          )}
+                        </div>
+                        {row.applicable && (
+                          <div className="bg-secondary h-2 overflow-hidden rounded-full">
+                            <div
+                              className={`${scoreTone((row.earned / row.maximum) * 100)} h-full rounded-full`}
+                              style={{ width: `${Math.max(0, Math.min((row.earned / row.maximum) * 100, 100))}%` }}
+                            />
+                          </div>
                         )}
                       </div>
-                      {row.applicable && (
-                        <div className="bg-secondary h-2 overflow-hidden rounded-full">
-                          <div
-                            className={`${scoreTone(row.earned / row.maximum * 100)} h-full rounded-full`}
-                            style={{ width: `${Math.max(0, Math.min((row.earned / row.maximum) * 100, 100))}%` }}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground text-sm">
+                    Score breakdown is unavailable for this result. It was stored
+                    before per-category scoring was versioned; run an updated
+                    analysis to see the full breakdown.
+                  </p>
+                )}
               </div>
             </div>
 

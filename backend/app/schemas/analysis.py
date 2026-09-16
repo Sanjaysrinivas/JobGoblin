@@ -52,6 +52,7 @@ class JobAnalysisOut(BaseModel):
     rewrite_suggestions: list[RewriteSuggestion] | None = None
     score_breakdown: list[ScoreBreakdownEntry] | None = None
     is_legacy: bool = False
+    inputs_changed: bool | None = None
     provider: str
     model_used: str
     created_at: datetime

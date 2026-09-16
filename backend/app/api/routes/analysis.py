@@ -12,9 +12,8 @@ from app.models import Job, JobAnalysis, Resume, User
 from app.schemas.analysis import JobAnalysisOut, ResumeJobAnalysisCreate
 from app.services.job_analysis import (
     ANALYSIS_VERSION,
-    CATEGORY_WEIGHTS,
+    analysis_input_hash,
     analyze_resume_for_job,
-    applicable_categories,
     application_readiness,
     fit_label,
     keyword_checklist,
@@ -22,7 +21,7 @@ from app.services.job_analysis import (
     readiness_steps,
     rewrite_suggestions,
 )
-from app.services.resume_context import current_resume_content
+from app.services.resume_context import current_resume_content, current_resume_version
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
 
@@ -74,13 +73,29 @@ def _string_list(value: object) -> list[str]:
     return [str(item) for item in value if str(item).strip()]
 
 
-_SCORE_CATEGORY_LABELS: tuple[tuple[str, str], ...] = (
-    ("keyword", "Keywords"),
-    ("skills", "Skills"),
-    ("experience", "Experience"),
-    ("role", "Role fit"),
-    ("education", "Education"),
-)
+def _has_snapshot(analysis: JobAnalysis) -> bool:
+    """A grounded result must carry the metadata that reproduces its score."""
+    return (
+        analysis.model_used == ANALYSIS_VERSION and isinstance(analysis.score_breakdown, list)
+    )
+
+
+def _inputs_changed(session: Session, analysis: JobAnalysis) -> bool:
+    """True when the job or resume content drifted from the analyzed inputs."""
+    if not _has_snapshot(analysis) or analysis.job_text_hash is None:
+        return False
+    job = session.get(Job, analysis.job_id)
+    resume = session.get(Resume, analysis.resume_id)
+    if job is None or resume is None:
+        return False
+    current_job_hash = analysis_input_hash(job.title, job.description or "")
+    resume_text, _ = current_resume_content(session, resume)
+    current_resume_hash = analysis_input_hash(resume_text)
+    resume_changed = (
+        analysis.resume_text_hash is not None
+        and current_resume_hash != analysis.resume_text_hash
+    )
+    return current_job_hash != analysis.job_text_hash or resume_changed
 
 
 def analysis_response(session: Session, analysis: JobAnalysis) -> dict:
@@ -96,20 +111,9 @@ def analysis_response(session: Session, analysis: JobAnalysis) -> dict:
         job.title if job else "",
         job.description if job else "",
     )
-    applicable = applicable_categories(
-        job.title if job else "",
-        job.description if job else "",
-    )
-    score_breakdown = [
-        {
-            "key": key,
-            "label": label,
-            "earned": getattr(analysis, f"{key}_score"),
-            "maximum": CATEGORY_WEIGHTS[key],
-            "applicable": applicable[key],
-        }
-        for key, label in _SCORE_CATEGORY_LABELS
-    ]
+    # Serialize only what was stored at analysis time; never recompute policy
+    # for a historical result (F2). Legacy rows have no persisted breakdown.
+    score_breakdown = analysis.score_breakdown if _has_snapshot(analysis) else None
     missing = _string_list(analysis.missing_keywords)
     matched = _string_list(analysis.matched_keywords)
     return {
@@ -120,7 +124,8 @@ def analysis_response(session: Session, analysis: JobAnalysis) -> dict:
         "keyword_checklist": checklist,
         "rewrite_suggestions": rewrite_suggestions(checklist, matched, missing),
         "score_breakdown": score_breakdown,
-        "is_legacy": analysis.model_used != ANALYSIS_VERSION,
+        "is_legacy": not _has_snapshot(analysis),
+        "inputs_changed": _inputs_changed(session, analysis),
     }
 
 
@@ -135,6 +140,7 @@ def create_resume_job_analysis(
     session: Annotated[Session, Depends(get_session)],
 ) -> dict:
     resume, job = _get_owned_resume_and_job(session, current_user, payload)
+    version = current_resume_version(session, resume)
     resume_text, parsed_resume = current_resume_content(session, resume)
     if not resume_text.strip() and not parsed_resume:
         raise _error(
@@ -166,6 +172,10 @@ def create_resume_job_analysis(
         missing_keywords=result.missing_keywords,
         recommendations=result.recommendations,
         explanation=result.explanation,
+        score_breakdown=result.score_breakdown,
+        job_text_hash=analysis_input_hash(job.title, job.description or ""),
+        resume_version_id=version.id if version else None,
+        resume_text_hash=analysis_input_hash(resume_text),
         provider=provider_name,
         model_used=model_used,
     )

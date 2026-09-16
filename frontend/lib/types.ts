@@ -310,6 +310,7 @@ export interface JobAnalysis {
   rewrite_suggestions: RewriteSuggestion[] | null;
   score_breakdown: ScoreBreakdownEntry[] | null;
   is_legacy: boolean | null;
+  inputs_changed: boolean | null;
   provider: string;
   model_used: string;
   created_at: string;

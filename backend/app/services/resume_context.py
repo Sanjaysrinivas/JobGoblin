@@ -3,8 +3,8 @@ from sqlmodel import Session, select
 from app.models import Resume, ResumeVersion
 
 
-def current_resume_content(session: Session, resume: Resume) -> tuple[str, dict | None]:
-    version = session.exec(
+def current_resume_version(session: Session, resume: Resume) -> ResumeVersion | None:
+    return session.exec(
         select(ResumeVersion)
         .where(
             ResumeVersion.resume_id == resume.id,
@@ -12,6 +12,10 @@ def current_resume_content(session: Session, resume: Resume) -> tuple[str, dict 
         )
         .order_by(ResumeVersion.updated_at.desc())
     ).first()
+
+
+def current_resume_content(session: Session, resume: Resume) -> tuple[str, dict | None]:
+    version = current_resume_version(session, resume)
     if version is not None:
         return version.extracted_text or "", version.parsed_json
     return resume.extracted_text or "", resume.parsed_json
