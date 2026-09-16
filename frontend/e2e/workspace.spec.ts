@@ -47,7 +47,13 @@ test.describe("workspace workflows", () => {
         ? ((await profileResp.json()) as Record<string, unknown>)
         : null;
       cleanup.add(async () => {
-        if (!profileBefore) return;
+        if (!profileBefore) {
+          const response = await page.request.delete("/api/profile");
+          if (!response.ok() && response.status() !== 404) {
+            throw new Error(`DELETE /api/profile failed with HTTP ${response.status()}`);
+          }
+          return;
+        }
         const fields = [
           "full_name", "headline", "location", "summary",
           "skills", "experience", "education", "projects", "certifications",
@@ -55,7 +61,10 @@ test.describe("workspace workflows", () => {
         const restore = Object.fromEntries(
           fields.filter((f) => profileBefore[f] !== undefined).map((f) => [f, profileBefore[f]])
         );
-        await page.request.put("/api/profile", { data: restore }).catch(() => null);
+        const response = await page.request.put("/api/profile", { data: restore });
+        if (!response.ok()) {
+          throw new Error(`PUT /api/profile failed with HTTP ${response.status()}`);
+        }
       });
       await expectOk(await page.request.put("/api/profile", {
         data: {

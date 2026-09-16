@@ -23,7 +23,10 @@ export class Cleanup {
     if (typeof target === "string") {
       const url = target;
       this.teardowns.push(async () => {
-        await this.page.request.delete(url).catch(() => null);
+        const response = await this.page.request.delete(url);
+        if (!response.ok() && response.status() !== 404) {
+          throw new Error(`DELETE ${url} failed with HTTP ${response.status()}`);
+        }
       });
     } else {
       this.teardowns.push(target);
@@ -32,10 +35,18 @@ export class Cleanup {
 
   /** Idempotent teardown; safe to call after partial failures. */
   async run(): Promise<void> {
+    const failures: unknown[] = [];
     for (const teardown of this.teardowns.reverse()) {
-      await teardown().catch(() => null);
+      try {
+        await teardown();
+      } catch (error) {
+        failures.push(error);
+      }
     }
     this.teardowns = [];
+    if (failures.length > 0) {
+      throw new AggregateError(failures, `${failures.length} E2E cleanup action(s) failed`);
+    }
   }
 }
 
