@@ -483,6 +483,29 @@ def test_analysis_detects_resume_version_changes_with_identical_evidence(
     assert refetched["inputs_changed"] is True
 
 
+def test_analysis_detects_first_version_with_identical_evidence(client, session, user):
+    resume = _create_resume(session, user)
+    job = _create_job(session, user)
+    created = client.post(
+        "/api/analysis/resume-job",
+        json={"resume_id": str(resume.id), "job_id": str(job.id)},
+    ).json()
+
+    session.add(
+        ResumeVersion(
+            resume_id=resume.id,
+            title="First version",
+            extracted_text=resume.extracted_text,
+            parsed_json=resume.parsed_json,
+            is_current=True,
+        )
+    )
+    session.commit()
+
+    refetched = client.get(f"/api/analysis/{created['id']}").json()
+    assert refetched["inputs_changed"] is True
+
+
 def test_legacy_row_without_snapshot_has_no_fabricated_breakdown(client, session, user):
     resume = _create_resume(session, user)
     job = _create_job(session, user)

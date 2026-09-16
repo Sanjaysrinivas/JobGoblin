@@ -90,10 +90,8 @@ def _inputs_changed(session: Session, analysis: JobAnalysis, user_id: uuid.UUID)
     resume_text, parsed_resume = current_resume_content(session, resume)
     current_resume_hash = resume_evidence_hash(resume_text, parsed_resume)
     version = current_resume_version(session, resume)
-    version_changed = (
-        analysis.resume_version_id is not None
-        and (version is None or version.id != analysis.resume_version_id)
-    )
+    current_version_id = version.id if version is not None else None
+    version_changed = current_version_id != analysis.resume_version_id
     resume_changed = current_resume_hash != analysis.resume_evidence_hash or version_changed
     return current_job_hash != analysis.job_text_hash or resume_changed
 
