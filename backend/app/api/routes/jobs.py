@@ -515,7 +515,7 @@ def list_job_analyses(
         .where(JobAnalysis.job_id == job_id, JobAnalysis.user_id == current_user.id)
         .order_by(JobAnalysis.created_at.desc())
     )
-    return [analysis_response(session, analysis) for analysis in analyses]
+    return [analysis_response(session, analysis, current_user.id) for analysis in analyses]
 
 
 @router.get("/{job_id}", response_model=JobOut)

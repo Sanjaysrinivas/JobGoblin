@@ -249,6 +249,28 @@ def test_get_analysis_cross_user_returns_404(client, session, other_user):
     assert resp.json()["code"] == "analysis_not_found"
 
 
+def test_analysis_drift_lookup_does_not_cross_user_ownership(
+    client, session, user, other_user
+):
+    resume = _create_resume(session, user)
+    job = _create_job(session, user)
+    created = client.post(
+        "/api/analysis/resume-job",
+        json={"resume_id": str(resume.id), "job_id": str(job.id)},
+    ).json()
+    analysis = session.get(JobAnalysis, uuid.UUID(created["id"]))
+    assert analysis is not None
+
+    analysis.resume_id = _create_resume(session, other_user).id
+    analysis.job_id = _create_job(session, other_user).id
+    session.add(analysis)
+    session.commit()
+
+    resp = client.get(f"/api/analysis/{analysis.id}")
+    assert resp.status_code == 200
+    assert resp.json()["inputs_changed"] is False
+
+
 def test_list_job_analyses_is_owned_and_newest_first(client, session, user, other_user):
     resume = _create_resume(session, user)
     job = _create_job(session, user)

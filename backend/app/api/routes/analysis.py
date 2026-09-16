@@ -74,12 +74,16 @@ def _has_snapshot(analysis: JobAnalysis) -> bool:
     )
 
 
-def _inputs_changed(session: Session, analysis: JobAnalysis) -> bool:
+def _inputs_changed(session: Session, analysis: JobAnalysis, user_id: uuid.UUID) -> bool:
     """True when the job or resume content drifted from the analyzed inputs."""
     if not _has_snapshot(analysis):
         return False
-    job = session.get(Job, analysis.job_id)
-    resume = session.get(Resume, analysis.resume_id)
+    job = session.exec(
+        select(Job).where(Job.id == analysis.job_id, Job.user_id == user_id)
+    ).first()
+    resume = session.exec(
+        select(Resume).where(Resume.id == analysis.resume_id, Resume.user_id == user_id)
+    ).first()
     if job is None or resume is None:
         return False
     current_job_hash = analysis_input_hash(job.title, job.description or "")
@@ -94,7 +98,7 @@ def _inputs_changed(session: Session, analysis: JobAnalysis) -> bool:
     return current_job_hash != analysis.job_text_hash or resume_changed
 
 
-def analysis_response(session: Session, analysis: JobAnalysis) -> dict:
+def analysis_response(session: Session, analysis: JobAnalysis, user_id: uuid.UUID) -> dict:
     has_snapshot = _has_snapshot(analysis)
     guidance = analysis.guidance_snapshot if has_snapshot else {}
     return {
@@ -106,7 +110,7 @@ def analysis_response(session: Session, analysis: JobAnalysis) -> dict:
         "rewrite_suggestions": guidance.get("rewrite_suggestions"),
         "score_breakdown": analysis.score_breakdown if has_snapshot else None,
         "is_legacy": not has_snapshot,
-        "inputs_changed": _inputs_changed(session, analysis),
+        "inputs_changed": _inputs_changed(session, analysis, user_id),
     }
 
 
@@ -165,7 +169,7 @@ def create_resume_job_analysis(
     session.add(analysis)
     session.commit()
     session.refresh(analysis)
-    return analysis_response(session, analysis)
+    return analysis_response(session, analysis, current_user.id)
 
 
 @router.get("/{analysis_id}", response_model=JobAnalysisOut)
@@ -174,4 +178,8 @@ def get_analysis(
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_session)],
 ) -> dict:
-    return analysis_response(session, _get_owned_analysis(session, current_user, analysis_id))
+    return analysis_response(
+        session,
+        _get_owned_analysis(session, current_user, analysis_id),
+        current_user.id,
+    )
