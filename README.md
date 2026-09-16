@@ -139,6 +139,7 @@ GitHub Actions runs the same backend and frontend checks for pull requests.
 - [Detailed design](docs/design.md)
 - [Roadmap](docs/roadmap.md)
 - [Post-merge remediation plan](docs/post-merge-remediation.md)
+- [PR #45 detailed remediation and merge-readiness plan](docs/pr-45-detailed-remediation.md)
 - [Frontend notes](frontend/README.md)
 
 Branch flow: `main -> dev -> feature/*`. Keep `main` release-ready, integrate through `dev`, and use focused PRs for feature work. See [Runtime operator runbook](docs/runtime-operator.md) for operator-run Ollama, Cloudflare/OAuth, Adzuna, backup/restore, migration/rollback, secrets, and dev-to-main release checks.
