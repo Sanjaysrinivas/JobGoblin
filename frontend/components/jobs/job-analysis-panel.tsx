@@ -159,17 +159,19 @@ export function JobAnalysisPanel({ jobId }: JobAnalysisPanelProps) {
     };
   }, [jobId]);
 
-  async function runAnalysis() {
-    if (!selectedResumeId) return;
+  async function runAnalysis(resumeId: string) {
+    if (!resumeId) return;
     setRunning(true);
     setError(null);
     try {
       const created = await createResumeJobAnalysis({
         job_id: jobId,
-        resume_id: selectedResumeId,
+        resume_id: resumeId,
       });
       setAnalyses((prev) => [created, ...prev.filter((item) => item.id !== created.id)]);
       setSelectedAnalysisId(created.id);
+      // Keep the visible resume in step with what was just analyzed.
+      setSelectedResumeId(resumeId);
       setHistoryNotice(null);
     } catch (err) {
       setError(
@@ -184,6 +186,11 @@ export function JobAnalysisPanel({ jobId }: JobAnalysisPanelProps) {
 
   const selectedAnalysis =
     analyses.find((analysis) => analysis.id === selectedAnalysisId) ?? analyses[0];
+  // A legacy rerun targets the analysis's own resume; it is only possible
+  // while that resume still exists.
+  const legacyResumeAvailable = selectedAnalysis
+    ? resumes.some((resume) => resume.id === selectedAnalysis.resume_id)
+    : false;
 
   return (
     <Card>
@@ -243,7 +250,7 @@ export function JobAnalysisPanel({ jobId }: JobAnalysisPanelProps) {
 
           <Button
             type="button"
-            onClick={runAnalysis}
+            onClick={() => void runAnalysis(selectedResumeId)}
             disabled={loading || running || !selectedResumeId}
             className="lg:mb-0"
           >
@@ -303,21 +310,29 @@ export function JobAnalysisPanel({ jobId }: JobAnalysisPanelProps) {
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
             <div className="space-y-4 lg:col-span-2">
               {selectedAnalysis.is_legacy && (
-                <div className="border-warning/40 bg-warning/10 flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
+                <div className="border-warning/40 bg-warning/10 space-y-2 rounded-lg border p-3">
                   <p className="text-warning-foreground text-sm">
                     Created under the previous scoring model. Scores and
                     recommendations may not reflect grounded guidance.
                   </p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={runAnalysis}
-                    disabled={running || !selectedResumeId}
-                  >
-                    <Play className="size-4" />
-                    Run updated analysis
-                  </Button>
+                  {legacyResumeAvailable ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void runAnalysis(selectedAnalysis.resume_id)}
+                      disabled={running}
+                    >
+                      <Play className="size-4" />
+                      Run updated analysis (
+                      {resumeLabel(selectedAnalysis.resume_id, resumes)})
+                    </Button>
+                  ) : (
+                    <p className="text-muted-foreground text-sm">
+                      The resume used for this analysis has been deleted, so it
+                      cannot be rerun.
+                    </p>
+                  )}
                 </div>
               )}
               <div className="rounded-lg border p-4">
