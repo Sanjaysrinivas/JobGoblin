@@ -1,6 +1,9 @@
 """Regression tests for boundary-aware grounding of parsed resume facts."""
 
+import pytest
+
 from app.services.grounding import ground_parsed_resume, is_source_supported
+from app.services.text_matching import contains_term
 
 
 class TestIsSourceSupported:
@@ -69,3 +72,41 @@ class TestGroundParsedResume:
             {"skills": ["Python", "Java", "Rust"]}, source
         )
         assert grounded["skills"] == ["Python"]
+
+
+# F1 matrix: technical tokens must keep exact identity (see
+# docs/pr-45-detailed-remediation.md section 4.5).
+TECHNICAL_TOKEN_CASES = [
+    ("C", "Built services in C", True),
+    ("c", "Built services in C", True),
+    ("C", "Built services in C++", False),
+    ("C", "Built services in C#", False),
+    ("C++", "Built services in C++", True),
+    ("C++", "Built services in C", False),
+    ("C#", "Built services in C#", True),
+    ("C#", "Built services in C++", False),
+    (".NET", "Developed .NET APIs", True),
+    ("NET", "Developed .NET APIs", False),
+    ("Java", "Developed JavaScript apps", False),
+    ("JavaScript", "Developed JavaScript apps", True),
+    ("Python", "No Python experience", False),
+    ("Python", "Learning Python", False),
+    ("Python", "Five years of Python", True),
+]
+
+
+@pytest.mark.parametrize(("candidate", "source", "expected"), TECHNICAL_TOKEN_CASES)
+def test_technical_tokens_keep_exact_identity(candidate, source, expected):
+    assert is_source_supported(candidate, source) is expected
+    # contains_term is raw presence; negation/aspirational rows are filtered
+    # by contains_supported_term (exercised through is_source_supported above).
+    if source not in ("No Python experience", "Learning Python"):
+        assert contains_term(source, candidate) is expected
+
+
+def test_ground_parsed_resume_preserves_technical_identity():
+    source = "Built services in C++ and C#. Shipped .NET APIs too."
+    grounded = ground_parsed_resume(
+        {"skills": ["C", "C++", "C#", ".NET", "NET"]}, source
+    )
+    assert grounded["skills"] == ["C++", "C#", ".NET"]
