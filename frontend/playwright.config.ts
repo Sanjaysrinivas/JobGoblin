@@ -5,6 +5,7 @@ const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${port}`;
 
 export default defineConfig({
   testDir: "./e2e",
+  globalSetup: "./e2e/helpers/global-setup",
   timeout: 30_000,
   expect: { timeout: 10_000 },
   outputDir: "test-results",

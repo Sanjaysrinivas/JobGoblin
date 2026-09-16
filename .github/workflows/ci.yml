@@ -76,6 +76,7 @@ jobs:
     env:
       E2E_ADMIN_EMAIL: admin@jobgoblin.local
       E2E_ADMIN_PASSWORD: goblin-demo-pass-123
+      E2E_ALLOW_MUTATION: "true" # CI database is destroyed after the run
       PLAYWRIGHT_BASE_URL: http://127.0.0.1:8080
     steps:
       - uses: actions/checkout@v7
