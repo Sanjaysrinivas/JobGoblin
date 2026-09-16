@@ -15,7 +15,6 @@ from urllib.parse import urljoin, urlparse
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import Response
-from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.api.deps import get_current_user
@@ -27,7 +26,12 @@ from app.schemas.analysis import JobAnalysisOut
 from app.schemas.job import JobCreate, JobImportRequest, JobOut, JobUpdate
 from app.schemas.resume import ResumeVersionOut, TailoredResumeDraftCreate
 from app.services.ai_provider import AIProvider, get_ai_provider, provider_name
-from app.services.job_identity import job_dedupe_key
+from app.services.job_identity import (
+    JobIdentityConflict,
+    find_duplicate_job,
+    job_dedupe_key,
+    persist_job,
+)
 from app.services.tailored_resumes import create_tailored_draft
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -410,15 +414,6 @@ def _validate_salary_range(salary_min: int | None, salary_max: int | None) -> No
         )
 
 
-def _duplicate_job(
-    session: Session, user: User, dedupe_key: str, *, exclude_id: uuid.UUID | None = None
-) -> Job | None:
-    query = select(Job).where(Job.user_id == user.id, Job.dedupe_key == dedupe_key)
-    if exclude_id is not None:
-        query = query.where(Job.id != exclude_id)
-    return session.exec(query).first()
-
-
 @router.get("", response_model=list[JobOut])
 def list_jobs(
     current_user: Annotated[User, Depends(get_current_user)],
@@ -441,17 +436,13 @@ def create_job(
     dedupe_key = job_dedupe_key(
         payload.source_url, payload.company_name, payload.title, payload.location
     )
-    if _duplicate_job(session, current_user, dedupe_key):
+    if find_duplicate_job(session, current_user, dedupe_key):
         raise _error(status.HTTP_409_CONFLICT, "This job is already saved", "job_exists")
     job = Job(user_id=current_user.id, dedupe_key=dedupe_key, **payload.model_dump())
-    session.add(job)
     try:
-        session.commit()
-    except IntegrityError as exc:
-        session.rollback()
+        return persist_job(session, job)
+    except JobIdentityConflict as exc:
         raise _error(status.HTTP_409_CONFLICT, "This job is already saved", "job_exists") from exc
-    session.refresh(job)
-    return job
 
 
 @router.post("/import", response_model=JobCreate)
@@ -556,20 +547,16 @@ def update_job(
         "location": updates.get("location", job.location),
     }
     dedupe_key = job_dedupe_key(**identity)
-    if _duplicate_job(session, current_user, dedupe_key, exclude_id=job.id):
+    if find_duplicate_job(session, current_user, dedupe_key, exclude_id=job.id):
         raise _error(status.HTTP_409_CONFLICT, "This job is already saved", "job_exists")
     for field, value in updates.items():
         setattr(job, field, value)
     job.dedupe_key = dedupe_key
 
-    session.add(job)
     try:
-        session.commit()
-    except IntegrityError as exc:
-        session.rollback()
+        return persist_job(session, job)
+    except JobIdentityConflict as exc:
         raise _error(status.HTTP_409_CONFLICT, "This job is already saved", "job_exists") from exc
-    session.refresh(job)
-    return job
 
 
 @router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT)

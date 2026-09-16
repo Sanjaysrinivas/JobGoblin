@@ -3,9 +3,47 @@
 import hashlib
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from sqlalchemy.exc import IntegrityError
+from sqlmodel import Session, select
+
+from app.models import Job, User
 from app.services.grounding import normalized_phrase
 
 _TRACKING_QUERY_KEYS = {"fbclid", "gclid", "mc_cid", "mc_eid"}
+
+
+class JobIdentityConflict(Exception):
+    """Another job owned by this user already holds the identity."""
+
+
+def find_duplicate_job(
+    session: Session,
+    user: User,
+    dedupe_key: str,
+    *,
+    exclude_id=None,
+) -> Job | None:
+    """Return the user's existing job with this identity, if any."""
+    query = select(Job).where(Job.user_id == user.id, Job.dedupe_key == dedupe_key)
+    if exclude_id is not None:
+        query = query.where(Job.id != exclude_id)
+    return session.exec(query).first()
+
+
+def persist_job(session: Session, job: Job) -> Job:
+    """Commit an identity-bearing job write.
+
+    Translates uniqueness races (two writers passing the pre-check) into
+    JobIdentityConflict instead of leaking an IntegrityError.
+    """
+    session.add(job)
+    try:
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        raise JobIdentityConflict("A job with this identity already exists") from exc
+    session.refresh(job)
+    return job
 
 
 def canonical_job_url(value: str) -> str:
