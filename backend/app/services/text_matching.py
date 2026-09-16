@@ -34,7 +34,8 @@ def tokens(text: str) -> list[str]:
 
 
 def canonical_term(term: str) -> str:
-    normalized = normalize_text(term).strip(".,;:!?()[]{}\"'")
+    # Keep a leading dot (".net") so it stays a distinct technical identity.
+    normalized = normalize_text(term).rstrip(".,;:!?()[]{}\"'").lstrip(",;:!?()[]{}\"'")
     for canonical, variants in TERM_ALIASES.items():
         if normalized in variants:
             return canonical
@@ -46,13 +47,24 @@ def term_variants(term: str) -> frozenset[str]:
     return TERM_ALIASES.get(canonical, frozenset({canonical}))
 
 
+# Characters that extend a technical token beyond plain word characters. The
+# left boundary includes "." so `net` cannot match inside `.net` (or `js`
+# inside `node.js`); the right boundary omits "." so terms still match at
+# sentence ends (`Python.`), while `C` still cannot match inside `C++`/`C#`.
+_LEFT_BOUNDARY = r"(?<![\w+#.\-])"
+_RIGHT_BOUNDARY = r"(?![\w+#\-])"
+
+
+def _term_pattern(variant: str) -> re.Pattern[str]:
+    return re.compile(_LEFT_BOUNDARY + re.escape(variant) + _RIGHT_BOUNDARY)
+
+
 def contains_term(text: str, term: str) -> bool:
     if not canonical_term(term):
         return False
     normalized = normalize_text(text)
     return any(
-        re.search(r"(?<!\w)" + re.escape(variant) + r"(?!\w)", normalized)
-        for variant in term_variants(term)
+        _term_pattern(variant).search(normalized) for variant in term_variants(term)
     )
 
 
@@ -62,7 +74,7 @@ def _segments(text: str) -> list[str]:
 
 def _unsupported_mention(segment: str, variant: str) -> bool:
     normalized = normalize_text(segment)
-    pattern = re.compile(r"(?<!\w)" + re.escape(variant) + r"(?!\w)")
+    pattern = _term_pattern(variant)
     for match in pattern.finditer(normalized):
         before = normalized[max(0, match.start() - 80) : match.start()]
         after = normalized[match.end() : match.end() + 50]

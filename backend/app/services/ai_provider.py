@@ -160,3 +160,8 @@ def get_ai_provider() -> AIProvider:
     if provider == "mock":
         return MockProvider()
     return OllamaProvider()
+
+
+def provider_name(provider: AIProvider) -> str:
+    """Short telemetry name for a provider instance."""
+    return provider.__class__.__name__.replace("Provider", "").lower()

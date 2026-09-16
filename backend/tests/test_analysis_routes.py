@@ -267,6 +267,185 @@ def test_list_job_analyses_is_owned_and_newest_first(client, session, user, othe
     assert cross_user_job.json()["code"] == "job_not_found"
 
 
+def test_analysis_reports_category_applicability(client, session, user):
+    resume = _create_resume(session, user)
+    job = _create_job(session, user)  # description has no education requirement
+
+    resp = client.post(
+        "/api/analysis/resume-job",
+        json={"resume_id": str(resume.id), "job_id": str(job.id)},
+    )
+
+    assert resp.status_code == 201, resp.text
+    breakdown = {row["key"]: row for row in resp.json()["score_breakdown"]}
+    assert set(breakdown) == {"keyword", "skills", "experience", "role", "education"}
+
+    education = breakdown["education"]
+    assert education["applicable"] is False
+    assert education["maximum"] == 5
+
+    keyword = breakdown["keyword"]
+    assert keyword["applicable"] is True
+    assert keyword["maximum"] == 35
+    assert keyword["earned"] == resp.json()["keyword_score"]
+
+    applicable_maxima = sum(row["maximum"] for row in breakdown.values() if row["applicable"])
+    assert applicable_maxima > 0
+
+
+def test_analysis_marks_education_applicable_when_required(client, session, user):
+    resume = _create_resume(session, user)
+    job = _create_job(
+        session,
+        user,
+        description=(
+            "Build backend services with Python, FastAPI, PostgreSQL, Docker, "
+            "REST APIs, and Kubernetes. Bachelor degree in Computer Science required."
+        ),
+    )
+
+    resp = client.post(
+        "/api/analysis/resume-job",
+        json={"resume_id": str(resume.id), "job_id": str(job.id)},
+    )
+
+    assert resp.status_code == 201, resp.text
+    breakdown = {row["key"]: row for row in resp.json()["score_breakdown"]}
+    assert breakdown["education"]["applicable"] is True
+    assert breakdown["education"]["earned"] == resp.json()["education_score"]
+
+
+def test_analysis_flags_legacy_results(client, session, user):
+    resume = _create_resume(session, user)
+    job = _create_job(session, user)
+
+    legacy = JobAnalysis(
+        user_id=user.id,
+        resume_id=resume.id,
+        job_id=job.id,
+        overall_score=80,
+        keyword_score=28,
+        skills_score=24,
+        experience_score=16,
+        role_score=8,
+        education_score=4,
+        formatting_score=8,
+        matched_keywords=["python"],
+        missing_keywords=[],
+        recommendations=["Mention your Kubernetes exposure."],
+        explanation="Old model explanation.",
+        provider="ollama",
+        model_used="qwen2.5:7b-instruct",
+    )
+    session.add(legacy)
+    session.commit()
+    session.refresh(legacy)
+
+    legacy_resp = client.get(f"/api/analysis/{legacy.id}")
+    assert legacy_resp.status_code == 200
+    assert legacy_resp.json()["is_legacy"] is True
+
+    fresh_resp = client.post(
+        "/api/analysis/resume-job",
+        json={"resume_id": str(resume.id), "job_id": str(job.id)},
+    )
+    assert fresh_resp.status_code == 201
+    assert fresh_resp.json()["is_legacy"] is False
+
+    # Historical record is untouched by the new run.
+    stored = session.get(JobAnalysis, legacy.id)
+    assert stored is not None
+    assert stored.model_used == "qwen2.5:7b-instruct"
+    assert stored.recommendations == ["Mention your Kubernetes exposure."]
+
+
+def test_stored_breakdown_is_immutable_and_reproducible(client, session, user):
+    resume = _create_resume(session, user)
+    job = _create_job(session, user)
+
+    created = client.post(
+        "/api/analysis/resume-job",
+        json={"resume_id": str(resume.id), "job_id": str(job.id)},
+    ).json()
+    original_breakdown = created["score_breakdown"]
+    assert original_breakdown
+    assert created["inputs_changed"] is False
+
+    # Editing the job must not rewrite the stored explanation.
+    job.description = "Completely different role requiring Rust and embedded C."
+    session.add(job)
+    session.commit()
+
+    refetched = client.get(f"/api/analysis/{created['id']}").json()
+    assert refetched["score_breakdown"] == original_breakdown
+    assert refetched["inputs_changed"] is True
+
+    # A non-legacy overall score is reproducible from its stored breakdown.
+    earned = sum(r["earned"] for r in refetched["score_breakdown"])
+    maximum = sum(r["maximum"] for r in refetched["score_breakdown"] if r["applicable"])
+    if maximum > 0:
+        assert abs(refetched["overall_score"] - round(100 * earned / maximum)) <= 1
+
+
+def test_legacy_row_without_snapshot_has_no_fabricated_breakdown(client, session, user):
+    resume = _create_resume(session, user)
+    job = _create_job(session, user)
+    legacy = JobAnalysis(
+        user_id=user.id,
+        resume_id=resume.id,
+        job_id=job.id,
+        overall_score=84,
+        keyword_score=28,
+        skills_score=24,
+        experience_score=16,
+        role_score=8,
+        education_score=4,
+        formatting_score=8,
+        matched_keywords=[],
+        missing_keywords=[],
+        recommendations=["Old advice."],
+        explanation="Old explanation.",
+        provider="deterministic",
+        model_used="grounded-v2",  # version matches, but no persisted snapshot
+    )
+    session.add(legacy)
+    session.commit()
+    session.refresh(legacy)
+
+    resp = client.get(f"/api/analysis/{legacy.id}").json()
+    assert resp["is_legacy"] is True
+    assert resp["score_breakdown"] is None
+
+
+def test_required_but_zero_and_not_applicable_categories(client, session, user):
+    resume = _create_resume(
+        session,
+        user,
+        extracted_text="Sales account manager with retail experience.",
+        parsed_json={"skills": ["Excel"], "experience": []},
+    )
+    job = _create_job(
+        session,
+        user,
+        description=(
+            "Bachelor degree required. Must have Kubernetes, Docker, and "
+            "Terraform skills."
+        ),
+    )
+
+    resp = client.post(
+        "/api/analysis/resume-job",
+        json={"resume_id": str(resume.id), "job_id": str(job.id)},
+    ).json()
+    breakdown = {row["key"]: row for row in resp["score_breakdown"]}
+    assert breakdown["education"]["applicable"] is True
+    assert breakdown["education"]["earned"] == 0  # required but no evidence
+    assert breakdown["skills"]["applicable"] is True
+    assert breakdown["skills"]["earned"] == 0
+    assert breakdown["education"]["maximum"] == 5
+    assert breakdown["skills"]["maximum"] == 30
+
+
 def test_create_analysis_uses_current_resume_version(client, session, user):
     resume = _create_resume(
         session,

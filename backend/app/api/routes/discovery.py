@@ -45,7 +45,12 @@ from app.services.job_discovery import (
     search_jobs,
     validate_discovery_country,
 )
-from app.services.job_identity import job_dedupe_key
+from app.services.job_identity import (
+    JobIdentityConflict,
+    find_duplicate_job,
+    job_dedupe_key,
+    persist_job,
+)
 
 router = APIRouter(prefix="/discovery", tags=["discovery"])
 
@@ -519,34 +524,29 @@ def save_result_as_job(
     main_dedupe = job_dedupe_key(
         result.source_url, result.company_name, result.title, result.location
     )
-    existing_job = session.exec(
-        select(Job).where(
-            Job.user_id == current_user.id,
-            Job.dedupe_key == main_dedupe,
+    existing_job = find_duplicate_job(session, current_user, main_dedupe)
+    if existing_job is None:
+        job = Job(
+            user_id=current_user.id,
+            company_name=result.company_name,
+            title=result.title,
+            location=result.location,
+            work_mode=result.work_mode,
+            source=result.source,
+            source_url=result.source_url,
+            dedupe_key=main_dedupe,
+            description=result.description,
         )
-    ).first()
-    if existing_job is not None:
-        result.status = DiscoveryResultStatus.saved
-        result.saved_job_id = existing_job.id
-        session.add(result)
-        session.commit()
-        return existing_job
-
-    job = Job(
-        user_id=current_user.id,
-        company_name=result.company_name,
-        title=result.title,
-        location=result.location,
-        work_mode=result.work_mode,
-        source=result.source,
-        source_url=result.source_url,
-        dedupe_key=main_dedupe,
-        description=result.description,
-    )
-    session.add(job)
+        try:
+            job = persist_job(session, job)
+        except JobIdentityConflict:
+            # A concurrent writer won the identity race: reuse its job.
+            job = find_duplicate_job(session, current_user, main_dedupe)
+            if job is None:
+                raise
+        existing_job = job
     result.status = DiscoveryResultStatus.saved
-    result.saved_job_id = job.id
+    result.saved_job_id = existing_job.id
     session.add(result)
     session.commit()
-    session.refresh(job)
-    return job
+    return existing_job

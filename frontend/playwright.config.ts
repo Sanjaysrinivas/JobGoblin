@@ -5,13 +5,16 @@ const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${port}`;
 
 export default defineConfig({
   testDir: "./e2e",
+  globalSetup: "./e2e/helpers/global-setup",
   timeout: 30_000,
   expect: { timeout: 10_000 },
   outputDir: "test-results",
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  // Serial execution: desktop and mobile projects share one backend stack,
+  // and parallel cover-letter generation against it is not deterministic.
+  workers: 1,
   reporter: process.env.CI
     ? [["github"], ["html", { outputFolder: "playwright-report", open: "never" }], ["list"]]
     : [["list"], ["html", { outputFolder: "playwright-report" }]],
@@ -33,6 +36,10 @@ export default defineConfig({
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "mobile-chrome",
+      use: { ...devices["Pixel 7"] },
     },
   ],
 });

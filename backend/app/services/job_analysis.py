@@ -5,6 +5,7 @@ match them against resume text and parsed skills, then compute normalized weight
 category contributions and grounded guidance.
 """
 
+import hashlib
 import re
 from collections import Counter
 from dataclasses import dataclass
@@ -13,7 +14,6 @@ from typing import Any
 from rapidfuzz import fuzz
 
 from app.models import Job, Resume
-from app.services.ai_provider import AIProvider
 from app.services.text_matching import (
     canonical_term,
     contains_supported_term,
@@ -30,6 +30,10 @@ EXPERIENCE_WEIGHT = 20
 ROLE_WEIGHT = 10
 EDUCATION_WEIGHT = 5
 FORMATTING_WEIGHT = 0
+
+# Version stamped on every new analysis; results with a different model_used
+# predate grounded scoring and are flagged legacy in responses.
+ANALYSIS_VERSION = "grounded-v2"
 
 MAX_KEYWORDS = 20
 FUZZY_THRESHOLD = 88
@@ -193,6 +197,7 @@ class DeterministicScores:
     role_score: int
     education_score: int
     formatting_score: int
+    applicable_categories: dict[str, bool]
     applicable_weight: int
     matched_keywords: list[str]
     missing_keywords: list[str]
@@ -211,6 +216,19 @@ class DeterministicScores:
             return 0
         return round(100 * earned / self.applicable_weight)
 
+    def category_breakdown(self) -> list[dict[str, object]]:
+        """The human explanation of this score; persist it with the result."""
+        return [
+            {
+                "key": key,
+                "label": label,
+                "earned": getattr(self, f"{key}_score"),
+                "maximum": CATEGORY_WEIGHTS[key],
+                "applicable": self.applicable_categories[key],
+            }
+            for key, label in CATEGORY_LABELS
+        ]
+
 
 @dataclass(frozen=True)
 class JobAnalysisResult:
@@ -221,6 +239,7 @@ class JobAnalysisResult:
     role_score: int
     education_score: int
     formatting_score: int
+    score_breakdown: list[dict[str, object]]
     matched_keywords: list[str]
     missing_keywords: list[str]
     recommendations: list[str]
@@ -606,12 +625,16 @@ def score_resume_for_job(
     ]
 
     experience_terms = set(job_keywords)
-    education_applicable = any(_contains_term(job_text, term) for term in _EDUCATION_TERMS)
-    applicable_weight = KEYWORD_WEIGHT if job_keywords else 0
-    applicable_weight += SKILLS_WEIGHT if job_skills else 0
-    applicable_weight += EXPERIENCE_WEIGHT if experience_terms else 0
-    applicable_weight += ROLE_WEIGHT if _role_title_terms(job_title) else 0
-    applicable_weight += EDUCATION_WEIGHT if education_applicable else 0
+    applicable = {
+        "keyword": bool(job_keywords),
+        "skills": bool(job_skills),
+        "experience": bool(experience_terms),
+        "role": bool(_role_title_terms(job_title)),
+        "education": any(_contains_term(job_text, term) for term in _EDUCATION_TERMS),
+    }
+    applicable_weight = sum(
+        CATEGORY_WEIGHTS[key] for key, is_applicable in applicable.items() if is_applicable
+    )
 
     return DeterministicScores(
         keyword_score=_weighted_score(KEYWORD_WEIGHT, len(matched_keywords), len(job_keywords)),
@@ -620,10 +643,34 @@ def score_resume_for_job(
         role_score=_score_role(job_title, resume_text, parsed_resume),
         education_score=_score_education(job_text, resume_text, parsed_resume),
         formatting_score=_score_formatting(resume_text, parsed_resume),
+        applicable_categories=applicable,
         applicable_weight=applicable_weight,
         matched_keywords=matched_keywords,
         missing_keywords=missing_keywords,
     )
+
+
+CATEGORY_WEIGHTS: dict[str, int] = {
+    "keyword": KEYWORD_WEIGHT,
+    "skills": SKILLS_WEIGHT,
+    "experience": EXPERIENCE_WEIGHT,
+    "role": ROLE_WEIGHT,
+    "education": EDUCATION_WEIGHT,
+}
+
+CATEGORY_LABELS: tuple[tuple[str, str], ...] = (
+    ("keyword", "Keywords"),
+    ("skills", "Skills"),
+    ("experience", "Experience"),
+    ("role", "Role fit"),
+    ("education", "Education"),
+)
+
+
+def analysis_input_hash(*parts: str) -> str:
+    """Hash normalized analysis inputs so stored results can detect drift."""
+    blob = "\n".join(normalize_text(part) for part in parts if part)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
 def _fallback_recommendations(missing_keywords: list[str]) -> list[str]:
@@ -636,10 +683,9 @@ def _fallback_recommendations(missing_keywords: list[str]) -> list[str]:
     ]
 
 
-async def analyze_resume_for_job(
+def analyze_resume_for_job(
     resume: Resume,
     job: Job,
-    _provider: AIProvider,
     *,
     resume_text: str | None = None,
     parsed_resume: dict | None = None,
@@ -670,6 +716,7 @@ async def analyze_resume_for_job(
         role_score=scores.role_score,
         education_score=scores.education_score,
         formatting_score=scores.formatting_score,
+        score_breakdown=scores.category_breakdown(),
         matched_keywords=scores.matched_keywords,
         missing_keywords=scores.missing_keywords,
         recommendations=recommendations,
@@ -677,6 +724,6 @@ async def analyze_resume_for_job(
     )
 
 
-def provider_metadata(_provider: AIProvider) -> tuple[str, str]:
+def provider_metadata() -> tuple[str, str]:
     """Describe the deterministic engine persisted with new analyses."""
-    return "deterministic", "grounded-v2"
+    return "deterministic", ANALYSIS_VERSION

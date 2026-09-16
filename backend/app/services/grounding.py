@@ -3,6 +3,8 @@
 import re
 from typing import Any
 
+from app.services.text_matching import contains_supported_term
+
 
 def normalized_phrase(value: str) -> str:
     return " ".join(re.findall(r"[\w+#.-]+", value.casefold()))
@@ -11,8 +13,7 @@ def normalized_phrase(value: str) -> str:
 def is_source_supported(value: object, source_text: str) -> bool:
     if not isinstance(value, str):
         return False
-    candidate = normalized_phrase(value)
-    return bool(candidate) and candidate in normalized_phrase(source_text)
+    return contains_supported_term(source_text, value)
 
 
 def source_excerpts(source_text: str, *, limit: int = 8) -> list[str]:

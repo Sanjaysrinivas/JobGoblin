@@ -366,17 +366,24 @@ def delete_resume_version(
             "last_resume_version",
         )
 
+    replacement = None
     if version.is_current:
         replacement = session.exec(
             select(ResumeVersion)
             .where(ResumeVersion.resume_id == resume.id, ResumeVersion.id != version.id)
             .order_by(ResumeVersion.updated_at.desc())
         ).first()
-        if replacement is not None:
-            replacement.is_current = True
-            session.add(replacement)
 
+    # Flush the DELETE of the current row before flagging its replacement so the
+    # partial unique index uq_resume_versions_resume_current sees one current row
+    # at a time. Still one transaction: a failure rolls back both changes.
     session.delete(version)
+    session.flush()
+
+    if replacement is not None:
+        replacement.is_current = True
+        session.add(replacement)
+
     session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

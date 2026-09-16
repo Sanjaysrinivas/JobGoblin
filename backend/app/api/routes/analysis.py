@@ -10,8 +10,9 @@ from app.api.deps import get_current_user
 from app.core.database import get_session
 from app.models import Job, JobAnalysis, Resume, User
 from app.schemas.analysis import JobAnalysisOut, ResumeJobAnalysisCreate
-from app.services.ai_provider import get_ai_provider
 from app.services.job_analysis import (
+    ANALYSIS_VERSION,
+    analysis_input_hash,
     analyze_resume_for_job,
     application_readiness,
     fit_label,
@@ -20,7 +21,7 @@ from app.services.job_analysis import (
     readiness_steps,
     rewrite_suggestions,
 )
-from app.services.resume_context import current_resume_content
+from app.services.resume_context import current_resume_content, current_resume_version
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
 
@@ -72,6 +73,31 @@ def _string_list(value: object) -> list[str]:
     return [str(item) for item in value if str(item).strip()]
 
 
+def _has_snapshot(analysis: JobAnalysis) -> bool:
+    """A grounded result must carry the metadata that reproduces its score."""
+    return (
+        analysis.model_used == ANALYSIS_VERSION and isinstance(analysis.score_breakdown, list)
+    )
+
+
+def _inputs_changed(session: Session, analysis: JobAnalysis) -> bool:
+    """True when the job or resume content drifted from the analyzed inputs."""
+    if not _has_snapshot(analysis) or analysis.job_text_hash is None:
+        return False
+    job = session.get(Job, analysis.job_id)
+    resume = session.get(Resume, analysis.resume_id)
+    if job is None or resume is None:
+        return False
+    current_job_hash = analysis_input_hash(job.title, job.description or "")
+    resume_text, _ = current_resume_content(session, resume)
+    current_resume_hash = analysis_input_hash(resume_text)
+    resume_changed = (
+        analysis.resume_text_hash is not None
+        and current_resume_hash != analysis.resume_text_hash
+    )
+    return current_job_hash != analysis.job_text_hash or resume_changed
+
+
 def analysis_response(session: Session, analysis: JobAnalysis) -> dict:
     job = session.get(Job, analysis.job_id)
     resume = session.get(Resume, analysis.resume_id)
@@ -85,6 +111,9 @@ def analysis_response(session: Session, analysis: JobAnalysis) -> dict:
         job.title if job else "",
         job.description if job else "",
     )
+    # Serialize only what was stored at analysis time; never recompute policy
+    # for a historical result (F2). Legacy rows have no persisted breakdown.
+    score_breakdown = analysis.score_breakdown if _has_snapshot(analysis) else None
     missing = _string_list(analysis.missing_keywords)
     matched = _string_list(analysis.matched_keywords)
     return {
@@ -94,6 +123,9 @@ def analysis_response(session: Session, analysis: JobAnalysis) -> dict:
         "readiness_steps": readiness_steps(analysis.overall_score, checklist),
         "keyword_checklist": checklist,
         "rewrite_suggestions": rewrite_suggestions(checklist, matched, missing),
+        "score_breakdown": score_breakdown,
+        "is_legacy": not _has_snapshot(analysis),
+        "inputs_changed": _inputs_changed(session, analysis),
     }
 
 
@@ -102,12 +134,13 @@ def analysis_response(session: Session, analysis: JobAnalysis) -> dict:
     response_model=JobAnalysisOut,
     status_code=status.HTTP_201_CREATED,
 )
-async def create_resume_job_analysis(
+def create_resume_job_analysis(
     payload: ResumeJobAnalysisCreate,
     current_user: Annotated[User, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_session)],
 ) -> dict:
     resume, job = _get_owned_resume_and_job(session, current_user, payload)
+    version = current_resume_version(session, resume)
     resume_text, parsed_resume = current_resume_content(session, resume)
     if not resume_text.strip() and not parsed_resume:
         raise _error(
@@ -116,15 +149,13 @@ async def create_resume_job_analysis(
             "no_extracted_text",
         )
 
-    provider = get_ai_provider()
-    result = await analyze_resume_for_job(
+    result = analyze_resume_for_job(
         resume,
         job,
-        provider,
         resume_text=resume_text,
         parsed_resume=parsed_resume,
     )
-    provider_name, model_used = provider_metadata(provider)
+    provider_name, model_used = provider_metadata()
 
     analysis = JobAnalysis(
         user_id=current_user.id,
@@ -141,6 +172,10 @@ async def create_resume_job_analysis(
         missing_keywords=result.missing_keywords,
         recommendations=result.recommendations,
         explanation=result.explanation,
+        score_breakdown=result.score_breakdown,
+        job_text_hash=analysis_input_hash(job.title, job.description or ""),
+        resume_version_id=version.id if version else None,
+        resume_text_hash=analysis_input_hash(resume_text),
         provider=provider_name,
         model_used=model_used,
     )

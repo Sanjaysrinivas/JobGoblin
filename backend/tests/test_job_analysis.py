@@ -1,28 +1,10 @@
 from app.models import Job, Resume
-from app.services.ai_provider import MockProvider
 from app.services.job_analysis import (
     analyze_resume_for_job,
     extract_job_keywords,
     keyword_checklist,
     score_resume_for_job,
 )
-
-
-class FailingProvider(MockProvider):
-    async def generate_json(self, prompt: str, schema: dict, *, system: str | None = None) -> dict:
-        raise RuntimeError("provider unavailable")
-
-
-class UngroundedAdviceProvider(MockProvider):
-    async def generate_json(self, prompt: str, schema: dict, *, system: str | None = None) -> dict:
-        return {
-            "explanation": "The resume does not show the role's core requirements.",
-            "recommendations": [
-                "Highlight experience with Java, Spring Boot, and Apache Kafka.",
-                "Consider adding relevant coursework or certifications in sales.",
-                "Prepare to address the lack of direct enterprise sales experience.",
-            ],
-        }
 
 
 def _resume(text: str, parsed_json: dict | None = None) -> Resume:
@@ -47,7 +29,7 @@ def _job(description: str, title: str = "Backend Engineer") -> Job:
     )
 
 
-async def test_analyze_resume_for_job_scores_and_uses_mock_ai():
+def test_analyze_resume_for_job_scores_deterministically():
     resume = _resume(
         "Backend engineer with Python, FastAPI, PostgreSQL, Docker, and REST API "
         "experience. Built reliable services.",
@@ -61,7 +43,7 @@ async def test_analyze_resume_for_job_scores_and_uses_mock_ai():
         "and Kubernetes."
     )
 
-    result = await analyze_resume_for_job(resume, job, MockProvider())
+    result = analyze_resume_for_job(resume, job)
 
     assert 0 <= result.overall_score <= 100
     assert result.keyword_score > 20
@@ -132,18 +114,18 @@ def test_keyword_checklist_groups_ats_terms():
     assert "excel" in by_label["Tools"]["missing"]
 
 
-async def test_analyze_resume_for_job_falls_back_when_ai_provider_fails():
+def test_analyze_resume_for_job_produces_grounded_output_without_a_provider():
     resume = _resume("Python developer with backend API experience.")
     job = _job("Build backend APIs with Python and FastAPI.")
 
-    result = await analyze_resume_for_job(resume, job, FailingProvider())
+    result = analyze_resume_for_job(resume, job)
 
     assert result.explanation.startswith("Estimated match is ")
     assert result.recommendations
     assert 0 <= result.overall_score <= 100
 
 
-async def test_analyze_resume_for_job_filters_ungrounded_ai_advice():
+def test_analyze_resume_for_job_filters_unrelated_role_terms():
     resume = _resume("Data scientist with Python and machine learning experience.")
     job = _job(
         "Lead enterprise sales and account management for Java, Spring Boot, and "
@@ -151,7 +133,7 @@ async def test_analyze_resume_for_job_filters_ungrounded_ai_advice():
         title="Account Executive",
     )
 
-    result = await analyze_resume_for_job(resume, job, UngroundedAdviceProvider())
+    result = analyze_resume_for_job(resume, job)
 
     assert {"java", "spring", "boot", "apache", "kafka"}.issubset(result.missing_keywords)
     assert result.recommendations[0].startswith("Only add these missing job terms")

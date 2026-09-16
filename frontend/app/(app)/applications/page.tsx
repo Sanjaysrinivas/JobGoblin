@@ -30,6 +30,7 @@ import {
 } from "@/lib/applications";
 import { listJobs } from "@/lib/jobs";
 import { listCoverLetters } from "@/lib/cover-letters";
+import { letterForResume, lettersForJob, resumeForLetter } from "@/lib/materials";
 import { listResumes, type ResumeDetail } from "@/lib/resumes";
 import type {
   ApplicationStatus,
@@ -252,9 +253,7 @@ export default function ApplicationsPage() {
   const selectedNewJobId = availableJobs.some((job) => job.id === newJobId)
     ? newJobId
     : availableJobs[0]?.id ?? "";
-  const availableNewLetters = coverLetters.filter(
-    (letter) => letter.job_id === selectedNewJobId
-  );
+  const availableNewLetters = lettersForJob(coverLetters, selectedNewJobId);
   const selectedNewLetterId = availableNewLetters.some(
     (letter) => letter.id === newCoverLetterId
   )
@@ -589,12 +588,9 @@ export default function ApplicationsPage() {
                   onChange={(event) => {
                     const resumeId = event.target.value;
                     setNewResumeId(resumeId);
-                    const letter = coverLetters.find(
-                      (item) => item.id === selectedNewLetterId
+                    setNewCoverLetterId(
+                      letterForResume(coverLetters, selectedNewLetterId, resumeId)
                     );
-                    if (letter && letter.resume_id !== resumeId) {
-                      setNewCoverLetterId("");
-                    }
                   }}
                   disabled={savingId === "new"}
                 >
@@ -615,8 +611,7 @@ export default function ApplicationsPage() {
                   onChange={(event) => {
                     const id = event.target.value;
                     setNewCoverLetterId(id);
-                    const letter = availableNewLetters.find((item) => item.id === id);
-                    if (letter) setNewResumeId(letter.resume_id);
+                    setNewResumeId(resumeForLetter(availableNewLetters, id, newResumeId));
                   }}
                   disabled={savingId === "new"}
                 >
@@ -815,15 +810,13 @@ export default function ApplicationsPage() {
                           value={draft.resumeId}
                           onChange={(event) => {
                             const resumeId = event.target.value;
-                            const letter = coverLetters.find(
-                              (item) => item.id === draft.coverLetterId
-                            );
                             updateDraft(app.id, {
                               resumeId,
-                              coverLetterId:
-                                letter && letter.resume_id !== resumeId
-                                  ? ""
-                                  : draft.coverLetterId,
+                              coverLetterId: letterForResume(
+                                coverLetters,
+                                draft.coverLetterId,
+                                resumeId
+                              ),
                             });
                           }}
                           disabled={saving}
@@ -844,22 +837,19 @@ export default function ApplicationsPage() {
                           value={draft.coverLetterId}
                           onChange={(event) => {
                             const id = event.target.value;
-                            const letter = coverLetters.find((item) => item.id === id);
                             updateDraft(app.id, {
                               coverLetterId: id,
-                              resumeId: letter?.resume_id ?? draft.resumeId,
+                              resumeId: resumeForLetter(coverLetters, id, draft.resumeId),
                             });
                           }}
                           disabled={saving}
                         >
                           <option value="">No linked cover letter</option>
-                          {coverLetters
-                            .filter((letter) => letter.job_id === app.job_id)
-                            .map((letter) => (
-                              <option key={letter.id} value={letter.id}>
-                                {label(letter.tone)} · {label(letter.status)}
-                              </option>
-                            ))}
+                          {lettersForJob(coverLetters, app.job_id).map((letter) => (
+                            <option key={letter.id} value={letter.id}>
+                              {label(letter.tone)} · {label(letter.status)}
+                            </option>
+                          ))}
                         </select>
                       </div>
                     </div>
