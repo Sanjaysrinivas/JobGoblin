@@ -14,12 +14,8 @@ from app.services.job_analysis import (
     ANALYSIS_VERSION,
     analysis_input_hash,
     analyze_resume_for_job,
-    application_readiness,
-    fit_label,
-    keyword_checklist,
     provider_metadata,
-    readiness_steps,
-    rewrite_suggestions,
+    resume_evidence_hash,
 )
 from app.services.resume_context import current_resume_content, current_resume_version
 
@@ -67,64 +63,49 @@ def _get_owned_analysis(session: Session, user: User, analysis_id: uuid.UUID) ->
     return analysis
 
 
-def _string_list(value: object) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    return [str(item) for item in value if str(item).strip()]
-
-
 def _has_snapshot(analysis: JobAnalysis) -> bool:
     """A grounded result must carry the metadata that reproduces its score."""
     return (
-        analysis.model_used == ANALYSIS_VERSION and isinstance(analysis.score_breakdown, list)
+        analysis.model_used == ANALYSIS_VERSION
+        and isinstance(analysis.score_breakdown, list)
+        and isinstance(analysis.guidance_snapshot, dict)
+        and analysis.job_text_hash is not None
+        and analysis.resume_evidence_hash is not None
     )
 
 
 def _inputs_changed(session: Session, analysis: JobAnalysis) -> bool:
     """True when the job or resume content drifted from the analyzed inputs."""
-    if not _has_snapshot(analysis) or analysis.job_text_hash is None:
+    if not _has_snapshot(analysis):
         return False
     job = session.get(Job, analysis.job_id)
     resume = session.get(Resume, analysis.resume_id)
     if job is None or resume is None:
         return False
     current_job_hash = analysis_input_hash(job.title, job.description or "")
-    resume_text, _ = current_resume_content(session, resume)
-    current_resume_hash = analysis_input_hash(resume_text)
-    resume_changed = (
-        analysis.resume_text_hash is not None
-        and current_resume_hash != analysis.resume_text_hash
+    resume_text, parsed_resume = current_resume_content(session, resume)
+    current_resume_hash = resume_evidence_hash(resume_text, parsed_resume)
+    version = current_resume_version(session, resume)
+    version_changed = (
+        analysis.resume_version_id is not None
+        and (version is None or version.id != analysis.resume_version_id)
     )
+    resume_changed = current_resume_hash != analysis.resume_evidence_hash or version_changed
     return current_job_hash != analysis.job_text_hash or resume_changed
 
 
 def analysis_response(session: Session, analysis: JobAnalysis) -> dict:
-    job = session.get(Job, analysis.job_id)
-    resume = session.get(Resume, analysis.resume_id)
-    resume_text = ""
-    parsed_resume = None
-    if resume is not None:
-        resume_text, parsed_resume = current_resume_content(session, resume)
-    checklist = keyword_checklist(
-        resume_text,
-        parsed_resume,
-        job.title if job else "",
-        job.description if job else "",
-    )
-    # Serialize only what was stored at analysis time; never recompute policy
-    # for a historical result (F2). Legacy rows have no persisted breakdown.
-    score_breakdown = analysis.score_breakdown if _has_snapshot(analysis) else None
-    missing = _string_list(analysis.missing_keywords)
-    matched = _string_list(analysis.matched_keywords)
+    has_snapshot = _has_snapshot(analysis)
+    guidance = analysis.guidance_snapshot if has_snapshot else {}
     return {
         **JobAnalysisOut.model_validate(analysis).model_dump(),
-        "fit_label": fit_label(analysis.overall_score),
-        "application_readiness": application_readiness(analysis.overall_score, missing),
-        "readiness_steps": readiness_steps(analysis.overall_score, checklist),
-        "keyword_checklist": checklist,
-        "rewrite_suggestions": rewrite_suggestions(checklist, matched, missing),
-        "score_breakdown": score_breakdown,
-        "is_legacy": not _has_snapshot(analysis),
+        "fit_label": guidance.get("fit_label"),
+        "application_readiness": guidance.get("application_readiness"),
+        "readiness_steps": guidance.get("readiness_steps"),
+        "keyword_checklist": guidance.get("keyword_checklist"),
+        "rewrite_suggestions": guidance.get("rewrite_suggestions"),
+        "score_breakdown": analysis.score_breakdown if has_snapshot else None,
+        "is_legacy": not has_snapshot,
         "inputs_changed": _inputs_changed(session, analysis),
     }
 
@@ -173,9 +154,11 @@ def create_resume_job_analysis(
         recommendations=result.recommendations,
         explanation=result.explanation,
         score_breakdown=result.score_breakdown,
+        guidance_snapshot=result.guidance_snapshot,
         job_text_hash=analysis_input_hash(job.title, job.description or ""),
         resume_version_id=version.id if version else None,
         resume_text_hash=analysis_input_hash(resume_text),
+        resume_evidence_hash=resume_evidence_hash(resume_text, parsed_resume),
         provider=provider_name,
         model_used=model_used,
     )

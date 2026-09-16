@@ -6,6 +6,7 @@ category contributions and grounded guidance.
 """
 
 import hashlib
+import json
 import re
 from collections import Counter
 from dataclasses import dataclass
@@ -240,6 +241,7 @@ class JobAnalysisResult:
     education_score: int
     formatting_score: int
     score_breakdown: list[dict[str, object]]
+    guidance_snapshot: dict[str, object]
     matched_keywords: list[str]
     missing_keywords: list[str]
     recommendations: list[str]
@@ -673,6 +675,18 @@ def analysis_input_hash(*parts: str) -> str:
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
+def resume_evidence_hash(resume_text: str, parsed_resume: dict | None) -> str:
+    """Hash the exact text and structured evidence consumed by scoring."""
+    blob = json.dumps(
+        {"text": normalize_text(resume_text), "parsed": parsed_resume},
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
 def _fallback_recommendations(missing_keywords: list[str]) -> list[str]:
     if not missing_keywords:
         return ["Keep the resume focused on the strongest matching experience."]
@@ -707,6 +721,18 @@ def analyze_resume_for_job(
         f"that apply to this posting. Matched: {matched}. Missing: {missing}. "
         "Categories not requested by the employer are not counted against the score."
     )
+    checklist = keyword_checklist(text, parsed, job.title, job.description)
+    guidance_snapshot: dict[str, object] = {
+        "fit_label": fit_label(scores.overall_score),
+        "application_readiness": application_readiness(
+            scores.overall_score, scores.missing_keywords
+        ),
+        "readiness_steps": readiness_steps(scores.overall_score, checklist),
+        "keyword_checklist": checklist,
+        "rewrite_suggestions": rewrite_suggestions(
+            checklist, scores.matched_keywords, scores.missing_keywords
+        ),
+    }
 
     return JobAnalysisResult(
         overall_score=scores.overall_score,
@@ -717,6 +743,7 @@ def analyze_resume_for_job(
         education_score=scores.education_score,
         formatting_score=scores.formatting_score,
         score_breakdown=scores.category_breakdown(),
+        guidance_snapshot=guidance_snapshot,
         matched_keywords=scores.matched_keywords,
         missing_keywords=scores.missing_keywords,
         recommendations=recommendations,

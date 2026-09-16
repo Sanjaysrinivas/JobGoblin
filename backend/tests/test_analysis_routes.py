@@ -118,6 +118,14 @@ def test_create_resume_job_analysis_persists_result(client, session, user):
     assert stored is not None
     assert stored.user_id == user.id
     assert stored.provider == "deterministic"
+    assert stored.guidance_snapshot == {
+        "fit_label": body["fit_label"],
+        "application_readiness": body["application_readiness"],
+        "readiness_steps": body["readiness_steps"],
+        "keyword_checklist": body["keyword_checklist"],
+        "rewrite_suggestions": body["rewrite_suggestions"],
+    }
+    assert stored.resume_evidence_hash
 
 
 def test_cross_user_resume_or_job_returns_404(client, session, user, other_user):
@@ -226,8 +234,8 @@ def test_get_analysis_returns_owned_analysis(client, session, user):
     body = resp.json()
     assert body["id"] == str(analysis.id)
     assert body["missing_keywords"] == ["kubernetes"]
-    assert body["fit_label"] == "Stretch match"
-    assert body["application_readiness"] == "Needs tailoring"
+    assert body["fit_label"] is None
+    assert body["application_readiness"] is None
 
 
 def test_get_analysis_cross_user_returns_404(client, session, other_user):
@@ -368,16 +376,29 @@ def test_stored_breakdown_is_immutable_and_reproducible(client, session, user):
         json={"resume_id": str(resume.id), "job_id": str(job.id)},
     ).json()
     original_breakdown = created["score_breakdown"]
+    original_guidance = {
+        key: created[key]
+        for key in (
+            "fit_label",
+            "application_readiness",
+            "readiness_steps",
+            "keyword_checklist",
+            "rewrite_suggestions",
+        )
+    }
     assert original_breakdown
     assert created["inputs_changed"] is False
 
     # Editing the job must not rewrite the stored explanation.
     job.description = "Completely different role requiring Rust and embedded C."
+    resume.parsed_json = {"skills": ["Rust"], "experience": []}
     session.add(job)
+    session.add(resume)
     session.commit()
 
     refetched = client.get(f"/api/analysis/{created['id']}").json()
     assert refetched["score_breakdown"] == original_breakdown
+    assert {key: refetched[key] for key in original_guidance} == original_guidance
     assert refetched["inputs_changed"] is True
 
     # A non-legacy overall score is reproducible from its stored breakdown.
@@ -385,6 +406,59 @@ def test_stored_breakdown_is_immutable_and_reproducible(client, session, user):
     maximum = sum(r["maximum"] for r in refetched["score_breakdown"] if r["applicable"])
     if maximum > 0:
         assert abs(refetched["overall_score"] - round(100 * earned / maximum)) <= 1
+
+
+def test_analysis_detects_parsed_resume_evidence_changes(client, session, user):
+    resume = _create_resume(session, user)
+    job = _create_job(session, user)
+    created = client.post(
+        "/api/analysis/resume-job",
+        json={"resume_id": str(resume.id), "job_id": str(job.id)},
+    ).json()
+
+    resume.parsed_json = {"skills": ["Rust"], "experience": []}
+    session.add(resume)
+    session.commit()
+
+    refetched = client.get(f"/api/analysis/{created['id']}").json()
+    assert refetched["inputs_changed"] is True
+
+
+def test_analysis_detects_resume_version_changes_with_identical_evidence(
+    client, session, user
+):
+    resume = _create_resume(session, user)
+    first = ResumeVersion(
+        resume_id=resume.id,
+        title="First",
+        extracted_text=resume.extracted_text,
+        parsed_json=resume.parsed_json,
+        is_current=True,
+    )
+    session.add(first)
+    session.commit()
+    job = _create_job(session, user)
+    created = client.post(
+        "/api/analysis/resume-job",
+        json={"resume_id": str(resume.id), "job_id": str(job.id)},
+    ).json()
+
+    first.is_current = False
+    session.add(first)
+    session.flush()
+    session.add(
+        ResumeVersion(
+            resume_id=resume.id,
+            title="Second",
+            extracted_text=resume.extracted_text,
+            parsed_json=resume.parsed_json,
+            is_current=True,
+        )
+    )
+    session.commit()
+
+    refetched = client.get(f"/api/analysis/{created['id']}").json()
+    assert refetched["inputs_changed"] is True
 
 
 def test_legacy_row_without_snapshot_has_no_fabricated_breakdown(client, session, user):

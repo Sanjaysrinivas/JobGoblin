@@ -261,11 +261,13 @@ class JobAnalysis(_UUIDMixin, table=True):
     recommendations: list | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
     explanation: str | None = None
     score_breakdown: list | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
+    guidance_snapshot: dict | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
     job_text_hash: str | None = None
     resume_version_id: uuid.UUID | None = Field(
         default=None, foreign_key="resume_versions.id", ondelete="SET NULL"
     )
     resume_text_hash: str | None = None
+    resume_evidence_hash: str | None = None
     provider: str
     model_used: str
     created_at: datetime = Field(
