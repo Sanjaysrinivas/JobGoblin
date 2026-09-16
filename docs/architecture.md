@@ -76,12 +76,18 @@ This is implemented and pending integrated validation. The resume upload, storag
 
 1. User uploads a resume; backend stores the file and extracts plain text.
 2. User pastes a job description and selects a resume.
-3. Deterministic pass extracts and normalizes keywords from both texts, then
-   computes weighted category scores.
-4. AI pass explains gaps, distinguishes keywords the user likely already
-   qualifies for from qualifications they lack, and suggests truthful changes.
+3. Deterministic pass extracts and normalizes keywords from both texts through
+   the shared boundary-aware matcher, then computes weighted category scores
+   (keyword 35, skills 30, experience 20, role 10, education 5; formatting is
+   excluded from fit). The overall score is normalized across applicable
+   categories, and each category reports `earned`, `maximum`, and `applicable`.
+4. Deterministic grounded guidance explains gaps and suggests only truthful
+   changes: recommendations never ask the user to present evidence known to be
+   missing.
 5. Persist numeric score, matched/missing keywords, explanation, and
-   recommendations.
+   recommendations, stamped with the analysis version (`grounded-v2`).
+   Pre-grounding analyses are flagged `is_legacy` and offered an explicit
+   re-run instead of being overwritten.
 6. User saves the job to the tracker, creates local review-only cover letters, tailored resume-version drafts, outreach email exports, and interview prep as needed, then advances the application through the pipeline with optional follow-up reminders.
 
 ## 6. Branching Workflow

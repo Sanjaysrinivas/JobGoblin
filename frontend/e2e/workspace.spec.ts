@@ -1,5 +1,9 @@
-import { expect, test, type APIResponse, type Page } from "@playwright/test";
+import type { APIResponse, Page } from "@playwright/test";
+
+import { expect, test } from "./helpers/console-gate";
 import { loginAsAdmin } from "./helpers/auth";
+import { type Cleanup, withCleanup } from "./helpers/cleanup";
+import { RESUME_PDF } from "./helpers/fixtures";
 
 async function expectOk<T>(response: APIResponse): Promise<T> {
   expect(response.ok(), await response.text()).toBeTruthy();
@@ -10,10 +14,7 @@ async function post<T>(page: Page, url: string, data: unknown): Promise<T> {
   return expectOk<T>(await page.request.post(url, { data }));
 }
 
-const RESUME_PDF = Buffer.from(
-  "JVBERi0xLjMKJenr8b8KMSAwIG9iago8PAovQ291bnQgMQovS2lkcyBbMyAwIFJdCi9NZWRpYUJveCBbMCAwIDU5NS4yOCA4NDEuODldCi9UeXBlIC9QYWdlcwo+PgplbmRvYmoKMiAwIG9iago8PAovT3BlbkFjdGlvbiBbMyAwIFIgL0ZpdEggbnVsbF0KL1BhZ2VMYXlvdXQgL09uZUNvbHVtbgovUGFnZXMgMSAwIFIKL1R5cGUgL0NhdGFsb2cKPj4KZW5kb2JqCjMgMCBvYmoKPDwKL0NvbnRlbnRzIDQgMCBSCi9QYXJlbnQgMSAwIFIKL1Jlc291cmNlcyA2IDAgUgovVHlwZSAvUGFnZQo+PgplbmRvYmoKNCAwIG9iago8PAovRmlsdGVyIC9GbGF0ZURlY29kZQovTGVuZ3RoIDIzNQo+PgpzdHJlYW0KeJxtjstOwzAURPf9ilmCFJk8KG67oyKVKCwC5Aec+DZxm/hGtkPJ31NaCQmV3Wg0OnNSbGexmEscZ+sSd5sESSriGOUOeflTZYlIFpDLuZASpcZNnuZ4Jz/2dIty/3f1IMV9el4VnQo7dj1y2xhL5HA0oUUxhZZthI3y4bF4jlCwD42jj7fXCE9cH8hFeBkrcpYCeXF9kS1FvLiIfA3kDNmaVliPpgs4EX0ErXxbsXL6lJXV0DR0PPVkAwYzUHfS+Q+cxEJmF3fHe6qDX2HLFbTxNX+Sm+CUPRjbnKFqDNyrYNj+or4BsGhiIQplbmRzdHJlYW0KZW5kb2JqCjUgMCBvYmoKPDwKL0Jhc2VGb250IC9IZWx2ZXRpY2EKL0VuY29kaW5nIC9XaW5BbnNpRW5jb2RpbmcKL1N1YnR5cGUgL1R5cGUxCi9UeXBlIC9Gb250Cj4+CmVuZG9iago2IDAgb2JqCjw8Ci9Gb250IDw8L0YxIDUgMCBSPj4KL1Byb2NTZXQgWy9QREYgL1RleHQgL0ltYWdlQiAvSW1hZ2VDIC9JbWFnZUldCj4+CmVuZG9iago3IDAgb2JqCjw8Ci9DcmVhdGlvbkRhdGUgKEQ6MjAyNjA3MDYxMjA3MTJaKQo+PgplbmRvYmoKeHJlZgowIDgKMDAwMDAwMDAwMCA2NTUzNSBmIAowMDAwMDAwMDE1IDAwMDAwIG4gCjAwMDAwMDAxMDIgMDAwMDAgbiAKMDAwMDAwMDIwNSAwMDAwMCBuIAowMDAwMDAwMjg1IDAwMDAwIG4gCjAwMDAwMDA1OTIgMDAwMDAgbiAKMDAwMDAwMDY4OSAwMDAwMCBuIAowMDAwMDAwNzc2IDAwMDAwIG4gCnRyYWlsZXIKPDwKL1NpemUgOAovUm9vdCAyIDAgUgovSW5mbyA3IDAgUgovSUQgWzw1MUVENTA2NDFBRkNEMTQ2N0NGNzQzQzU0MTM5NTdCOT48NTFFRDUwNjQxQUZDRDE0NjdDRjc0M0M1NDEzOTU3Qjk+XQo+PgpzdGFydHhyZWYKODMxCiUlRU9GCg==",
-  "base64",
-);
+
 
 test.describe("workspace workflows", () => {
   test("covers the main authenticated job-search loop", async ({ page }) => {
@@ -21,92 +22,115 @@ test.describe("workspace workflows", () => {
     await loginAsAdmin(page);
 
     const suffix = Date.now().toString(36);
-    const resume = await expectOk<{ id: string; title: string; current_version_id: string | null }>(
-      await page.request.post("/api/resumes/upload", {
-        multipart: {
-          file: {
-            name: `e2e-resume-${suffix}.pdf`,
-            mimeType: "application/pdf",
-            buffer: RESUME_PDF,
+    await withCleanup(page, async (cleanup: Cleanup) => {
+      const resume = await expectOk<{ id: string; title: string; current_version_id: string | null }>(
+        await page.request.post("/api/resumes/upload", {
+          multipart: {
+            file: {
+              name: `e2e-resume-${suffix}.pdf`,
+              mimeType: "application/pdf",
+              buffer: RESUME_PDF,
+            },
           },
+        })
+      );
+      cleanup.add(`/api/resumes/${resume.id}`);
+      await expectOk(await page.request.patch(`/api/resumes/${resume.id}`, {
+        data: { is_default: true, title: `E2E Resume ${suffix}` },
+      }));
+
+      // The profile belongs to the shared admin account: restore it afterwards.
+      // On a fresh database the admin has no profile row yet (404) — then
+      // there is nothing to restore.
+      const profileResp = await page.request.get("/api/profile");
+      const profileBefore = profileResp.ok()
+        ? ((await profileResp.json()) as Record<string, unknown>)
+        : null;
+      cleanup.add(async () => {
+        if (!profileBefore) return;
+        const fields = [
+          "full_name", "headline", "location", "summary",
+          "skills", "experience", "education", "projects", "certifications",
+        ];
+        const restore = Object.fromEntries(
+          fields.filter((f) => profileBefore[f] !== undefined).map((f) => [f, profileBefore[f]])
+        );
+        await page.request.put("/api/profile", { data: restore }).catch(() => null);
+      });
+      await expectOk(await page.request.put("/api/profile", {
+        data: {
+          full_name: `E2E User ${suffix}`,
+          headline: "Platform Engineer",
+          location: "Remote",
+          summary: "Builds FastAPI services and job discovery workflows.",
+          skills: ["Python", "FastAPI", "PostgreSQL", "Kubernetes"],
+          experience: [{ company: "E2E Systems", role: "Platform Engineer", start: "2022", end: null, highlights: ["Built API workflows"] }],
+          education: [],
+          projects: ["Job discovery ranking"],
+          certifications: [],
         },
-      })
-    );
-    await expectOk(await page.request.patch(`/api/resumes/${resume.id}`, {
-      data: { is_default: true, title: `E2E Resume ${suffix}` },
-    }));
+      }));
 
-    await expectOk(await page.request.put("/api/profile", {
-      data: {
-        full_name: `E2E User ${suffix}`,
-        headline: "Platform Engineer",
+      const job = await post<{ id: string; title: string }>(page, "/api/jobs", {
+        title: `Platform Engineer ${suffix}`,
+        company_name: `E2E Co ${suffix}`,
         location: "Remote",
-        summary: "Builds FastAPI services and job discovery workflows.",
-        skills: ["Python", "FastAPI", "PostgreSQL", "Kubernetes"],
-        experience: [{ company: "E2E Systems", role: "Platform Engineer", start: "2022", end: null, highlights: ["Built API workflows"] }],
-        education: [],
-        projects: ["Job discovery ranking"],
-        certifications: [],
-      },
-    }));
+        work_mode: "remote",
+        source: "company_site",
+        source_url: `https://example.com/e2e-role-${suffix}`,
+        description: "Build Python, FastAPI, PostgreSQL, Docker, and Kubernetes services.",
+        priority: "high",
+      });
+      cleanup.add(`/api/jobs/${job.id}`);
+      const contact = await post<{ id: string }>(page, "/api/contacts", {
+        job_id: job.id,
+        name: `Taylor Recruiter ${suffix}`,
+        company: `E2E Co ${suffix}`,
+        role: "Recruiter",
+        email: `taylor-${suffix}@example.com`,
+        notes: "Met through E2E smoke test.",
+        contacted: true,
+      });
+      cleanup.add(`/api/contacts/${contact.id}`);
+      const analysis = await post<{ id: string; overall_score: number }>(page, "/api/analysis/resume-job", {
+        resume_id: resume.id,
+        job_id: job.id,
+      });
+      const coverLetter = await post<{ id: string }>(page, "/api/cover-letters", {
+        job_id: job.id,
+        resume_id: resume.id,
+        tone: "professional",
+      });
+      await post(page, `/api/jobs/${job.id}/resume-drafts`, {
+        resume_id: resume.id,
+        source_version_id: resume.current_version_id,
+      });
+      const application = await post<{ id: string }>(page, "/api/applications", {
+        job_id: job.id,
+        resume_id: resume.id,
+        cover_letter_id: coverLetter.id,
+        status: "applied",
+        follow_up_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        notes: `Follow up from E2E ${suffix}`,
+      });
+      cleanup.add(`/api/applications/${application.id}`);
+      await post(page, "/api/outreach", {
+        job_id: job.id,
+        contact_id: contact.id,
+        channel: "email",
+        message_type: "status_check",
+        content: `Checking in on ${job.title}`,
+        status: "draft",
+      });
+      await post(page, "/api/interview-prep", {
+        job_id: job.id,
+        application_id: application.id,
+        resume_id: resume.id,
+        resume_version_id: resume.current_version_id,
+        notes: `Prep notes ${suffix}`,
+      });
 
-    const job = await post<{ id: string; title: string }>(page, "/api/jobs", {
-      title: `Platform Engineer ${suffix}`,
-      company_name: `E2E Co ${suffix}`,
-      location: "Remote",
-      work_mode: "remote",
-      source: "company_site",
-      source_url: "https://example.com/e2e-role",
-      description: "Build Python, FastAPI, PostgreSQL, Docker, and Kubernetes services.",
-      priority: "high",
-    });
-    const contact = await post<{ id: string }>(page, "/api/contacts", {
-      job_id: job.id,
-      name: `Taylor Recruiter ${suffix}`,
-      company: `E2E Co ${suffix}`,
-      role: "Recruiter",
-      email: `taylor-${suffix}@example.com`,
-      notes: "Met through E2E smoke test.",
-      contacted: true,
-    });
-    const analysis = await post<{ id: string; overall_score: number }>(page, "/api/analysis/resume-job", {
-      resume_id: resume.id,
-      job_id: job.id,
-    });
-    const coverLetter = await post<{ id: string }>(page, "/api/cover-letters", {
-      job_id: job.id,
-      resume_id: resume.id,
-      tone: "professional",
-    });
-    await post(page, `/api/jobs/${job.id}/resume-drafts`, {
-      resume_id: resume.id,
-      source_version_id: resume.current_version_id,
-    });
-    const application = await post<{ id: string }>(page, "/api/applications", {
-      job_id: job.id,
-      resume_id: resume.id,
-      cover_letter_id: coverLetter.id,
-      status: "applied",
-      follow_up_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-      notes: `Follow up from E2E ${suffix}`,
-    });
-    await post(page, "/api/outreach", {
-      job_id: job.id,
-      contact_id: contact.id,
-      channel: "email",
-      message_type: "status_check",
-      content: `Checking in on ${job.title}`,
-      status: "draft",
-    });
-    await post(page, "/api/interview-prep", {
-      job_id: job.id,
-      application_id: application.id,
-      resume_id: resume.id,
-      resume_version_id: resume.current_version_id,
-      notes: `Prep notes ${suffix}`,
-    });
-
-    await page.goto("/resumes");
+      await page.goto("/resumes");
     await expect(page.getByRole("heading", { name: "Resumes" })).toBeVisible();
     await expect(page.getByText(`E2E Resume ${suffix}`)).toBeVisible();
 
@@ -166,5 +190,6 @@ test.describe("workspace workflows", () => {
     await page.goto("/settings");
     await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
     await expect(page.getByText("AI provider", { exact: true })).toBeVisible();
+    });
   });
 });

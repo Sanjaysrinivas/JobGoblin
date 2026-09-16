@@ -36,14 +36,13 @@ interface JobAnalysisPanelProps {
   jobId: string;
 }
 
-const scoreRows: Array<{ key: keyof JobAnalysis; label: string; max: number }> = [
-  { key: "keyword_score", label: "Keywords", max: 30 },
-  { key: "skills_score", label: "Skills", max: 25 },
-  { key: "experience_score", label: "Experience", max: 20 },
-  { key: "role_score", label: "Role fit", max: 10 },
-  { key: "education_score", label: "Education", max: 5 },
-  { key: "formatting_score", label: "Formatting", max: 10 },
-];
+type BreakdownRow = {
+  key: string;
+  label: string;
+  earned: number;
+  maximum: number;
+  applicable: boolean;
+};
 
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat(undefined, {
@@ -160,17 +159,19 @@ export function JobAnalysisPanel({ jobId }: JobAnalysisPanelProps) {
     };
   }, [jobId]);
 
-  async function runAnalysis() {
-    if (!selectedResumeId) return;
+  async function runAnalysis(resumeId: string) {
+    if (!resumeId) return;
     setRunning(true);
     setError(null);
     try {
       const created = await createResumeJobAnalysis({
         job_id: jobId,
-        resume_id: selectedResumeId,
+        resume_id: resumeId,
       });
       setAnalyses((prev) => [created, ...prev.filter((item) => item.id !== created.id)]);
       setSelectedAnalysisId(created.id);
+      // Keep the visible resume in step with what was just analyzed.
+      setSelectedResumeId(resumeId);
       setHistoryNotice(null);
     } catch (err) {
       setError(
@@ -185,6 +186,11 @@ export function JobAnalysisPanel({ jobId }: JobAnalysisPanelProps) {
 
   const selectedAnalysis =
     analyses.find((analysis) => analysis.id === selectedAnalysisId) ?? analyses[0];
+  // A legacy rerun targets the analysis's own resume; it is only possible
+  // while that resume still exists.
+  const legacyResumeAvailable = selectedAnalysis
+    ? resumes.some((resume) => resume.id === selectedAnalysis.resume_id)
+    : false;
 
   return (
     <Card>
@@ -235,6 +241,7 @@ export function JobAnalysisPanel({ jobId }: JobAnalysisPanelProps) {
                 analyses.map((analysis) => (
                   <option key={analysis.id} value={analysis.id}>
                     {Math.round(analysis.overall_score)}% - {resumeLabel(analysis.resume_id, resumes)} - {formatDate(analysis.created_at)}
+                    {analysis.is_legacy ? " (legacy)" : ""}
                   </option>
                 ))
               )}
@@ -243,7 +250,7 @@ export function JobAnalysisPanel({ jobId }: JobAnalysisPanelProps) {
 
           <Button
             type="button"
-            onClick={runAnalysis}
+            onClick={() => void runAnalysis(selectedResumeId)}
             disabled={loading || running || !selectedResumeId}
             className="lg:mb-0"
           >
@@ -302,6 +309,32 @@ export function JobAnalysisPanel({ jobId }: JobAnalysisPanelProps) {
         {selectedAnalysis ? (
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
             <div className="space-y-4 lg:col-span-2">
+              {selectedAnalysis.is_legacy && (
+                <div className="border-warning/40 bg-warning/10 space-y-2 rounded-lg border p-3">
+                  <p className="text-warning-foreground text-sm">
+                    Created under the previous scoring model. Scores and
+                    recommendations may not reflect grounded guidance.
+                  </p>
+                  {legacyResumeAvailable ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void runAnalysis(selectedAnalysis.resume_id)}
+                      disabled={running}
+                    >
+                      <Play className="size-4" />
+                      Run updated analysis (
+                      {resumeLabel(selectedAnalysis.resume_id, resumes)})
+                    </Button>
+                  ) : (
+                    <p className="text-muted-foreground text-sm">
+                      The resume used for this analysis has been deleted, so it
+                      cannot be rerun.
+                    </p>
+                  )}
+                </div>
+              )}
               <div className="rounded-lg border p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -331,6 +364,11 @@ export function JobAnalysisPanel({ jobId }: JobAnalysisPanelProps) {
                 <p className="text-muted-foreground mt-3 text-xs">
                   {selectedAnalysis.provider} / {selectedAnalysis.model_used} - {formatDate(selectedAnalysis.created_at)}
                 </p>
+                {selectedAnalysis.inputs_changed && (
+                  <p className="text-warning-foreground mt-2 text-xs">
+                    The job or resume content has changed since this analysis was run.
+                  </p>
+                )}
               </div>
 
               {selectedAnalysis.readiness_steps && selectedAnalysis.readiness_steps.length > 0 && (
@@ -352,27 +390,44 @@ export function JobAnalysisPanel({ jobId }: JobAnalysisPanelProps) {
                   <BarChart3 className="text-primary size-4" />
                   Score breakdown
                 </div>
-                <div className="space-y-3">
-                  {scoreRows.map((row) => {
-                    const value = Number(selectedAnalysis[row.key] ?? 0);
-                    return (
+                <p className="text-muted-foreground text-xs">
+                  The overall percentage is normalized across the requirements this
+                  posting actually asks for. Categories marked N/A are not counted.
+                </p>
+                {selectedAnalysis.score_breakdown ? (
+                  <div className="space-y-3">
+                    {selectedAnalysis.score_breakdown.map((row) => (
                       <div key={row.key} className="space-y-1.5">
                         <div className="flex items-center justify-between text-xs">
                           <span className="text-muted-foreground">{row.label}</span>
-                          <span className="font-mono font-medium tabular-nums">
-                            {Math.round(value)}/{row.max}
-                          </span>
+                          {row.applicable ? (
+                            <span className="font-mono font-medium tabular-nums">
+                              {Math.round(row.earned)}/{row.maximum}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground font-mono font-medium">
+                              N/A
+                            </span>
+                          )}
                         </div>
-                        <div className="bg-secondary h-2 overflow-hidden rounded-full">
-                          <div
-                            className={`${scoreTone(value)} h-full rounded-full`}
-                            style={{ width: `${Math.max(0, Math.min((value / row.max) * 100, 100))}%` }}
-                          />
-                        </div>
+                        {row.applicable && (
+                          <div className="bg-secondary h-2 overflow-hidden rounded-full">
+                            <div
+                              className={`${scoreTone((row.earned / row.maximum) * 100)} h-full rounded-full`}
+                              style={{ width: `${Math.max(0, Math.min((row.earned / row.maximum) * 100, 100))}%` }}
+                            />
+                          </div>
+                        )}
                       </div>
-                    );
-                  })}
-                </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground text-sm">
+                    Score breakdown is unavailable for this result. It was stored
+                    before per-category scoring was versioned; run an updated
+                    analysis to see the full breakdown.
+                  </p>
+                )}
               </div>
             </div>
 

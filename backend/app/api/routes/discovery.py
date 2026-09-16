@@ -40,9 +40,16 @@ from app.services.ai_provider import get_ai_provider
 from app.services.job_discovery import (
     build_query,
     normalize_discovery_provider,
+    normalize_search_location,
     rank_result_with_ai,
     search_jobs,
     validate_discovery_country,
+)
+from app.services.job_identity import (
+    JobIdentityConflict,
+    find_duplicate_job,
+    job_dedupe_key,
+    persist_job,
 )
 
 router = APIRouter(prefix="/discovery", tags=["discovery"])
@@ -148,6 +155,7 @@ def _resume_context(session: Session, user_id: uuid.UUID) -> str:
     text = version.extracted_text if version else resume.extracted_text
     return (text or "").strip()
 
+
 def _resume_search_terms(session: Session, user_id: uuid.UUID) -> list[str]:
     resume = session.exec(
         select(Resume)
@@ -191,6 +199,7 @@ def _resume_search_terms(session: Session, user_id: uuid.UUID) -> list[str]:
             cleaned.append(text)
             seen.add(key)
     return cleaned[:10]
+
 
 def _saved_job_terms(session: Session, user_id: uuid.UUID) -> list[str]:
     jobs = session.exec(
@@ -323,8 +332,12 @@ async def create_run(
     except ValueError as exc:
         code = "unsupported_provider" if "provider" in str(exc).lower() else "invalid_country"
         raise _error(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc), code) from exc
-    location = payload.location or (
+    requested_location = payload.location or (
         preferences.target_locations[0] if preferences.target_locations else None
+    )
+    location = normalize_search_location(country, requested_location)
+    ranking_preferences = preferences.model_copy(
+        update={"target_locations": [location] if location else []}
     )
     resume_context = _resume_context(session, current_user.id)
     resume_terms = _resume_search_terms(session, current_user.id)
@@ -345,6 +358,7 @@ async def create_run(
         query=query,
         preferences_snapshot={
             **preferences.model_dump(mode="json"),
+            "target_locations": ranking_preferences.target_locations,
             "profile_terms": profile_terms,
             "resume_terms": resume_terms,
             "saved_job_terms": saved_job_terms,
@@ -395,7 +409,7 @@ async def create_run(
         *(
             rank_result_with_ai(
                 item,
-                preferences,
+                ranking_preferences,
                 ai_provider,
                 profile_terms=profile_terms,
                 resume_context=resume_context,
@@ -507,20 +521,32 @@ def save_result_as_job(
             "result_not_saveable",
         )
 
-    job = Job(
-        user_id=current_user.id,
-        company_name=result.company_name,
-        title=result.title,
-        location=result.location,
-        work_mode=result.work_mode,
-        source=result.source,
-        source_url=result.source_url,
-        description=result.description,
+    main_dedupe = job_dedupe_key(
+        result.source_url, result.company_name, result.title, result.location
     )
-    session.add(job)
+    existing_job = find_duplicate_job(session, current_user, main_dedupe)
+    if existing_job is None:
+        job = Job(
+            user_id=current_user.id,
+            company_name=result.company_name,
+            title=result.title,
+            location=result.location,
+            work_mode=result.work_mode,
+            source=result.source,
+            source_url=result.source_url,
+            dedupe_key=main_dedupe,
+            description=result.description,
+        )
+        try:
+            job = persist_job(session, job)
+        except JobIdentityConflict:
+            # A concurrent writer won the identity race: reuse its job.
+            job = find_duplicate_job(session, current_user, main_dedupe)
+            if job is None:
+                raise
+        existing_job = job
     result.status = DiscoveryResultStatus.saved
-    result.saved_job_id = job.id
+    result.saved_job_id = existing_job.id
     session.add(result)
     session.commit()
-    session.refresh(job)
-    return job
+    return existing_job

@@ -18,7 +18,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-export function SignupForm() {
+type SignupFormProps = {
+  publicSignupEnabled?: boolean;
+};
+
+export function SignupForm({ publicSignupEnabled = false }: SignupFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialInviteToken =
@@ -39,7 +43,7 @@ export function SignupForm() {
       await register({
         email: email.trim(),
         password,
-        invite_token: inviteToken.trim(),
+        ...(publicSignupEnabled ? {} : { invite_token: inviteToken.trim() }),
       });
       router.push("/dashboard");
       router.refresh();
@@ -65,8 +69,9 @@ export function SignupForm() {
       <CardHeader>
         <CardTitle className="text-xl">Create account</CardTitle>
         <CardDescription>
-          JobGoblin is invite-only. Use the token from your admin to join this
-          private workspace.
+          {publicSignupEnabled
+            ? "Create your account to join this JobGoblin workspace."
+            : "JobGoblin is invite-only. Use the token from your admin to join this private workspace."}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -118,19 +123,21 @@ export function SignupForm() {
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="invite-token">Invite token</Label>
-            <Input
-              id="invite-token"
-              name="invite_token"
-              autoComplete="one-time-code"
-              placeholder="Paste invite token"
-              required
-              value={inviteToken}
-              onChange={(e) => setInviteToken(e.target.value)}
-              disabled={pending}
-            />
-          </div>
+          {!publicSignupEnabled && (
+            <div className="space-y-1.5">
+              <Label htmlFor="invite-token">Invite token</Label>
+              <Input
+                id="invite-token"
+                name="invite_token"
+                autoComplete="one-time-code"
+                placeholder="Paste invite token"
+                required
+                value={inviteToken}
+                onChange={(e) => setInviteToken(e.target.value)}
+                disabled={pending}
+              />
+            </div>
+          )}
 
           {error && (
             <p
@@ -157,7 +164,7 @@ export function SignupForm() {
         </form>
 
         <p className="text-muted-foreground mt-4 text-center text-sm">
-          Already invited?{" "}
+          Already have an account?{" "}
           <Link className="text-primary underline-offset-4 hover:underline" href="/login">
             Sign in
           </Link>

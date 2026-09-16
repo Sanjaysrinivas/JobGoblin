@@ -126,7 +126,7 @@ Validation gates:
 
 - Adzuna: set `JOB_DISCOVERY_PROVIDER=adzuna`, `ADZUNA_APP_ID`, and `ADZUNA_APP_KEY`; run discovery for supported countries/locations; confirm failed runs never log API keys or provider URLs with secrets.
 - Google OAuth: set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `OAUTH_REDIRECT_BASE_URL`, and `ALLOWED_EMAILS`; verify owner login, allowlisted friend login, and unallowlisted rejection.
-- Cloudflare Tunnel: set `CLOUDFLARED_TUNNEL_TOKEN`; verify HTTPS access to Caddy, Google redirect URI alignment, and production cookies as `Secure`, `HttpOnly`, and `SameSite=Lax`.
+- Cloudflare Tunnel: use the quick `tunnel` profile for temporary share links, or set `CLOUDFLARED_TUNNEL_TOKEN` for the `named-tunnel` profile; verify HTTPS access to Caddy, Google redirect URI alignment, and production cookies as `Secure`, `HttpOnly`, and `SameSite=Lax`.
 
 Done when:
 

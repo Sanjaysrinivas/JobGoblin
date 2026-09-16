@@ -106,6 +106,27 @@ def test_register_rejects_invalid_invite(client, session):
     assert resp.json()["code"] == "invalid_invite"
 
 
+def test_register_rejects_missing_invite_when_public_signup_disabled(client, session):
+    _make_admin(session)
+    resp = client.post(
+        "/api/auth/register",
+        json={"email": "x@example.com", "password": "hunter2pw"},
+    )
+    assert resp.status_code == 400
+    assert resp.json()["code"] == "invalid_invite"
+
+
+def test_register_allows_missing_invite_when_public_signup_enabled(client, session):
+    get_settings().public_signup_enabled = True
+    resp = client.post(
+        "/api/auth/register",
+        json={"email": "open@example.com", "password": "hunter2pw"},
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["email"] == "open@example.com"
+    assert COOKIE in resp.headers["set-cookie"].lower()
+
+
 def test_register_rejects_used_invite(client, session):
     admin = _make_admin(session)
     _make_invite(session, admin.id, token="used-tok", used_by=admin.id)

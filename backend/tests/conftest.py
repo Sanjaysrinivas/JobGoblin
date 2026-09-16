@@ -34,6 +34,7 @@ def _reset_settings():
         "mfa_rate_limit",
         "rate_limit_enabled",
         "app_env",
+        "public_signup_enabled",
     )
     saved = {k: getattr(s, k) for k in keys}
     yield

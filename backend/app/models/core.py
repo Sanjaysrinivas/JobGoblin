@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import BigInteger, Column, DateTime, Index, Sequence, UniqueConstraint
+from sqlalchemy import BigInteger, Column, DateTime, Index, Sequence, UniqueConstraint, text
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
@@ -82,6 +82,15 @@ class InviteToken(_UUIDMixin, table=True):
 
 class Resume(_UUIDMixin, _TimeMixin, table=True):
     __tablename__ = "resumes"
+    __table_args__ = (
+        Index(
+            "uq_resumes_user_default",
+            "user_id",
+            unique=True,
+            postgresql_where=text("is_default"),
+            sqlite_where=text("is_default = 1"),
+        ),
+    )
 
     user_id: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE", index=True)
     title: str
@@ -96,6 +105,15 @@ class Resume(_UUIDMixin, _TimeMixin, table=True):
 
 class ResumeVersion(_UUIDMixin, _TimeMixin, table=True):
     __tablename__ = "resume_versions"
+    __table_args__ = (
+        Index(
+            "uq_resume_versions_resume_current",
+            "resume_id",
+            unique=True,
+            postgresql_where=text("is_current"),
+            sqlite_where=text("is_current = 1"),
+        ),
+    )
 
     resume_id: uuid.UUID = Field(foreign_key="resumes.id", ondelete="CASCADE", index=True)
     job_id: uuid.UUID | None = Field(
@@ -208,6 +226,7 @@ class JobSearchResult(_UUIDMixin, _TimeMixin, table=True):
 
 class Job(_UUIDMixin, _TimeMixin, table=True):
     __tablename__ = "jobs"
+    __table_args__ = (UniqueConstraint("user_id", "dedupe_key", name="uq_jobs_user_dedupe"),)
 
     user_id: uuid.UUID = Field(foreign_key="users.id", ondelete="CASCADE", index=True)
     company_name: str
@@ -216,6 +235,7 @@ class Job(_UUIDMixin, _TimeMixin, table=True):
     work_mode: WorkMode = Field(default=WorkMode.unknown, sa_type=_enum(WorkMode))
     source: JobSource = Field(default=JobSource.other, sa_type=_enum(JobSource))
     source_url: str | None = None
+    dedupe_key: str | None = Field(default=None, max_length=64)
     description: str
     salary_min: int | None = None
     salary_max: int | None = None
@@ -240,6 +260,12 @@ class JobAnalysis(_UUIDMixin, table=True):
     missing_keywords: list | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
     recommendations: list | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
     explanation: str | None = None
+    score_breakdown: list | None = Field(default=None, sa_column=Column(JSONB, nullable=True))
+    job_text_hash: str | None = None
+    resume_version_id: uuid.UUID | None = Field(
+        default=None, foreign_key="resume_versions.id", ondelete="SET NULL"
+    )
+    resume_text_hash: str | None = None
     provider: str
     model_used: str
     created_at: datetime = Field(

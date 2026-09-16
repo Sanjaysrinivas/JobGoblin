@@ -73,12 +73,17 @@ def test_create_get_update_delete_job(client, session, user):
         client,
         company_name="  TrimCo  ",
         title="  Platform Engineer  ",
+        source_url="https://example.com/jobs/2",
         currency=" usd ",
     )
     assert spaced.status_code == 201, spaced.text
     assert spaced.json()["company_name"] == "TrimCo"
     assert spaced.json()["title"] == "Platform Engineer"
     assert spaced.json()["currency"] == "USD"
+
+    duplicate = _create_job(client, source_url="https://example.com/jobs/1/?utm_source=test")
+    assert duplicate.status_code == 409
+    assert duplicate.json()["code"] == "job_exists"
 
     job_id = uuid.UUID(body["id"])
     stored = session.get(Job, job_id)
@@ -125,6 +130,15 @@ def test_list_returns_only_current_users_jobs(client, session, user, other_user)
     assert companies == [mine["company_name"]]
 
 
+def test_duplicate_detection_handles_non_url_source_values(client):
+    first = _create_job(client, source_url="Internal board reference 42")
+    assert first.status_code == 201
+
+    duplicate = _create_job(client, source_url=" internal board reference 42 ")
+    assert duplicate.status_code == 409
+    assert duplicate.json()["code"] == "job_exists"
+
+
 def test_cross_user_detail_update_and_delete_are_404(client, session, other_user):
     job = Job(
         user_id=other_user.id,
@@ -165,6 +179,93 @@ def test_create_rejects_invalid_salary_range(client):
     resp = _create_job(client, salary_min=200000, salary_max=100000)
     assert resp.status_code == 422
     assert resp.json()["code"] == "invalid_salary_range"
+
+
+def test_import_job_from_text_prefills_create_payload(client, monkeypatch):
+    import app.api.routes.jobs as job_routes
+
+    class Provider:
+        async def generate_json(self, prompt, schema, *, system=None):
+            return {
+                "company_name": "Acme Data",
+                "title": "Data Analyst",
+                "location": "Milan, Italy",
+                "work_mode": "hybrid",
+                "source": "company_site",
+                "description": "Analyze product data with SQL and dashboards.",
+                "salary_min": 45000,
+                "salary_max": 55000,
+                "currency": "eur",
+                "priority": "high",
+            }
+
+    monkeypatch.setattr(job_routes, "get_ai_provider", lambda: Provider())
+    resp = client.post(
+        "/api/jobs/import",
+        json={
+            "mode": "text",
+            "content": "Data Analyst\nAcme Data\nMilan, Italy\nAnalyze product data.",
+        },
+    )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["company_name"] == "Acme Data"
+    assert body["title"] == "Data Analyst"
+    assert body["work_mode"] == "hybrid"
+    assert body["currency"] == "EUR"
+
+
+def test_import_job_keeps_full_description_and_explicit_salary(client, monkeypatch):
+    import app.api.routes.jobs as job_routes
+
+    class Provider:
+        async def generate_json(self, prompt, schema, *, system=None):
+            return {
+                "company_name": "Ferrero",
+                "title": "Data Scientist",
+                "location": "",
+                "work_mode": "remote",
+                "source": "company_site",
+                "description": "Short AI summary.",
+                "priority": "medium",
+            }
+
+    posting = """
+    Data Scientist
+    Ferrero
+    Alba, CN, IT (Hybrid)
+
+    About the Role:
+    We are looking for a Data Scientist to join the Global Data Science & AI team.
+    Main Responsibilities:
+    You will analyze diverse datasets and build advanced statistical and AI-driven models.
+    About You:
+    You hold a master's degree and bring experience in applied data science roles.
+    What We Offer:
+    The guaranteed minimum base annual gross salary is €43.249.
+    """
+    monkeypatch.setattr(job_routes, "get_ai_provider", lambda: Provider())
+
+    resp = client.post("/api/jobs/import", json={"mode": "text", "content": posting})
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "Main Responsibilities" in body["description"]
+    assert body["location"] == "Alba, CN, IT (Hybrid)"
+    assert body["work_mode"] == "hybrid"
+    assert body["salary_min"] == 43249
+    assert body["currency"] == "EUR"
+
+
+def test_import_job_rejects_private_url(client):
+    resp = client.post(
+        "/api/jobs/import",
+        json={"mode": "url", "content": "http://127.0.0.1:8000/private"},
+    )
+
+    assert resp.status_code == 422
+    assert resp.json()["code"] == "bad_url"
 
 
 def test_patch_rejects_blank_required_field(client):

@@ -102,6 +102,34 @@ def test_rank_result_uses_whole_word_matching():
     assert score > 0
 
 
+def test_rank_result_matches_api_aliases():
+    score, reason = rank_result(
+        _job("Build partner APIs."),
+        JobSearchPreferencesPayload(required_keywords=["API"]),
+    )
+
+    assert score > 0
+    assert not reason.startswith("Blocked")
+
+
+def test_rank_result_rejects_negated_visa_sponsorship():
+    score, reason = rank_result(
+        _job("Build Python APIs. No visa sponsorship available."),
+        JobSearchPreferencesPayload(visa_sponsorship_required=True),
+    )
+
+    assert score == 0
+    assert reason == "Blocked by visa sponsorship requirement."
+
+    score, reason = rank_result(
+        _job("Build Python APIs. Visa sponsorship is not available."),
+        JobSearchPreferencesPayload(visa_sponsorship_required=True),
+    )
+
+    assert score == 0
+    assert reason == "Blocked by visa sponsorship requirement."
+
+
 def test_from_adzuna_infers_remote_work_mode():
     job = _from_adzuna(
         {

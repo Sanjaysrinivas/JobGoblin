@@ -21,8 +21,8 @@ remains the source of truth for provenance and recovery.
    `Create tailored copy`.
 5. The backend creates a non-current `ResumeVersion` linked to the job and the
    source resume version.
-6. AI rewrites only grounded sections: summary, skills ordering, experience
-   bullets, projects, and role framing.
+6. Deterministic tailoring adds only supported focus terms; AI may reorder only
+   skills that already exist in the selected resume version.
 7. The UI shows the tailored copy with change notes and grounding evidence.
 8. User can accept, reject, edit manually, or download the tailored copy.
 9. Accepting the copy can mark it as the current version for that resume.
@@ -30,7 +30,8 @@ remains the source of truth for provenance and recovery.
 ## Product Rules
 
 - Original uploaded files are immutable.
-- AI may reword, reorder, emphasize, and condense existing facts.
+- AI may select or reorder existing facts. Free-form factual rewrites are not
+  accepted without deterministic source validation.
 - AI may add a keyword only when the resume already contains matching evidence.
 - AI must not invent employers, roles, tools, dates, degrees, certifications,
   metrics, responsibilities, or eligibility claims.

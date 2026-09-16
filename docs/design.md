@@ -155,7 +155,7 @@ Auth:
 - `GET /api/auth/me`
 - `GET /api/auth/google/login`
 - `GET /api/auth/google/callback`
-- `GET /api/auth/mfa/enroll`
+- `POST /api/auth/mfa/enroll`
 - `POST /api/auth/mfa/verify`
 - `POST /api/auth/mfa/challenge`
 
@@ -318,18 +318,36 @@ The MVP implementation is local filesystem storage mounted at `FILE_STORAGE_PATH
 
 ## 9. Resume-To-Job Scoring Plan
 
-The scoring feature is implemented and pending integrated validation.
+The scoring feature is implemented with deterministic, evidence-based matching.
 
-Hybrid approach:
+Approach:
 
-1. Extract job-description keywords and categories deterministically.
-2. Extract resume terms from `extracted_text` and parsed skills.
-3. Match exact terms first, then fuzzy terms with `rapidfuzz`.
-4. Score weighted categories: keyword 30, skills 25, experience 20, role 10, education 5, formatting 10.
-5. Use AI for explanation and concise recommendations.
-6. Persist results to `job_analyses` and label UI output as an estimate.
-7. Derive application guidance at response time from the saved analysis, current
+1. Extract job-description keywords and categories deterministically, filtering
+   optional and negated requirement statements.
+2. Extract resume terms from `extracted_text` and parsed skills, rejecting
+   negated and aspirational mentions.
+3. Match terms through one shared boundary-aware matcher
+   (`app/services/text_matching.py`), then fuzzy terms with `rapidfuzz`.
+4. Score weighted categories: keyword 35, skills 30, experience 20, role 10,
+   education 5. Formatting quality is measured separately and does not
+   contribute to job fit.
+5. Normalize the overall score across the requirements that apply to the
+   posting. Categories the employer did not ask for earn no points and are
+   reported as not applicable (rendered `N/A`), never as a zero. Each response
+   carries a `score_breakdown` with `earned`, `maximum`, and `applicable` per
+   category so the UI can explain every overall score.
+6. Generate deterministic, grounded recommendations: advice must not ask the
+   user to present evidence known to be missing.
+7. Persist results to `job_analyses`, stamped with the analysis version
+   (`model_used`, currently `grounded-v2`) and labelled as an estimate.
+8. Derive application guidance at response time from the saved analysis, current
    resume text, and saved job description.
+
+Analyses created before grounded scoring keep their historical provider,
+explanation, and recommendations unchanged. They are flagged `is_legacy` in
+responses and shown with a warning plus an explicit "Run updated analysis"
+action; re-running appends a new versioned result rather than overwriting
+history.
 
 Application guidance returned with analysis responses:
 
@@ -393,7 +411,7 @@ Current compose services:
 | `backend` | FastAPI API | Runs migrations on startup; mounts uploads volume. |
 | `db` | PostgreSQL 16 | Uses `pgdata` Docker volume. |
 | `ollama` | Local LLM runtime | Uses `ollama` Docker volume; model pull/setup is separate. |
-| `cloudflared` | Optional tunnel profile | Disabled by default; requires `CLOUDFLARED_TUNNEL_TOKEN`. |
+| `cloudflared` | Optional tunnel profile | Disabled by default; quick tunnel needs no token. |
 
 Pending validation:
 
