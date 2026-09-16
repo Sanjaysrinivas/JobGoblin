@@ -5,21 +5,23 @@ import { test as base, expect } from "@playwright/test";
  * or uncaught page exceptions during the test. Extend this `test` instead of
  * importing from @playwright/test directly.
  */
-const ALLOWED_PATTERNS: RegExp[] = [
-  // Unauthenticated flows are expected work: /auth/me probes and failed
-  // sign-in attempts legitimately answer 401 before a session exists, and
-  // the browser logs those failed resource loads as console errors.
-  /^Failed to load resource: the server responded with a status of 401/,
-];
+const UNAUTHENTICATED_401 =
+  /^Failed to load resource: the server responded with a status of 401/;
+
+export function isAllowedConsoleError(text: string, testFile: string): boolean {
+  // Only authentication-flow tests expect pre-session /auth/me and failed
+  // sign-in requests. A 401 in any signed-in workflow is a regression.
+  return testFile.endsWith("auth.spec.ts") && UNAUTHENTICATED_401.test(text);
+}
 
 export const test = base.extend<{ cleanConsole: void }>({
   cleanConsole: [
-    async ({ page }, use) => {
+    async ({ page }, use, testInfo) => {
       const errors: string[] = [];
       page.on("console", (message) => {
         if (message.type() !== "error") return;
         const text = message.text();
-        if (!ALLOWED_PATTERNS.some((pattern) => pattern.test(text))) {
+        if (!isAllowedConsoleError(text, testInfo.file)) {
           errors.push(text);
         }
       });

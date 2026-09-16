@@ -1,6 +1,6 @@
 import type { APIResponse, Page } from "@playwright/test";
 
-import { expect, test } from "./helpers/console-gate";
+import { expect, isAllowedConsoleError, test } from "./helpers/console-gate";
 import { Cleanup, withCleanup } from "./helpers/cleanup";
 import globalSetup from "./helpers/global-setup";
 
@@ -69,4 +69,13 @@ test("global setup refuses mutation without an explicit opt-in", async () => {
     if (previous === undefined) delete process.env.E2E_ALLOW_MUTATION;
     else process.env.E2E_ALLOW_MUTATION = previous;
   }
+});
+
+test("401 console errors are allowed only in authentication flows", () => {
+  const unauthorized =
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)";
+
+  expect(isAllowedConsoleError(unauthorized, "e2e/auth.spec.ts")).toBe(true);
+  expect(isAllowedConsoleError(unauthorized, "e2e/jobs.spec.ts")).toBe(false);
+  expect(isAllowedConsoleError("Unhandled exception", "e2e/auth.spec.ts")).toBe(false);
 });
